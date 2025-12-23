@@ -2,7 +2,10 @@
 
 import { useState, useMemo } from 'react';
 import Layout from '@/components/Layout';
+import Alert from '@/components/Alert';
 import { mockAttendance, mockMembers } from '@/lib/mockData';
+import { formatDate } from '@/lib/dateUtils';
+import { useAlert } from '@/hooks/useAlert';
 
 interface Member {
   id: string;
@@ -22,10 +25,12 @@ interface AttendanceRecord {
 }
 
 export default function AttendancePage() {
+  const { alert, showAlert, closeAlert } = useAlert();
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>(mockAttendance);
   const [members] = useState<Member[]>(mockMembers);
   const [loading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [filters, setFilters] = useState({
     memberId: '',
     startDate: new Date().toISOString().split('T')[0],
@@ -37,22 +42,66 @@ export default function AttendancePage() {
     status: 'PRESENT' as 'PRESENT' | 'ABSENT' | 'LATE',
   });
 
-  // Filter attendance based on filters
+  // Handle sorting
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Filter and sort attendance
   const attendance = useMemo(() => {
-    return allAttendance.filter(record => {
+    let filtered = allAttendance.filter(record => {
       if (filters.memberId && record.memberId !== filters.memberId) return false;
       const recordDate = new Date(record.date).toISOString().split('T')[0];
       if (filters.startDate && recordDate < filters.startDate) return false;
       if (filters.endDate && recordDate > filters.endDate) return false;
       return true;
     });
-  }, [allAttendance, filters]);
+
+    // Apply sorting
+    if (sortConfig) {
+      filtered = [...filtered].sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        switch (sortConfig.key) {
+          case 'date':
+            aValue = new Date(a.date).getTime();
+            bValue = new Date(b.date).getTime();
+            break;
+          case 'member':
+            aValue = a.member.name?.toLowerCase() || '';
+            bValue = b.member.name?.toLowerCase() || '';
+            break;
+          case 'phone':
+            aValue = a.member.phone?.toLowerCase() || '';
+            bValue = b.member.phone?.toLowerCase() || '';
+            break;
+          case 'status':
+            aValue = a.status.toLowerCase();
+            bValue = b.status.toLowerCase();
+            break;
+          default:
+            return 0;
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [allAttendance, filters, sortConfig]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const member = members.find(m => m.id === formData.memberId);
     if (!member) {
-      alert('Please select a member');
+      showAlert('warning', 'Member Required', 'Please select a member to mark attendance.');
       return;
     }
     
@@ -109,6 +158,13 @@ export default function AttendancePage() {
 
   return (
     <Layout>
+      <Alert
+        isOpen={alert.isOpen}
+        onClose={closeAlert}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+      />
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold text-dark-gray">Attendance</h1>
@@ -177,17 +233,49 @@ export default function AttendancePage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-light-gray">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                  Date
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('date')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Date</span>
+                    {sortConfig?.key === 'date' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                  Member
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('member')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Member</span>
+                    {sortConfig?.key === 'member' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                  Contact
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('phone')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Contact</span>
+                    {sortConfig?.key === 'phone' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                  Status
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('status')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Status</span>
+                    {sortConfig?.key === 'status' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
               </tr>
             </thead>
@@ -196,7 +284,7 @@ export default function AttendancePage() {
                 <tr key={record.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
-                      {new Date(record.date).toLocaleDateString()}
+                      {formatDate(record.date)}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

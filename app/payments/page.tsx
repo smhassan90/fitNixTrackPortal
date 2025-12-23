@@ -1,9 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
+import Alert from '@/components/Alert';
 import { mockPayments, mockMembers } from '@/lib/mockData';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDate } from '@/lib/dateUtils';
+import { useAlert } from '@/hooks/useAlert';
 
 interface Member {
   id: string;
@@ -28,99 +32,338 @@ interface Payment {
 
 export default function PaymentsPage() {
   const { user } = useAuth();
-  const [allPayments, setAllPayments] = useState<Payment[]>(mockPayments);
+  const searchParams = useSearchParams();
+  const { alert, showAlert, closeAlert } = useAlert();
+  // Load payments from localStorage or use mock data
+  const [allPayments, setAllPayments] = useState<Payment[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('payments');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return mockPayments;
+        }
+      }
+    }
+    return mockPayments;
+  });
   const [members] = useState<Member[]>(mockMembers);
   const [loading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [filters, setFilters] = useState({
     memberId: '',
     status: '',
     month: '',
   });
-  const [formData, setFormData] = useState({
-    memberId: '',
-    month: new Date().toISOString().slice(0, 7),
-    amount: '',
-    dueDate: '',
-  });
 
-  // Filter payments based on filters
+  // Save payments to localStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('payments', JSON.stringify(allPayments));
+    }
+  }, [allPayments]);
+
+  // Initialize filters from URL query parameters
+  useEffect(() => {
+    const statusParam = searchParams.get('status');
+    if (statusParam) {
+      setFilters(prev => ({ ...prev, status: statusParam }));
+    }
+  }, [searchParams]);
+
+  // Handle sorting
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Filter and sort payments
   const payments = useMemo(() => {
-    return allPayments.filter(payment => {
+    let filtered = allPayments.filter(payment => {
       if (filters.memberId && payment.memberId !== filters.memberId) return false;
       if (filters.status && payment.status !== filters.status) return false;
       if (filters.month && payment.month !== filters.month) return false;
       return true;
     });
-  }, [allPayments, filters]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const member = members.find(m => m.id === formData.memberId);
-    if (!member) {
-      alert('Please select a member');
-      return;
+    // Apply search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(payment => {
+        const memberName = payment.member.name?.toLowerCase() || '';
+        const memberPhone = payment.member.phone?.toLowerCase() || '';
+        const memberEmail = payment.member.email?.toLowerCase() || '';
+        const amount = payment.amount.toString();
+        const month = payment.month.toLowerCase();
+        const status = payment.status.toLowerCase();
+        const paymentId = payment.id.toLowerCase();
+        
+        return (
+          memberName.includes(query) ||
+          memberPhone.includes(query) ||
+          memberEmail.includes(query) ||
+          amount.includes(query) ||
+          month.includes(query) ||
+          status.includes(query) ||
+          paymentId.includes(query)
+        );
+      });
     }
-    
-    const newPayment: Payment = {
-      id: Date.now().toString(),
-      memberId: formData.memberId,
-      month: formData.month,
-      amount: parseFloat(formData.amount),
-      status: 'PENDING',
-      dueDate: new Date(formData.dueDate).toISOString(),
-      paidDate: null,
-      member: {
-        id: member.id,
-        name: member.name,
-        phone: null,
-        email: null,
-      },
-    };
-    
-    setAllPayments([...allPayments, newPayment]);
-    setShowModal(false);
-    resetForm();
-  };
+
+    // Apply sorting
+    if (sortConfig) {
+      filtered = [...filtered].sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        switch (sortConfig.key) {
+          case 'month':
+            aValue = a.month;
+            bValue = b.month;
+            break;
+          case 'member':
+            aValue = a.member.name?.toLowerCase() || '';
+            bValue = b.member.name?.toLowerCase() || '';
+            break;
+          case 'amount':
+            aValue = a.amount;
+            bValue = b.amount;
+            break;
+          case 'dueDate':
+            aValue = new Date(a.dueDate).getTime();
+            bValue = new Date(b.dueDate).getTime();
+            break;
+          case 'status':
+            aValue = a.status.toLowerCase();
+            bValue = b.status.toLowerCase();
+            break;
+          default:
+            return 0;
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [allPayments, filters, searchQuery, sortConfig]);
+
 
   const handleMarkPaid = async (id: string) => {
-    setAllPayments(allPayments.map(p => 
+    const updatedPayments = allPayments.map(p => 
       p.id === id 
         ? { ...p, status: 'PAID' as const, paidDate: new Date().toISOString() }
         : p
-    ));
+    );
+    setAllPayments(updatedPayments);
+    // Save to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('payments', JSON.stringify(updatedPayments));
+    }
   };
 
-  const handleCheckOverdue = async () => {
+  const handlePrintReceipt = (payment: Payment) => {
+    if (payment.status !== 'PAID') {
+      showAlert('warning', 'Cannot Print Receipt', 'Receipt can only be printed for paid payments.');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const receiptHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Payment Receipt - ${payment.member.name}</title>
+          <style>
+            @media print {
+              @page { margin: 20mm; }
+            }
+            body {
+              font-family: Arial, sans-serif;
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 3px solid #333;
+              padding-bottom: 20px;
+              margin-bottom: 30px;
+            }
+            .header h1 {
+              margin: 0;
+              color: #333;
+              font-size: 28px;
+            }
+            .header p {
+              margin: 5px 0;
+              color: #666;
+            }
+            .receipt-info {
+              margin-bottom: 30px;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 10px 0;
+              border-bottom: 1px solid #eee;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #333;
+            }
+            .info-value {
+              color: #666;
+            }
+            .amount-section {
+              background: #f5f5f5;
+              padding: 20px;
+              border-radius: 8px;
+              margin: 30px 0;
+            }
+            .amount-row {
+              display: flex;
+              justify-content: space-between;
+              font-size: 18px;
+              margin: 10px 0;
+            }
+            .total {
+              font-size: 24px;
+              font-weight: bold;
+              color: #333;
+              border-top: 2px solid #333;
+              padding-top: 10px;
+              margin-top: 10px;
+            }
+            .footer {
+              margin-top: 40px;
+              text-align: center;
+              color: #666;
+              font-size: 12px;
+              border-top: 1px solid #eee;
+              padding-top: 20px;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 5px 15px;
+              background: #10b981;
+              color: white;
+              border-radius: 20px;
+              font-weight: bold;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>FitNixTrack Gym</h1>
+            <p>Payment Receipt</p>
+          </div>
+          
+          <div class="receipt-info">
+            <div class="info-row">
+              <span class="info-label">Receipt Number:</span>
+              <span class="info-value">#${payment.id}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Date:</span>
+              <span class="info-value">${formatDate(payment.paidDate)}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Member Name:</span>
+              <span class="info-value">${payment.member.name}</span>
+            </div>
+            ${payment.member.phone ? `
+            <div class="info-row">
+              <span class="info-label">Phone:</span>
+              <span class="info-value">${payment.member.phone}</span>
+            </div>
+            ` : ''}
+            <div class="info-row">
+              <span class="info-label">Payment Month:</span>
+              <span class="info-value">${payment.month}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Status:</span>
+              <span class="info-value"><span class="status-badge">PAID</span></span>
+            </div>
+          </div>
+          
+          <div class="amount-section">
+            <div class="amount-row">
+              <span>Amount:</span>
+              <span>Rs. ${payment.amount.toFixed(2)}</span>
+            </div>
+            <div class="amount-row total">
+              <span>Total Paid:</span>
+              <span>Rs. ${payment.amount.toFixed(2)}</span>
+            </div>
+          </div>
+          
+          <div class="footer">
+            <p>Thank you for your payment!</p>
+            <p>This is a computer-generated receipt.</p>
+            <p>Generated on: ${formatDate(new Date().toISOString())}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(receiptHTML);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
+  const handleCheckOverdue = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    setAllPayments(allPayments.map(p => {
-      const dueDate = new Date(p.dueDate);
-      dueDate.setHours(0, 0, 0, 0);
-      
-      if (p.status === 'PENDING' && dueDate < today) {
-        return { ...p, status: 'OVERDUE' as const };
-      }
-      return p;
-    }));
+    let overdueCount = 0;
     
-    alert('Overdue payments checked and updated');
-  };
-
-  const resetForm = () => {
-    setFormData({
-      memberId: '',
-      month: new Date().toISOString().slice(0, 7),
-      amount: '',
-      dueDate: '',
+    const updatedPayments = allPayments.map(p => {
+      // Skip payments that are already PAID or OVERDUE
+      if (p.status === 'PAID' || p.status === 'OVERDUE') {
+        return p;
+      }
+      
+      // Only check PENDING payments
+      if (p.status === 'PENDING') {
+        const dueDate = new Date(p.dueDate);
+        dueDate.setHours(0, 0, 0, 0);
+        
+        if (dueDate < today) {
+          overdueCount++;
+          return { ...p, status: 'OVERDUE' as const };
+        }
+      }
+      
+      return p;
     });
+    
+    setAllPayments(updatedPayments);
+    // Save to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('payments', JSON.stringify(updatedPayments));
+    }
+    
+    if (overdueCount > 0) {
+      showAlert('success', 'Overdue Payments Updated', `${overdueCount} payment(s) marked as overdue.`);
+    } else {
+      showAlert('info', 'All Payments Up to Date', 'No overdue payments found. All payments are current.');
+    }
   };
 
-  const openAddModal = () => {
-    resetForm();
-    setShowModal(true);
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -145,25 +388,60 @@ export default function PaymentsPage() {
 
   return (
     <Layout>
+      <Alert
+        isOpen={alert.isOpen}
+        onClose={closeAlert}
+        type={alert.type}
+        title={alert.title}
+        message={alert.message}
+      />
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-dark-gray">Payments</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-dark-gray">Payments</h1>
+            <p className="text-sm text-gray-500 mt-1">Payment records are automatically created when members join</p>
+          </div>
           <div className="flex gap-2">
             {user?.role === 'GYM_ADMIN' && (
-              <>
-                <button
-                  onClick={handleCheckOverdue}
-                  className="bg-orange text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+              <button
+                onClick={handleCheckOverdue}
+                className="bg-orange text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+              >
+                Check Overdue
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Search/Filter */}
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="flex items-center space-x-4 mb-4">
+            <div className="flex-1">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search payments by member name, phone, email, amount, month, or status..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+                <svg
+                  className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  Check Overdue
-                </button>
-                <button
-                  onClick={openAddModal}
-                  className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
-                >
-                  + Add Payment
-                </button>
-              </>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Clear
+              </button>
             )}
           </div>
         </div>
@@ -212,10 +490,11 @@ export default function PaymentsPage() {
               <button
                 onClick={() => {
                   setFilters({ memberId: '', status: '', month: '' });
+                  setSearchQuery('');
                 }}
-                className="w-full bg-gray-300 text-dark-gray py-2 px-4 rounded-lg hover:bg-gray-400"
+                className="w-full bg-gray-300 text-dark-gray py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
               >
-                Reset
+                Reset All
               </button>
             </div>
           </div>
@@ -225,20 +504,60 @@ export default function PaymentsPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-light-gray">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                  Month
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('month')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Month</span>
+                    {sortConfig?.key === 'month' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                  Member
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('member')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Member</span>
+                    {sortConfig?.key === 'member' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                  Amount
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('amount')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Amount</span>
+                    {sortConfig?.key === 'amount' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                  Due Date
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('dueDate')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Due Date</span>
+                    {sortConfig?.key === 'dueDate' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                  Status
+                <th 
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('status')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Status</span>
+                    {sortConfig?.key === 'status' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
                 </th>
                 {user?.role === 'GYM_ADMIN' && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
@@ -248,7 +567,16 @@ export default function PaymentsPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {payments.map((payment) => (
+              {payments.length === 0 ? (
+                <tr>
+                  <td colSpan={user?.role === 'GYM_ADMIN' ? 6 : 5} className="px-6 py-8 text-center text-gray-500">
+                    {searchQuery || filters.memberId || filters.status || filters.month
+                      ? 'No payments found matching your search or filters.'
+                      : 'No payments found.'}
+                  </td>
+                </tr>
+              ) : (
+                payments.map((payment) => (
                 <tr key={payment.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">{payment.month}</div>
@@ -258,15 +586,15 @@ export default function PaymentsPage() {
                     <div className="text-sm text-gray-500">{payment.member.phone || 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">${payment.amount.toFixed(2)}</div>
+                    <div className="text-sm text-gray-900">Rs. {payment.amount.toFixed(2)}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">
-                      {new Date(payment.dueDate).toLocaleDateString()}
+                      {formatDate(payment.dueDate)}
                     </div>
                     {payment.paidDate && (
                       <div className="text-xs text-gray-400">
-                        Paid: {new Date(payment.paidDate).toLocaleDateString()}
+                        Paid: {formatDate(payment.paidDate)}
                       </div>
                     )}
                   </td>
@@ -279,98 +607,39 @@ export default function PaymentsPage() {
                       {payment.status}
                     </span>
                   </td>
-                  {user?.role === 'GYM_ADMIN' && payment.status !== 'PAID' && (
+                  {user?.role === 'GYM_ADMIN' && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => handleMarkPaid(payment.id)}
-                        className="text-green-600 hover:text-green-900"
-                      >
-                        Mark Paid
-                      </button>
+                      {payment.status !== 'PAID' ? (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Mark payment of Rs. ${payment.amount.toFixed(2)} for ${payment.member.name} as PAID?`)) {
+                              handleMarkPaid(payment.id);
+                              showAlert('success', 'Payment Recorded', `Payment of Rs. ${payment.amount.toFixed(2)} has been marked as paid.`);
+                            }
+                          }}
+                          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium"
+                        >
+                          Mark as Paid
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handlePrintReceipt(payment)}
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                          </svg>
+                          Print Receipt
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
-
-        {/* Modal */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h2 className="text-2xl font-bold text-dark-gray mb-4">Add Payment</h2>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-dark-gray mb-1">Member</label>
-                  <select
-                    required
-                    value={formData.memberId}
-                    onChange={(e) => setFormData({ ...formData, memberId: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  >
-                    <option value="">Select Member</option>
-                    {members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-dark-gray mb-1">Month</label>
-                  <input
-                    type="month"
-                    required
-                    value={formData.month}
-                    onChange={(e) => setFormData({ ...formData, month: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-dark-gray mb-1">Amount</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
-                    placeholder="50.00"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-dark-gray mb-1">Due Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.dueDate}
-                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  />
-                </div>
-                <div className="flex gap-4">
-                  <button
-                    type="submit"
-                    className="flex-1 bg-primary text-white py-2 px-4 rounded-lg hover:bg-opacity-90"
-                  >
-                    Create
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowModal(false);
-                      resetForm();
-                    }}
-                    className="flex-1 bg-gray-300 text-dark-gray py-2 px-4 rounded-lg hover:bg-gray-400"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
   );

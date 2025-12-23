@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import { mockDashboardStats } from '@/lib/mockData';
 import { colors, getGradient, getStatusColors } from '@/lib/colors';
@@ -27,16 +28,26 @@ interface DashboardStats {
   attendanceSummary: {
     present: number;
     absent: number;
-    late: number;
   };
   revenueByMonth: Record<string, number>;
   attendanceTrend: Array<{ date: string; count: number }>;
   workoutStats: number;
+  currentlyInGym?: number;
 }
 
 export default function DashboardPage() {
-  const [stats] = useState<DashboardStats>(mockDashboardStats);
-  const [loading] = useState(false);
+  const router = useRouter();
+  const [stats, setStats] = useState<DashboardStats>(mockDashboardStats);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleCardClick = (route: string, filter?: { key: string; value: string }) => {
+    if (filter) {
+      router.push(`${route}?${filter.key}=${filter.value}`);
+    } else {
+      router.push(route);
+    }
+  };
 
   if (loading) {
     return (
@@ -60,8 +71,21 @@ export default function DashboardPage() {
 
   const attendancePercentage = Math.round(
     (stats.attendanceSummary.present / 
-     (stats.attendanceSummary.present + stats.attendanceSummary.absent + stats.attendanceSummary.late)) * 100
+     (stats.attendanceSummary.present + stats.attendanceSummary.absent)) * 100
   );
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    // In a real app, this would fetch fresh data from the API
+    setStats(mockDashboardStats);
+    setRefreshing(false);
+  };
+
+  const handleViewCurrentlyInGym = () => {
+    router.push('/attendance?filter=today');
+  };
 
   return (
     <Layout>
@@ -80,7 +104,10 @@ export default function DashboardPage() {
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Members Card */}
-          <div className="bg-primary p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200">
+          <div 
+            onClick={() => handleCardClick('/members')}
+            className="bg-primary p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200 cursor-pointer hover:shadow-xl"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-teal-100 text-sm font-medium mb-1">Total Members</p>
@@ -96,7 +123,10 @@ export default function DashboardPage() {
           </div>
 
           {/* Trainers Card */}
-          <div className="bg-blue p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200">
+          <div 
+            onClick={() => handleCardClick('/trainers')}
+            className="bg-blue p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200 cursor-pointer hover:shadow-xl"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-100 text-sm font-medium mb-1">Active Trainers</p>
@@ -112,7 +142,10 @@ export default function DashboardPage() {
           </div>
 
           {/* Pending Payments Card */}
-          <div className="bg-orange p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200">
+          <div 
+            onClick={() => handleCardClick('/payments', { key: 'status', value: 'PENDING' })}
+            className="bg-orange p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200 cursor-pointer hover:shadow-xl"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-orange-100 text-sm font-medium mb-1">Pending Payments</p>
@@ -129,7 +162,10 @@ export default function DashboardPage() {
           </div>
 
           {/* Overdue Payments Card */}
-          <div className="bg-gradient-to-br from-error to-error-dark p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200">
+          <div 
+            onClick={() => handleCardClick('/payments', { key: 'status', value: 'OVERDUE' })}
+            className="bg-gradient-to-br from-error to-error-dark p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200 cursor-pointer hover:shadow-xl"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-red-100 text-sm font-medium mb-1">Overdue Payments</p>
@@ -201,7 +237,7 @@ export default function DashboardPage() {
               </div>
               <div className="bg-blue bg-opacity-10 px-3 py-1 rounded-full">
                 <span className="text-blue text-sm font-semibold">
-                  ${Object.values(stats.revenueByMonth).reduce((a, b) => a + b, 0)}
+                  Rs. {Object.values(stats.revenueByMonth).reduce((a, b) => a + b, 0).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -227,7 +263,7 @@ export default function DashboardPage() {
                     borderRadius: '8px',
                     boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
                   }}
-                  formatter={(value: any) => [`$${value}`, 'Revenue']}
+                  formatter={(value: any) => [`Rs. ${value.toLocaleString()}`, 'Revenue']}
                 />
                 <Bar 
                   dataKey="amount" 
@@ -242,36 +278,89 @@ export default function DashboardPage() {
         {/* Attendance Summary & Workout Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Attendance Summary */}
-          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-            <h2 className="text-xl font-bold text-dark-gray mb-6">Attendance Summary</h2>
-            <p className="text-sm text-gray-500 mb-4">Last 30 days</p>
-            <div className="grid grid-cols-3 gap-4">
-              <div className={`text-center p-6 bg-gradient-to-br ${getStatusColors('success').bg} rounded-xl border ${getStatusColors('success').border}`}>
-                <div className={`${getStatusColors('success').icon} w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3`}>
-                  <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <p className={`text-3xl font-bold ${getStatusColors('success').text}`}>{stats.attendanceSummary.present}</p>
-                <p className="text-sm text-green-600 mt-1 font-medium">Present</p>
+          <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-dark-gray">Attendance Summary</h2>
+                <p className="text-sm text-gray-500 mt-1">Last 30 days</p>
               </div>
-              <div className={`text-center p-6 bg-gradient-to-br ${getStatusColors('error').bg} rounded-xl border ${getStatusColors('error').border}`}>
-                <div className={`${getStatusColors('error').icon} w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3`}>
-                  <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh data"
+              >
+                <svg 
+                  className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Present and Absent Stats */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg p-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-green-700 uppercase tracking-wide">Present</span>
+                    <div className="bg-green-500 p-2 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                  <p className="text-3xl font-bold text-green-800">{stats.attendanceSummary.present}</p>
+                  <p className="text-xs text-green-600 mt-1">Members attended</p>
                 </div>
-                <p className={`text-3xl font-bold ${getStatusColors('error').text}`}>{stats.attendanceSummary.absent}</p>
-                <p className="text-sm text-red-600 mt-1 font-medium">Absent</p>
+                
+                <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-lg p-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-red-700 uppercase tracking-wide">Absent</span>
+                    <div className="bg-red-500 p-2 rounded-lg">
+                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                  <p className="text-3xl font-bold text-red-800">{stats.attendanceSummary.absent}</p>
+                  <p className="text-xs text-red-600 mt-1">Members absent</p>
+                </div>
               </div>
-              <div className={`text-center p-6 bg-gradient-to-br ${getStatusColors('warning').bg} rounded-xl border ${getStatusColors('warning').border}`}>
-                <div className={`${getStatusColors('warning').icon} w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3`}>
-                  <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                  </svg>
+
+              {/* Attendance Rate */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">Attendance Rate</span>
+                  <span className="text-lg font-bold text-primary">{attendancePercentage}%</span>
                 </div>
-                <p className={`text-3xl font-bold ${getStatusColors('warning').text}`}>{stats.attendanceSummary.late}</p>
-                <p className="text-sm text-yellow-600 mt-1 font-medium">Late</p>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div 
+                    className="bg-primary h-2.5 rounded-full transition-all duration-500" 
+                    style={{ width: `${attendancePercentage}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleViewCurrentlyInGym}
+                  className="flex-1 bg-primary text-white px-4 py-3 rounded-lg hover:bg-opacity-90 transition-colors font-medium flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <span>People Currently in Gym</span>
+                  {stats.currentlyInGym !== undefined && (
+                    <span className="bg-white bg-opacity-20 px-2 py-0.5 rounded-full text-sm font-semibold">
+                      {stats.currentlyInGym}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
           </div>

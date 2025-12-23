@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,6 +34,15 @@ const navigation = [
     )
   },
   { 
+    name: 'Packages', 
+    href: '/packages', 
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    )
+  },
+  { 
     name: 'Attendance', 
     href: '/attendance', 
     icon: (
@@ -61,24 +71,84 @@ const navigation = [
   },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean;
+  onToggle: () => void;
+}
+
+export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
+  // Close sidebar when clicking outside on mobile/tablet
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // Close on mobile/tablet (screens less than 1024px - tablets and phones)
+      if (window.innerWidth < 1024 && isOpen) {
+        const target = event.target as HTMLElement;
+        // Don't close if clicking inside sidebar or on toggle button
+        if (!target.closest('.sidebar-container') && !target.closest('.sidebar-toggle')) {
+          onToggle();
+        }
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      // Also handle touch events for mobile devices
+      document.addEventListener('touchstart', handleClickOutside as any);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as any);
+    };
+  }, [isOpen, onToggle]);
+
   return (
-    <div className="bg-gradient-to-b from-slate-800 to-slate-900 text-white w-64 min-h-screen flex flex-col shadow-2xl">
+    <>
+      {/* Mobile/Tablet Overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={onToggle}
+        />
+      )}
+      
+      {/* Sidebar */}
+      <div className={`
+        sidebar-container
+        bg-gradient-to-b from-slate-800 to-slate-900 text-white w-64 h-screen flex flex-col shadow-2xl overflow-hidden fixed left-0 top-0 z-50
+        transition-transform duration-300 ease-in-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
       {/* Logo Section */}
       <div className="p-6 border-b border-slate-700 border-opacity-50">
-        <div className="flex items-center space-x-3">
-          <div className="bg-gradient-to-br from-primary to-primary-dark p-2 rounded-lg">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-gradient-to-br from-primary to-primary-dark p-2 rounded-lg">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white">FitNixTrack</h1>
+              <p className="text-xs text-gray-400">Admin Portal</p>
+            </div>
+          </div>
+          {/* Close/Toggle button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
+            className="text-gray-400 hover:text-white transition-colors p-1 hover:bg-slate-700 rounded"
+            title="Toggle sidebar"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-white">FitNixTrack</h1>
-            <p className="text-xs text-gray-400">Admin Portal</p>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -91,6 +161,12 @@ export default function Sidebar() {
               <li key={item.name}>
                 <Link
                   href={item.href}
+                  onClick={(e) => {
+                    // Only close sidebar on mobile/tablet when navigating
+                    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                      onToggle();
+                    }
+                  }}
                   className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${
                     isActive
                       ? 'bg-slate-700 text-white'
@@ -137,6 +213,7 @@ export default function Sidebar() {
         </button>
       </div>
     </div>
+    </>
   );
 }
 
