@@ -31,7 +31,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-light-gray">
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">FitNixTrack</h1>
+          <h1 className="text-3xl font-bold text-primary mb-2">Fit Nix Track</h1>
           <p className="text-dark-gray">Admin Portal</p>
         </div>
 
