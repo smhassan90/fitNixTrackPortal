@@ -12,8 +12,12 @@ import { useRouter } from 'next/navigation';
 interface Trainer {
   id: string;
   name: string;
+  gender?: string | null;
+  dateOfBirth?: string | null;
   specialization: string | null;
   charges?: number;
+  startTime?: string;
+  endTime?: string;
 }
 
 interface Package {
