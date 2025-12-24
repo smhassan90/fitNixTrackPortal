@@ -18,10 +18,18 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
+    console.log('🔵 Login form submitted');
+    console.log('Email:', email);
+    console.log('Password length:', password.length);
+
     try {
+      console.log('🔵 Calling login function from AuthContext...');
       await login(email, password);
+      console.log('✅ Login function completed successfully');
       router.push('/dashboard');
     } catch (err: any) {
+      console.error('❌ Login error in form:', err);
+      console.error('Error message:', err.message);
       setError(err.message || 'Login failed');
     } finally {
       setLoading(false);

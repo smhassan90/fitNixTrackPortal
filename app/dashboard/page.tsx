@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Loading from '@/components/Loading';
-import { mockDashboardStats } from '@/lib/mockData';
+import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errorHandler';
 import { colors, getGradient, getStatusColors } from '@/lib/colors';
 import {
   LineChart,
@@ -38,9 +39,72 @@ interface DashboardStats {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [stats, setStats] = useState<DashboardStats>(mockDashboardStats);
-  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch dashboard stats from API
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('🔵 Fetching dashboard stats from API...');
+      
+      const response = await api.get('/api/dashboard/stats');
+      console.log('Dashboard API Response:', response.data);
+      
+      if (response.data.success) {
+        const data = response.data.data;
+        
+        // Get current date for trend calculation
+        const today = new Date();
+        const last7Days = Array.from({ length: 7 }, (_, i) => {
+          const date = new Date(today);
+          date.setDate(date.getDate() - (6 - i));
+          return {
+            date: date.toISOString().split('T')[0],
+            count: 0, // Will be populated if API provides daily breakdown
+          };
+        });
+        
+        // Transform API response to match DashboardStats interface
+        const dashboardStats: DashboardStats = {
+          totalMembers: data.totalMembers || 0,
+          totalTrainers: data.totalTrainers || 0,
+          pendingPayments: data.pendingPayments || 0,
+          overduePayments: data.overduePayments || 0,
+          attendanceSummary: {
+            present: data.monthAttendance || 0,
+            absent: Math.max(0, (data.totalMembers || 0) * 30 - (data.monthAttendance || 0)), // Estimate
+          },
+          revenueByMonth: {
+            // Generate last 6 months with revenue data if available
+            // For now, use paid payments as revenue estimate
+            [new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 7)]: data.totalRevenue || 0,
+          },
+          attendanceTrend: last7Days,
+          workoutStats: data.monthAttendance || 0,
+          currentlyInGym: data.todayAttendance || 0,
+        };
+        
+        setStats(dashboardStats);
+        console.log('✅ Dashboard stats loaded:', dashboardStats);
+      } else {
+        throw new Error('API returned unsuccessful response');
+      }
+    } catch (err: any) {
+      console.error('Error fetching dashboard stats:', err);
+      setError(getErrorMessage(err));
+      setStats(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardStats();
+  }, [fetchDashboardStats]);
 
   const handleCardClick = (route: string, filter?: { key: string; value: string }) => {
     if (filter) {
@@ -58,10 +122,21 @@ export default function DashboardPage() {
     );
   }
 
-  if (!stats) {
+  if (error || !stats) {
     return (
       <Layout>
-        <div className="text-center py-12 text-red-600">Failed to load dashboard</div>
+        <div className="text-center py-12">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+            <p className="text-red-600 font-semibold mb-2">Failed to load dashboard</p>
+            <p className="text-red-500 text-sm mb-4">{error || 'Unknown error'}</p>
+            <button
+              onClick={fetchDashboardStats}
+              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
       </Layout>
     );
   }
@@ -77,10 +152,7 @@ export default function DashboardPage() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    // In a real app, this would fetch fresh data from the API
-    setStats(mockDashboardStats);
+    await fetchDashboardStats();
     setRefreshing(false);
   };
 
