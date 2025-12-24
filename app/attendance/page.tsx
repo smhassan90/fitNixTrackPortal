@@ -32,6 +32,7 @@ export default function AttendancePage() {
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [filters, setFilters] = useState({
     memberId: '',
@@ -81,6 +82,7 @@ export default function AttendancePage() {
       } else {
         console.warn('API returned success=false:', response.data);
         setAllAttendance([]);
+        setApiError('API returned unsuccessful response');
       }
     } catch (error: any) {
       console.error('Error fetching attendance:', error);
@@ -89,8 +91,11 @@ export default function AttendancePage() {
         response: error.response?.data,
         status: error.response?.status,
         url: error.config?.url,
+        fullUrl: error.config?.baseURL + error.config?.url,
       });
-      showAlert('error', 'Error Loading Attendance', getErrorMessage(error));
+      const errorMsg = getErrorMessage(error);
+      setApiError(errorMsg);
+      showAlert('error', 'Error Loading Attendance', errorMsg);
       setAllAttendance([]);
     } finally {
       setLoading(false);
@@ -131,6 +136,10 @@ export default function AttendancePage() {
 
   // Fetch attendance when filters, sort, or page changes
   useEffect(() => {
+    // Clear any existing data first to ensure we're not showing stale data
+    setAllAttendance([]);
+    setApiError(null);
+    
     const filtersChanged = 
       prevFiltersRef.current.memberId !== filters.memberId ||
       prevFiltersRef.current.startDate !== filters.startDate ||
@@ -140,6 +149,15 @@ export default function AttendancePage() {
       prevSortConfigRef.current?.direction !== sortConfig?.direction;
 
     const targetPage = (filtersChanged || sortChanged) ? 1 : pagination.page;
+    
+    console.log('🔵 useEffect triggered - fetching attendance from API', {
+      filtersChanged,
+      sortChanged,
+      targetPage,
+      filters,
+      sortConfig,
+      apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+    });
     
     fetchAttendance(targetPage, filters, sortConfig);
     
@@ -230,6 +248,9 @@ export default function AttendancePage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold text-dark-gray">Attendance</h1>
+          <div className="text-sm text-gray-500">
+            API: {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}
+          </div>
         </div>
 
         {/* Filters */}
@@ -359,21 +380,45 @@ export default function AttendancePage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {attendance.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center">
+                  <td colSpan={7} className="px-6 py-8 text-center">
                     <div className="flex flex-col items-center">
-                      <p className="text-gray-500 mb-2">No attendance records found.</p>
+                      <p className="text-gray-500 mb-2 font-semibold">
+                        {apiError ? 'Failed to Load Attendance Data' : 'No attendance records found.'}
+                      </p>
+                      {apiError && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-3 max-w-md">
+                          <p className="text-sm text-red-800 font-medium mb-1">API Error:</p>
+                          <p className="text-xs text-red-600">{apiError}</p>
+                          <p className="text-xs text-red-500 mt-2">
+                            Check browser console (F12) for more details.
+                          </p>
+                        </div>
+                      )}
                       <p className="text-sm text-gray-400">
                         {members.length === 0 
                           ? 'Unable to connect to API. Please check if the backend server is running at http://localhost:3001'
-                          : 'Try adjusting your filters or check if there are any attendance records in the database.'}
+                          : apiError 
+                            ? 'Please verify your backend API is running and accessible.'
+                            : 'Try adjusting your filters or check if there are any attendance records in the database.'}
                       </p>
+                      {apiError && (
+                        <button
+                          onClick={() => {
+                            setApiError(null);
+                            fetchAttendance(pagination.page, filters, sortConfig);
+                          }}
+                          className="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90"
+                        >
+                          Retry
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ) : loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                    Loading attendance records...
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                    Loading attendance records from API...
                   </td>
                 </tr>
               ) : (
