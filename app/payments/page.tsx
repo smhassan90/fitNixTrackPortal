@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
+import Loading from '@/components/Loading';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { mockPayments, mockMembers } from '@/lib/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
@@ -52,6 +54,11 @@ export default function PaymentsPage() {
   const [loading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; paymentId: string | null; payment: Payment | null }>({
+    isOpen: false,
+    paymentId: null,
+    payment: null,
+  });
   const [filters, setFilters] = useState({
     memberId: '',
     status: '',
@@ -167,6 +174,22 @@ export default function PaymentsPage() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('payments', JSON.stringify(updatedPayments));
     }
+    showAlert('success', 'Payment Recorded', `Payment has been marked as paid successfully.`);
+  };
+
+  const handleMarkPaidClick = (payment: Payment) => {
+    setConfirmDialog({
+      isOpen: true,
+      paymentId: payment.id,
+      payment: payment,
+    });
+  };
+
+  const handleConfirmMarkPaid = () => {
+    if (confirmDialog.paymentId) {
+      handleMarkPaid(confirmDialog.paymentId);
+    }
+    setConfirmDialog({ isOpen: false, paymentId: null, payment: null });
   };
 
   const handlePrintReceipt = (payment: Payment) => {
@@ -339,12 +362,12 @@ export default function PaymentsPage() {
       
       // Only check PENDING payments
       if (p.status === 'PENDING') {
-        const dueDate = new Date(p.dueDate);
-        dueDate.setHours(0, 0, 0, 0);
-        
+      const dueDate = new Date(p.dueDate);
+      dueDate.setHours(0, 0, 0, 0);
+      
         if (dueDate < today) {
           overdueCount++;
-          return { ...p, status: 'OVERDUE' as const };
+        return { ...p, status: 'OVERDUE' as const };
         }
       }
       
@@ -381,7 +404,7 @@ export default function PaymentsPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="text-center py-12">Loading payments...</div>
+        <Loading message="Loading payments..." />
       </Layout>
     );
   }
@@ -395,20 +418,30 @@ export default function PaymentsPage() {
         title={alert.title}
         message={alert.message}
       />
+      <ConfirmationDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, paymentId: null, payment: null })}
+        onConfirm={handleConfirmMarkPaid}
+        title="Mark Payment as Paid"
+        message={confirmDialog.payment ? `Are you sure you want to mark the payment of Rs. ${confirmDialog.payment.amount.toFixed(2)} for ${confirmDialog.payment.member.name} as PAID?` : ''}
+        confirmText="Mark as Paid"
+        cancelText="Cancel"
+        type="warning"
+      />
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-dark-gray">Payments</h1>
+          <h1 className="text-3xl font-bold text-dark-gray">Payments</h1>
             <p className="text-sm text-gray-500 mt-1">Payment records are automatically created when members join</p>
           </div>
           <div className="flex gap-2">
             {user?.role === 'GYM_ADMIN' && (
-              <button
-                onClick={handleCheckOverdue}
-                className="bg-orange text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
-              >
-                Check Overdue
-              </button>
+                <button
+                  onClick={handleCheckOverdue}
+                  className="bg-orange text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+                >
+                  Check Overdue
+                </button>
             )}
           </div>
         </div>
@@ -441,7 +474,7 @@ export default function PaymentsPage() {
                 className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
               >
                 Clear
-              </button>
+                </button>
             )}
           </div>
         </div>
@@ -611,26 +644,21 @@ export default function PaymentsPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       {payment.status !== 'PAID' ? (
                         <button
-                          onClick={() => {
-                            if (confirm(`Mark payment of Rs. ${payment.amount.toFixed(2)} for ${payment.member.name} as PAID?`)) {
-                              handleMarkPaid(payment.id);
-                              showAlert('success', 'Payment Recorded', `Payment of Rs. ${payment.amount.toFixed(2)} has been marked as paid.`);
-                            }
-                          }}
+                          onClick={() => handleMarkPaidClick(payment)}
                           className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium"
                         >
                           Mark as Paid
                         </button>
                       ) : (
-                        <button
+                      <button
                           onClick={() => handlePrintReceipt(payment)}
-                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-900 p-2.5 rounded-lg transition-colors font-medium flex items-center justify-center shadow-sm"
+                          title="Print Receipt"
+                      >
+                          <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                           </svg>
-                          Print Receipt
-                        </button>
+                      </button>
                       )}
                     </td>
                   )}

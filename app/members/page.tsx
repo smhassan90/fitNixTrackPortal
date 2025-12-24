@@ -3,11 +3,14 @@
 import React, { useState, useMemo } from 'react';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
+import Loading from '@/components/Loading';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { mockMembers, mockTrainers, mockPackages } from '@/lib/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import { useRouter } from 'next/navigation';
+import { generateUniqueId, generatePrefixedId } from '@/lib/idUtils';
 
 interface Trainer {
   id: string;
@@ -61,6 +64,11 @@ export default function MembersPage() {
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; memberId: string | null; memberName: string }>({
+    isOpen: false,
+    memberId: null,
+    memberName: '',
+  });
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -92,6 +100,7 @@ export default function MembersPage() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(member =>
+        member.id.toLowerCase().includes(query) ||
         member.name.toLowerCase().includes(query) ||
         member.phone?.toLowerCase().includes(query) ||
         member.email?.toLowerCase().includes(query) ||
@@ -106,6 +115,10 @@ export default function MembersPage() {
         let bValue: any;
 
         switch (sortConfig.key) {
+          case 'id':
+            aValue = a.id.toLowerCase();
+            bValue = b.id.toLowerCase();
+            break;
           case 'name':
             aValue = a.name.toLowerCase();
             bValue = b.name.toLowerCase();
@@ -205,7 +218,7 @@ export default function MembersPage() {
       } else {
         // Add new member
         const newMember: Member = {
-          id: Date.now().toString(),
+          id: generatePrefixedId('member'),
           name: formData.name,
           phone: formData.phone || null,
           email: formData.email || null,
@@ -249,7 +262,7 @@ export default function MembersPage() {
           const dueDate = new Date(nextMonth);
           
           const newPayment = {
-            id: `payment-${Date.now()}`,
+            id: generatePrefixedId('payment'),
             memberId: newMember.id,
             month: nextMonth.toISOString().slice(0, 7), // YYYY-MM format
             amount: monthlyAmount,
@@ -306,9 +319,24 @@ export default function MembersPage() {
     resetForm();
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this member?')) return;
-    setMembers(members.filter(m => m.id !== id));
+  const handleDeleteClick = (id: string, name: string) => {
+    setDeleteDialog({
+      isOpen: true,
+      memberId: id,
+      memberName: name,
+    });
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteDialog.memberId) {
+      setMembers(members.filter(m => m.id !== deleteDialog.memberId));
+      showAlert('success', 'Member Deleted', `Member "${deleteDialog.memberName}" has been deleted successfully.`);
+      setDeleteDialog({ isOpen: false, memberId: null, memberName: '' });
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialog({ isOpen: false, memberId: null, memberName: '' });
   };
 
   const resetForm = () => {
@@ -386,7 +414,7 @@ export default function MembersPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="text-center py-12">Loading members...</div>
+        <Loading message="Loading members..." />
       </Layout>
     );
   }
@@ -399,6 +427,16 @@ export default function MembersPage() {
         type={alert.type}
         title={alert.title}
         message={alert.message}
+      />
+      <ConfirmationDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Member"
+        message={`Are you sure you want to delete "${deleteDialog.memberName}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
       />
       <div className="space-y-6">
           <div className="flex justify-between items-center">
@@ -752,6 +790,17 @@ export default function MembersPage() {
                 <tr>
                   <th 
                     className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                    onClick={() => handleSort('id')}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>ID</span>
+                      {sortConfig?.key === 'id' && (
+                        <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </div>
+                  </th>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
                     onClick={() => handleSort('name')}
                   >
                     <div className="flex items-center space-x-1">
@@ -848,7 +897,7 @@ export default function MembersPage() {
               <tbody className="bg-white divide-y divide-gray-200">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={user?.role === 'GYM_ADMIN' ? 9 : 8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={user?.role === 'GYM_ADMIN' ? 10 : 9} className="px-6 py-8 text-center text-gray-500">
                     {searchQuery ? 'No members found matching your search.' : 'No members found.'}
                   </td>
                 </tr>
@@ -874,6 +923,14 @@ export default function MembersPage() {
                   
                   return (
                     <tr key={member.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div 
+                          className="text-xs font-mono text-gray-600 truncate max-w-[120px]" 
+                          title={member.id}
+                        >
+                          {member.id}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-dark-gray">{member.name}</div>
                       </td>
@@ -931,7 +988,7 @@ export default function MembersPage() {
                             Edit
                           </button>
                           <button
-                            onClick={() => handleDelete(member.id)}
+                            onClick={() => handleDeleteClick(member.id, member.name)}
                             className="text-red-600 hover:text-red-900"
                           >
                             Delete

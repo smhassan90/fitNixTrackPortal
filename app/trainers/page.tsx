@@ -3,10 +3,13 @@
 import { useState, useMemo } from 'react';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
+import Loading from '@/components/Loading';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { mockTrainers } from '@/lib/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
+import { generatePrefixedId } from '@/lib/idUtils';
 
 interface Trainer {
   id: string;
@@ -30,6 +33,11 @@ export default function TrainersPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingTrainer, setEditingTrainer] = useState<Trainer | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; trainerId: string | null; trainerName: string }>({
+    isOpen: false,
+    trainerId: null,
+    trainerName: '',
+  });
   const [formData, setFormData] = useState({
     name: '',
     gender: '',
@@ -73,7 +81,7 @@ export default function TrainersPage() {
         ));
       } else {
         const newTrainer: Trainer = {
-          id: Date.now().toString(),
+          id: generatePrefixedId('trainer'),
           name: formData.name,
           gender: formData.gender || null,
           dateOfBirth: formData.dateOfBirth || null,
@@ -110,9 +118,24 @@ export default function TrainersPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this trainer?')) return;
-    setTrainers(trainers.filter(t => t.id !== id));
+  const handleDeleteClick = (id: string, name: string) => {
+    setDeleteDialog({
+      isOpen: true,
+      trainerId: id,
+      trainerName: name,
+    });
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteDialog.trainerId) {
+      setTrainers(trainers.filter(t => t.id !== deleteDialog.trainerId));
+      showAlert('success', 'Trainer Deleted', `Trainer "${deleteDialog.trainerName}" has been deleted successfully.`);
+      setDeleteDialog({ isOpen: false, trainerId: null, trainerName: '' });
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialog({ isOpen: false, trainerId: null, trainerName: '' });
   };
 
   const resetForm = () => {
@@ -195,7 +218,7 @@ export default function TrainersPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="text-center py-12">Loading trainers...</div>
+        <Loading message="Loading trainers..." />
       </Layout>
     );
   }
@@ -208,6 +231,16 @@ export default function TrainersPage() {
         type={alert.type}
         title={alert.title}
         message={alert.message}
+      />
+      <ConfirmationDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Trainer"
+        message={`Are you sure you want to delete "${deleteDialog.trainerName}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
       />
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -490,7 +523,7 @@ export default function TrainersPage() {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(trainer.id)}
+                        onClick={() => handleDeleteClick(trainer.id, trainer.name)}
                         className="text-red-600 hover:text-red-900"
                       >
                         Delete

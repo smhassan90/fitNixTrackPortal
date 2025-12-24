@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Layout from '@/components/Layout';
+import Loading from '@/components/Loading';
 import { mockAttendanceStats } from '@/lib/mockData';
 import {
   LineChart,
@@ -42,7 +43,7 @@ export default function ReportsPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="text-center py-12">Loading reports...</div>
+        <Loading message="Loading reports..." />
       </Layout>
     );
   }

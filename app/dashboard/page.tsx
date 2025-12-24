@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
+import Loading from '@/components/Loading';
 import { mockDashboardStats } from '@/lib/mockData';
 import { colors, getGradient, getStatusColors } from '@/lib/colors';
 import {
@@ -52,7 +53,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="text-center py-12">Loading dashboard...</div>
+        <Loading message="Loading dashboard..." />
       </Layout>
     );
   }

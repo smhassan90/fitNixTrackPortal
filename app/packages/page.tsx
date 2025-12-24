@@ -3,9 +3,11 @@
 import { useState, useMemo } from 'react';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
+import Loading from '@/components/Loading';
 import { mockPackages } from '@/lib/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAlert } from '@/hooks/useAlert';
+import { generatePrefixedId } from '@/lib/idUtils';
 
 interface Package {
   id: string;
@@ -78,7 +80,7 @@ export default function PackagesPage() {
         ));
       } else {
         const newPackage: Package = {
-          id: Date.now().toString(),
+          id: generatePrefixedId('package'),
           name: formData.name,
           price: parseFloat(formData.price),
           duration: formData.duration,
@@ -194,7 +196,7 @@ export default function PackagesPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="text-center py-12">Loading packages...</div>
+        <Loading message="Loading packages..." />
       </Layout>
     );
   }

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Sidebar from './Sidebar';
+import Loading from './Loading';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -53,11 +54,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-primary text-xl">Loading...</div>
-      </div>
-    );
+    return <Loading message="Initializing..." fullScreen size="lg" />;
   }
 
   if (!user) {
