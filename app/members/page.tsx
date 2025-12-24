@@ -1,16 +1,16 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
-import { mockMembers, mockTrainers, mockPackages } from '@/lib/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import { useRouter } from 'next/navigation';
-import { generateUniqueId, generatePrefixedId } from '@/lib/idUtils';
+import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errorHandler';
 
 interface Trainer {
   id: string;
@@ -49,17 +49,10 @@ export default function MembersPage() {
   const { user } = useAuth();
   const router = useRouter();
   const { alert, showAlert, closeAlert } = useAlert();
-  const [members, setMembers] = useState<Member[]>(mockMembers.map(m => ({
-    ...m,
-    gender: null,
-    dateOfBirth: null,
-    cnic: null,
-    comments: null,
-    packageId: null,
-  })));
-  const [trainers] = useState<Trainer[]>(mockTrainers);
-  const [availablePackages] = useState<Package[]>(mockPackages);
-  const [loading] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [availablePackages, setAvailablePackages] = useState<Package[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -82,6 +75,99 @@ export default function MembersPage() {
     trainerId: '',
     discount: '',
   });
+
+  // Fetch members from API
+  const fetchMembers = useCallback(async (search?: string, sort?: { key: string; direction: string }) => {
+    try {
+      setLoading(true);
+      console.log('🔵 Fetching members from API...');
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (sort?.key) params.append('sortBy', sort.key);
+      if (sort?.direction) params.append('sortOrder', sort.direction);
+      params.append('limit', '1000');
+
+      const response = await api.get(`/api/members?${params}`);
+      console.log('Members API Response:', response.data);
+
+      if (response.data.success) {
+        const membersList = response.data.data.members || [];
+        // Transform API response to match Member interface
+        const transformedMembers: Member[] = membersList.map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          phone: m.phone,
+          email: m.email,
+          gender: m.gender,
+          dateOfBirth: m.dateOfBirth,
+          cnic: m.cnic,
+          comments: m.comments,
+          packageId: m.packageId,
+          discount: m.discount,
+          trainers: m.trainers || [],
+        }));
+        setMembers(transformedMembers);
+        console.log('✅ Members loaded:', transformedMembers.length);
+      }
+    } catch (error: any) {
+      console.error('Error fetching members:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [showAlert]);
+
+  // Fetch trainers from API
+  const fetchTrainers = useCallback(async () => {
+    try {
+      console.log('🔵 Fetching trainers from API...');
+      const response = await api.get('/api/trainers?limit=1000');
+      console.log('Trainers API Response:', response.data);
+
+      if (response.data.success) {
+        const trainersList = response.data.data.trainers || [];
+        setTrainers(trainersList);
+        console.log('✅ Trainers loaded:', trainersList.length);
+      }
+    } catch (error: any) {
+      console.error('Error fetching trainers:', error);
+      // Don't show alert for trainers, just log
+    }
+  }, []);
+
+  // Fetch packages from API
+  const fetchPackages = useCallback(async () => {
+    try {
+      console.log('🔵 Fetching packages from API...');
+      const response = await api.get('/api/packages?limit=1000');
+      console.log('Packages API Response:', response.data);
+
+      if (response.data.success) {
+        const packagesList = response.data.data.packages || [];
+        setAvailablePackages(packagesList);
+        console.log('✅ Packages loaded:', packagesList.length);
+      }
+    } catch (error: any) {
+      console.error('Error fetching packages:', error);
+      // Don't show alert for packages, just log
+    }
+  }, []);
+
+  // Load data on mount
+  useEffect(() => {
+    fetchMembers();
+    fetchTrainers();
+    fetchPackages();
+  }, []); // Only run on mount
+
+  // Refetch members when search or sort changes (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchMembers(searchQuery || undefined, sortConfig ? { key: sortConfig.key, direction: sortConfig.direction } : undefined);
+    }, 300); // Debounce search
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, sortConfig, fetchMembers]);
 
   // Handle sorting
   const handleSort = (key: string) => {
@@ -193,103 +279,56 @@ export default function MembersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setLoading(true);
+      
+      const memberData: any = {
+        name: formData.name,
+        phone: formData.phone || undefined,
+        email: formData.email || undefined,
+        gender: formData.gender || undefined,
+        dateOfBirth: formData.dateOfBirth || undefined,
+        cnic: formData.cnic ? formData.cnic.replace(/\D/g, '') : undefined,
+        comments: formData.comments || undefined,
+        packageId: formData.packageId || undefined,
+        discount: formData.discount ? parseFloat(formData.discount) : undefined,
+        trainerIds: formData.requiresTrainer && formData.trainerId ? [formData.trainerId] : undefined,
+      };
+
+      // Remove undefined fields
+      Object.keys(memberData).forEach(key => 
+        memberData[key] === undefined && delete memberData[key]
+      );
+
       if (editingMember) {
         // Update existing member
-        setMembers(members.map(m => 
-          m.id === editingMember.id 
-            ? { 
-                ...m, 
-                name: formData.name,
-                phone: formData.phone || null,
-                email: formData.email || null,
-                gender: formData.gender || null,
-                dateOfBirth: formData.dateOfBirth || null,
-                cnic: formData.cnic || null,
-                comments: formData.comments || null,
-                packageId: formData.packageId || null,
-                discount: formData.discount ? parseFloat(formData.discount) : undefined,
-                trainers: formData.requiresTrainer && formData.trainerId
-                  ? trainers.filter(t => t.id === formData.trainerId)
-                  : []
-              }
-            : m
-        ));
-        setEditingMember(null);
+        console.log('🔵 Updating member:', editingMember.id);
+        const response = await api.put(`/api/members/${editingMember.id}`, memberData);
+        console.log('Update member response:', response.data);
+        
+        if (response.data.success) {
+          showAlert('success', 'Member Updated', 'Member updated successfully!');
+          await fetchMembers(); // Refresh list
+          setEditingMember(null);
+          resetForm();
+        }
       } else {
-        // Add new member
-        const newMember: Member = {
-          id: generatePrefixedId('member'),
-          name: formData.name,
-          phone: formData.phone || null,
-          email: formData.email || null,
-          gender: formData.gender || null,
-          dateOfBirth: formData.dateOfBirth || null,
-          cnic: formData.cnic || null,
-          comments: formData.comments || null,
-          packageId: formData.packageId || null,
-          discount: formData.discount ? parseFloat(formData.discount) : undefined,
-          trainers: formData.requiresTrainer && formData.trainerId
-            ? trainers.filter(t => t.id === formData.trainerId)
-            : [],
-        };
-        setMembers([...members, newMember]);
-        setShowAddForm(false);
-
-        // Automatically create payment record for new member
-        if (formData.packageId) {
-          const selectedPackage = availablePackages.find(p => p.id === formData.packageId);
-          const selectedTrainer = formData.requiresTrainer && formData.trainerId
-            ? trainers.find(t => t.id === formData.trainerId)
-            : null;
-
-          // Calculate monthly payment
-          let monthlyAmount = 0;
-          if (selectedPackage) {
-            monthlyAmount += selectedPackage.duration.includes('12')
-              ? selectedPackage.price / 12
-              : selectedPackage.price;
-          }
-          if (selectedTrainer?.charges) {
-            monthlyAmount += selectedTrainer.charges;
-          }
-          if (formData.discount) {
-            monthlyAmount = Math.max(0, monthlyAmount - parseFloat(formData.discount));
-          }
-
-          // Create payment record
-          const today = new Date();
-          const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
-          const dueDate = new Date(nextMonth);
-          
-          const newPayment = {
-            id: generatePrefixedId('payment'),
-            memberId: newMember.id,
-            month: nextMonth.toISOString().slice(0, 7), // YYYY-MM format
-            amount: monthlyAmount,
-            status: 'PENDING' as const,
-            dueDate: dueDate.toISOString(),
-            paidDate: null,
-            member: {
-              id: newMember.id,
-              name: newMember.name,
-              phone: newMember.phone,
-              email: newMember.email,
-            },
-          };
-
-          // Save payment to localStorage
-          if (typeof window !== 'undefined') {
-            const existingPayments = localStorage.getItem('payments');
-            const payments = existingPayments ? JSON.parse(existingPayments) : [];
-            payments.push(newPayment);
-            localStorage.setItem('payments', JSON.stringify(payments));
-          }
+        // Create new member
+        console.log('🔵 Creating new member');
+        const response = await api.post('/api/members', memberData);
+        console.log('Create member response:', response.data);
+        
+        if (response.data.success) {
+          showAlert('success', 'Member Added', 'Member added successfully!');
+          await fetchMembers(); // Refresh list
+          setShowAddForm(false);
+          resetForm();
         }
       }
-      resetForm();
-      showAlert('success', 'Member Saved', editingMember ? 'Member updated successfully!' : 'Member added successfully!');
     } catch (error: any) {
-      showAlert('error', 'Error', 'Failed to save member. Please try again.');
+      console.error('Error saving member:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -327,11 +366,25 @@ export default function MembersPage() {
     });
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (deleteDialog.memberId) {
-      setMembers(members.filter(m => m.id !== deleteDialog.memberId));
-      showAlert('success', 'Member Deleted', `Member "${deleteDialog.memberName}" has been deleted successfully.`);
-      setDeleteDialog({ isOpen: false, memberId: null, memberName: '' });
+      try {
+        setLoading(true);
+        console.log('🔵 Deleting member:', deleteDialog.memberId);
+        const response = await api.delete(`/api/members/${deleteDialog.memberId}`);
+        console.log('Delete member response:', response.data);
+        
+        if (response.data.success) {
+          showAlert('success', 'Member Deleted', `Member "${deleteDialog.memberName}" has been deleted successfully.`);
+          await fetchMembers(); // Refresh list
+          setDeleteDialog({ isOpen: false, memberId: null, memberName: '' });
+        }
+      } catch (error: any) {
+        console.error('Error deleting member:', error);
+        showAlert('error', 'Error', getErrorMessage(error));
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
