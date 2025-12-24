@@ -61,17 +61,37 @@ export default function AttendancePage() {
       params.append('page', page.toString());
       params.append('limit', pagination.limit.toString());
 
-      const response = await api.get(`/attendance?${params}`);
+      const url = `/api/attendance?${params}`;
+      console.log('Fetching attendance from:', url);
+      console.log('API Base URL:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001');
+      console.log('Full URL will be:', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}${url}`);
+      
+      const response = await api.get(url);
+      console.log('Attendance API Response:', response.data);
+      
       if (response.data.success) {
-        setAllAttendance(response.data.data.records || []);
+        const records = response.data.data?.records || [];
+        console.log('Received attendance records:', records.length);
+        setAllAttendance(records);
         setPagination(prev => ({
           ...prev,
           page,
           ...(response.data.data.pagination || {}),
         }));
+      } else {
+        console.warn('API returned success=false:', response.data);
+        setAllAttendance([]);
       }
     } catch (error: any) {
-      showAlert('error', 'Error', getErrorMessage(error));
+      console.error('Error fetching attendance:', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+      });
+      showAlert('error', 'Error Loading Attendance', getErrorMessage(error));
+      setAllAttendance([]);
     } finally {
       setLoading(false);
     }
@@ -80,13 +100,28 @@ export default function AttendancePage() {
   // Fetch members for filter dropdown
   const fetchMembers = useCallback(async () => {
     try {
-      const response = await api.get('/members?limit=1000');
+      const membersUrl = '/api/members?limit=1000';
+      console.log('Fetching members from:', membersUrl);
+      console.log('Full URL will be:', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}${membersUrl}`);
+      const response = await api.get(membersUrl);
+      console.log('Members API Response:', response.data);
       if (response.data.success) {
-        setMembers(response.data.data.members || []);
+        const membersList = response.data.data?.members || [];
+        console.log('Received members:', membersList.length);
+        setMembers(membersList);
+      } else {
+        console.warn('Members API returned success=false:', response.data);
+        setMembers([]);
       }
     } catch (error: any) {
-      // Don't show error for members fetch, just log it
       console.error('Failed to fetch members:', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+      });
+      setMembers([]);
     }
   }, []);
 
@@ -322,10 +357,23 @@ export default function AttendancePage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {attendance.length === 0 ? (
+              {attendance.length === 0 && !loading ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center">
+                    <div className="flex flex-col items-center">
+                      <p className="text-gray-500 mb-2">No attendance records found.</p>
+                      <p className="text-sm text-gray-400">
+                        {members.length === 0 
+                          ? 'Unable to connect to API. Please check if the backend server is running at http://localhost:3001'
+                          : 'Try adjusting your filters or check if there are any attendance records in the database.'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : loading ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                    {loading ? 'Loading attendance records...' : 'No attendance records found.'}
+                    Loading attendance records...
                   </td>
                 </tr>
               ) : (
