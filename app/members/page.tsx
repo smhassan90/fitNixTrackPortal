@@ -186,7 +186,7 @@ export default function MembersPage() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(member =>
-        member.id.toLowerCase().includes(query) ||
+        String(member.id || '').toLowerCase().includes(query) ||
         member.name.toLowerCase().includes(query) ||
         member.phone?.toLowerCase().includes(query) ||
         member.email?.toLowerCase().includes(query) ||
@@ -202,8 +202,8 @@ export default function MembersPage() {
 
         switch (sortConfig.key) {
           case 'id':
-            aValue = a.id.toLowerCase();
-            bValue = b.id.toLowerCase();
+            aValue = String(a.id || '').toLowerCase();
+            bValue = String(b.id || '').toLowerCase();
             break;
           case 'name':
             aValue = a.name.toLowerCase();
