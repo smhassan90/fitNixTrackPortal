@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
-import { mockPayments, mockMembers } from '@/lib/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
+import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errorHandler';
 
 interface Member {
   id: string;
@@ -36,22 +37,9 @@ export default function PaymentsPage() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const { alert, showAlert, closeAlert } = useAlert();
-  // Load payments from localStorage or use mock data
-  const [allPayments, setAllPayments] = useState<Payment[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('payments');
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch {
-          return mockPayments;
-        }
-      }
-    }
-    return mockPayments;
-  });
-  const [members] = useState<Member[]>(mockMembers);
-  const [loading] = useState(false);
+  const [allPayments, setAllPayments] = useState<Payment[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; paymentId: string | null; payment: Payment | null }>({
@@ -65,12 +53,64 @@ export default function PaymentsPage() {
     month: '',
   });
 
-  // Save payments to localStorage whenever they change
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('payments', JSON.stringify(allPayments));
+  // Fetch payments from API
+  const fetchPayments = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('🔵 Fetching payments from API...');
+      const params = new URLSearchParams();
+      
+      if (filters.memberId) params.append('memberId', filters.memberId);
+      if (filters.status) params.append('status', filters.status);
+      if (filters.month) params.append('month', filters.month);
+      if (searchQuery) params.append('search', searchQuery);
+      if (sortConfig?.key) params.append('sortBy', sortConfig.key);
+      if (sortConfig?.direction) params.append('sortOrder', sortConfig.direction);
+      params.append('limit', '1000');
+
+      const response = await api.get(`/api/payments?${params}`);
+      console.log('Payments API Response:', response.data);
+
+      if (response.data.success) {
+        const paymentsList = response.data.data.payments || [];
+        setAllPayments(paymentsList);
+        console.log('✅ Payments loaded:', paymentsList.length);
+      }
+    } catch (error: any) {
+      console.error('Error fetching payments:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
-  }, [allPayments]);
+  }, [filters, searchQuery, sortConfig, showAlert]);
+
+  // Fetch members for filter dropdown
+  const fetchMembers = useCallback(async () => {
+    try {
+      console.log('🔵 Fetching members for payments filter...');
+      const response = await api.get('/api/members?limit=1000');
+      console.log('Members API Response:', response.data);
+
+      if (response.data.success) {
+        const membersList = response.data.data.members || [];
+        setMembers(membersList);
+        console.log('✅ Members loaded:', membersList.length);
+      }
+    } catch (error: any) {
+      console.error('Error fetching members:', error);
+      // Don't show alert for members, just log
+    }
+  }, []);
+
+  // Load data on mount
+  useEffect(() => {
+    fetchMembers();
+  }, [fetchMembers]);
+
+  // Fetch payments when filters, search, or sort changes
+  useEffect(() => {
+    fetchPayments();
+  }, [fetchPayments]);
 
   // Initialize filters from URL query parameters
   useEffect(() => {
@@ -164,17 +204,22 @@ export default function PaymentsPage() {
 
 
   const handleMarkPaid = async (id: string) => {
-    const updatedPayments = allPayments.map(p => 
-      p.id === id 
-        ? { ...p, status: 'PAID' as const, paidDate: new Date().toISOString() }
-        : p
-    );
-    setAllPayments(updatedPayments);
-    // Save to localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('payments', JSON.stringify(updatedPayments));
+    try {
+      setLoading(true);
+      console.log('🔵 Marking payment as paid:', id);
+      const response = await api.patch(`/api/payments/${id}/mark-paid`);
+      console.log('Mark paid response:', response.data);
+      
+      if (response.data.success) {
+        showAlert('success', 'Payment Recorded', `Payment has been marked as paid successfully.`);
+        await fetchPayments(); // Refresh list
+      }
+    } catch (error: any) {
+      console.error('Error marking payment as paid:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
-    showAlert('success', 'Payment Recorded', `Payment has been marked as paid successfully.`);
   };
 
   const handleMarkPaidClick = (payment: Payment) => {
@@ -192,10 +237,25 @@ export default function PaymentsPage() {
     setConfirmDialog({ isOpen: false, paymentId: null, payment: null });
   };
 
-  const handlePrintReceipt = (payment: Payment) => {
+  const handlePrintReceipt = async (payment: Payment) => {
     if (payment.status !== 'PAID') {
       showAlert('warning', 'Cannot Print Receipt', 'Receipt can only be printed for paid payments.');
       return;
+    }
+
+    try {
+      console.log('🔵 Fetching receipt data for payment:', payment.id);
+      const response = await api.get(`/api/payments/${payment.id}/receipt`);
+      console.log('Receipt API Response:', response.data);
+      
+      if (response.data.success) {
+        const receiptData = response.data.data;
+        // Use receipt data from API for printing
+        payment = receiptData.payment || payment;
+      }
+    } catch (error: any) {
+      console.error('Error fetching receipt:', error);
+      // Continue with existing payment data if API fails
     }
 
     const printWindow = window.open('', '_blank');
@@ -348,42 +408,27 @@ export default function PaymentsPage() {
     }, 250);
   };
 
-  const handleCheckOverdue = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    let overdueCount = 0;
-    
-    const updatedPayments = allPayments.map(p => {
-      // Skip payments that are already PAID or OVERDUE
-      if (p.status === 'PAID' || p.status === 'OVERDUE') {
-        return p;
-      }
+  const handleCheckOverdue = async () => {
+    try {
+      setLoading(true);
+      console.log('🔵 Checking for overdue payments...');
+      const response = await api.post('/api/payments/generate-overdue');
+      console.log('Generate overdue response:', response.data);
       
-      // Only check PENDING payments
-      if (p.status === 'PENDING') {
-      const dueDate = new Date(p.dueDate);
-      dueDate.setHours(0, 0, 0, 0);
-      
-        if (dueDate < today) {
-          overdueCount++;
-        return { ...p, status: 'OVERDUE' as const };
+      if (response.data.success) {
+        const updatedCount = response.data.data.updated || 0;
+        if (updatedCount > 0) {
+          showAlert('success', 'Overdue Payments Updated', `${updatedCount} payment(s) marked as overdue.`);
+        } else {
+          showAlert('info', 'All Payments Up to Date', 'No overdue payments found. All payments are current.');
         }
+        await fetchPayments(); // Refresh list
       }
-      
-      return p;
-    });
-    
-    setAllPayments(updatedPayments);
-    // Save to localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('payments', JSON.stringify(updatedPayments));
-    }
-    
-    if (overdueCount > 0) {
-      showAlert('success', 'Overdue Payments Updated', `${overdueCount} payment(s) marked as overdue.`);
-    } else {
-      showAlert('info', 'All Payments Up to Date', 'No overdue payments found. All payments are current.');
+    } catch (error: any) {
+      console.error('Error checking overdue payments:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
 

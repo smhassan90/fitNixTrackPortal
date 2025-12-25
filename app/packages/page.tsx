@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
-import { mockPackages } from '@/lib/mockData';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAlert } from '@/hooks/useAlert';
-import { generatePrefixedId } from '@/lib/idUtils';
+import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errorHandler';
 
 interface Package {
   id: string;
@@ -20,11 +21,16 @@ interface Package {
 export default function PackagesPage() {
   const { user } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
-  const [packages, setPackages] = useState<Package[]>(mockPackages);
-  const [loading] = useState(false);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; packageId: string | null; packageName: string }>({
+    isOpen: false,
+    packageId: null,
+    packageName: '',
+  });
   const [formData, setFormData] = useState({
     name: '',
     price: '',
@@ -57,6 +63,37 @@ export default function PackagesPage() {
     '24/7 Access',
   ];
 
+  // Fetch packages from API
+  const fetchPackages = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('🔵 Fetching packages from API...');
+      const params = new URLSearchParams();
+      if (sortConfig?.key) params.append('sortBy', sortConfig.key);
+      if (sortConfig?.direction) params.append('sortOrder', sortConfig.direction);
+      params.append('limit', '1000');
+
+      const response = await api.get(`/api/packages?${params}`);
+      console.log('Packages API Response:', response.data);
+
+      if (response.data.success) {
+        const packagesList = response.data.data.packages || [];
+        setPackages(packagesList);
+        console.log('✅ Packages loaded:', packagesList.length);
+      }
+    } catch (error: any) {
+      console.error('Error fetching packages:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [sortConfig, showAlert]);
+
+  // Load packages on mount and when sort changes
+  useEffect(() => {
+    fetchPackages();
+  }, [fetchPackages]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -66,35 +103,47 @@ export default function PackagesPage() {
     }
     
     try {
+      setLoading(true);
+      
+      const packageData = {
+        name: formData.name,
+        price: parseFloat(formData.price),
+        duration: formData.duration,
+        features: formData.features,
+      };
+
       if (editingPackage) {
-        setPackages(packages.map(p => 
-          p.id === editingPackage.id 
-            ? { 
-                ...p, 
-                name: formData.name,
-                price: parseFloat(formData.price),
-                duration: formData.duration,
-                features: formData.features,
-              }
-            : p
-        ));
+        // Update existing package
+        console.log('🔵 Updating package:', editingPackage.id);
+        const response = await api.put(`/api/packages/${editingPackage.id}`, packageData);
+        console.log('Update package response:', response.data);
+        
+        if (response.data.success) {
+          showAlert('success', 'Package Updated', 'Package updated successfully!');
+          await fetchPackages(); // Refresh list
+          setEditingPackage(null);
+          resetForm();
+          setShowAddForm(false);
+        }
       } else {
-        const newPackage: Package = {
-          id: generatePrefixedId('package'),
-          name: formData.name,
-          price: parseFloat(formData.price),
-          duration: formData.duration,
-          features: formData.features,
-        };
-        setPackages([...packages, newPackage]);
+        // Create new package
+        console.log('🔵 Creating new package');
+        const response = await api.post('/api/packages', packageData);
+        console.log('Create package response:', response.data);
+        
+        if (response.data.success) {
+          showAlert('success', 'Package Added', 'Package added successfully!');
+          await fetchPackages(); // Refresh list
+          setShowAddForm(false);
+          resetForm();
+        }
       }
-      setShowAddForm(false);
-      setEditingPackage(null);
-      resetForm();
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      showAlert('success', 'Package Saved', editingPackage ? 'Package updated successfully!' : 'Package added successfully!');
     } catch (error: any) {
-      showAlert('error', 'Error', 'Failed to save package. Please try again.');
+      console.error('Error saving package:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -125,9 +174,38 @@ export default function PackagesPage() {
     });
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this package?')) return;
-    setPackages(packages.filter(p => p.id !== id));
+  const handleDeleteClick = (id: string, name: string) => {
+    setDeleteDialog({
+      isOpen: true,
+      packageId: id,
+      packageName: name,
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteDialog.packageId) {
+      try {
+        setLoading(true);
+        console.log('🔵 Deleting package:', deleteDialog.packageId);
+        const response = await api.delete(`/api/packages/${deleteDialog.packageId}`);
+        console.log('Delete package response:', response.data);
+        
+        if (response.data.success) {
+          showAlert('success', 'Package Deleted', `Package "${deleteDialog.packageName}" has been deleted successfully.`);
+          await fetchPackages(); // Refresh list
+          setDeleteDialog({ isOpen: false, packageId: null, packageName: '' });
+        }
+      } catch (error: any) {
+        console.error('Error deleting package:', error);
+        showAlert('error', 'Error', getErrorMessage(error));
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialog({ isOpen: false, packageId: null, packageName: '' });
   };
 
   // Handle sorting
@@ -209,6 +287,16 @@ export default function PackagesPage() {
         type={alert.type}
         title={alert.title}
         message={alert.message}
+      />
+      <ConfirmationDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Package"
+        message={`Are you sure you want to delete "${deleteDialog.packageName}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
       />
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -495,7 +583,7 @@ export default function PackagesPage() {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(pkg.id)}
+                        onClick={() => handleDeleteClick(pkg.id, pkg.name)}
                         className="text-red-600 hover:text-red-900"
                       >
                         Delete

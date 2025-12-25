@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
-import { mockTrainers } from '@/lib/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
-import { generatePrefixedId } from '@/lib/idUtils';
+import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errorHandler';
 
 interface Trainer {
   id: string;
@@ -28,8 +28,8 @@ interface Trainer {
 export default function TrainersPage() {
   const { user } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
-  const [trainers, setTrainers] = useState<Trainer[]>(mockTrainers);
-  const [loading] = useState(false);
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingTrainer, setEditingTrainer] = useState<Trainer | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -61,45 +61,89 @@ export default function TrainersPage() {
     'Other',
   ];
 
+  // Fetch trainers from API
+  const fetchTrainers = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('🔵 Fetching trainers from API...');
+      const params = new URLSearchParams();
+      if (sortConfig?.key) params.append('sortBy', sortConfig.key);
+      if (sortConfig?.direction) params.append('sortOrder', sortConfig.direction);
+      params.append('limit', '1000');
+
+      const response = await api.get(`/api/trainers?${params}`);
+      console.log('Trainers API Response:', response.data);
+
+      if (response.data.success) {
+        const trainersList = response.data.data.trainers || [];
+        setTrainers(trainersList);
+        console.log('✅ Trainers loaded:', trainersList.length);
+      }
+    } catch (error: any) {
+      console.error('Error fetching trainers:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [sortConfig, showAlert]);
+
+  // Load trainers on mount and when sort changes
+  useEffect(() => {
+    fetchTrainers();
+  }, [fetchTrainers]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setLoading(true);
+      
+      const trainerData: any = {
+        name: formData.name,
+        gender: formData.gender || undefined,
+        dateOfBirth: formData.dateOfBirth || undefined,
+        specialization: formData.specialization || undefined,
+        charges: formData.charges ? parseFloat(formData.charges) : undefined,
+        startTime: formData.startTime || undefined,
+        endTime: formData.endTime || undefined,
+      };
+
+      // Remove undefined fields
+      Object.keys(trainerData).forEach(key => 
+        trainerData[key] === undefined && delete trainerData[key]
+      );
+
       if (editingTrainer) {
-        setTrainers(trainers.map(t => 
-          t.id === editingTrainer.id 
-            ? { 
-                ...t, 
-                name: formData.name,
-                gender: formData.gender || null,
-                dateOfBirth: formData.dateOfBirth || null,
-                specialization: formData.specialization || null,
-                charges: formData.charges ? parseFloat(formData.charges) : undefined,
-                startTime: formData.startTime || undefined,
-                endTime: formData.endTime || undefined,
-              }
-            : t
-        ));
+        // Update existing trainer
+        console.log('🔵 Updating trainer:', editingTrainer.id);
+        const response = await api.put(`/api/trainers/${editingTrainer.id}`, trainerData);
+        console.log('Update trainer response:', response.data);
+        
+        if (response.data.success) {
+          showAlert('success', 'Trainer Updated', 'Trainer updated successfully!');
+          await fetchTrainers(); // Refresh list
+          setEditingTrainer(null);
+          resetForm();
+          setShowAddForm(false);
+        }
       } else {
-        const newTrainer: Trainer = {
-          id: generatePrefixedId('trainer'),
-          name: formData.name,
-          gender: formData.gender || null,
-          dateOfBirth: formData.dateOfBirth || null,
-          specialization: formData.specialization || null,
-          charges: formData.charges ? parseFloat(formData.charges) : undefined,
-          startTime: formData.startTime || undefined,
-          endTime: formData.endTime || undefined,
-          _count: { members: 0 },
-        };
-        setTrainers([...trainers, newTrainer]);
+        // Create new trainer
+        console.log('🔵 Creating new trainer');
+        const response = await api.post('/api/trainers', trainerData);
+        console.log('Create trainer response:', response.data);
+        
+        if (response.data.success) {
+          showAlert('success', 'Trainer Added', 'Trainer added successfully!');
+          await fetchTrainers(); // Refresh list
+          setShowAddForm(false);
+          resetForm();
+        }
       }
-      setShowAddForm(false);
-      setEditingTrainer(null);
-      resetForm();
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      showAlert('success', 'Trainer Saved', editingTrainer ? 'Trainer updated successfully!' : 'Trainer added successfully!');
     } catch (error: any) {
-      showAlert('error', 'Error', 'Failed to save trainer. Please try again.');
+      console.error('Error saving trainer:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -126,11 +170,25 @@ export default function TrainersPage() {
     });
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (deleteDialog.trainerId) {
-      setTrainers(trainers.filter(t => t.id !== deleteDialog.trainerId));
-      showAlert('success', 'Trainer Deleted', `Trainer "${deleteDialog.trainerName}" has been deleted successfully.`);
-      setDeleteDialog({ isOpen: false, trainerId: null, trainerName: '' });
+      try {
+        setLoading(true);
+        console.log('🔵 Deleting trainer:', deleteDialog.trainerId);
+        const response = await api.delete(`/api/trainers/${deleteDialog.trainerId}`);
+        console.log('Delete trainer response:', response.data);
+        
+        if (response.data.success) {
+          showAlert('success', 'Trainer Deleted', `Trainer "${deleteDialog.trainerName}" has been deleted successfully.`);
+          await fetchTrainers(); // Refresh list
+          setDeleteDialog({ isOpen: false, trainerId: null, trainerName: '' });
+        }
+      } catch (error: any) {
+        console.error('Error deleting trainer:', error);
+        showAlert('error', 'Error', getErrorMessage(error));
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
