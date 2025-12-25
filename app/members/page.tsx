@@ -501,8 +501,7 @@ export default function MembersPage() {
         cancelText="Cancel"
         type="danger"
       />
-      <div className="flex flex-col h-full overflow-hidden">
-        <div className="flex-shrink-0 space-y-6 pb-6">
+      <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-dark-gray">Members</h1>
             {user?.role === 'GYM_ADMIN' && !showAddForm && !editingMember && (
@@ -557,7 +556,7 @@ export default function MembersPage() {
 
           {/* Add/Edit Form */}
           {(showAddForm || editingMember) && (
-            <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200 flex-shrink-0">
+            <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-dark-gray">
                 {editingMember ? 'Edit Member' : 'Add New Member'}
@@ -853,10 +852,9 @@ export default function MembersPage() {
             </form>
             </div>
           )}
-        </div>
 
-        <div className="flex-1 min-h-0 bg-white rounded-lg shadow overflow-hidden flex flex-col">
-          <div className="overflow-x-auto overflow-y-auto flex-1">
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-light-gray">
                 <tr>
