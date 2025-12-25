@@ -522,7 +522,7 @@ export default function MembersPage() {
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Search members by name, phone, or email... (Press Enter to search)"
+                    placeholder="Search members by name, phone, or email... (Press Enter or click Go)"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     onKeyDown={handleSearchKeyDown}
@@ -542,7 +542,7 @@ export default function MembersPage() {
                 onClick={() => setSearchQuery(searchInput)}
                 className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors"
               >
-                Search
+                Go
               </button>
               {(searchQuery || searchInput) && (
                 <button
