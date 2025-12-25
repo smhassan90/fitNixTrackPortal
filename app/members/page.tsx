@@ -501,7 +501,7 @@ export default function MembersPage() {
         cancelText="Cancel"
         type="danger"
       />
-      <div className="space-y-6">
+      <div className="space-y-6 overflow-x-hidden">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-dark-gray">Members</h1>
             {user?.role === 'GYM_ADMIN' && !showAddForm && !editingMember && (

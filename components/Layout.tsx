@@ -78,7 +78,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </button>
       )}
       
-      <main className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'md:ml-64' : 'md:ml-0'} ${!sidebarOpen ? 'pl-14 pt-20 md:pl-8 md:pt-8' : 'p-4 md:p-8'}`}>
+      <main className={`flex-1 transition-all duration-300 overflow-x-hidden ${sidebarOpen ? 'md:ml-64' : 'md:ml-0'} ${!sidebarOpen ? 'pl-14 pt-20 md:pl-8 md:pt-8' : 'p-4 md:p-8'}`}>
         {children}
       </main>
     </div>
