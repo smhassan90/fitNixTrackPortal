@@ -56,6 +56,7 @@ export default function MembersPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; memberId: string | null; memberName: string }>({
     isOpen: false,
@@ -160,14 +161,23 @@ export default function MembersPage() {
     fetchPackages();
   }, []); // Only run on mount
 
-  // Refetch members when search or sort changes (debounced)
+  // Refetch members when search or sort changes
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchMembers(searchQuery || undefined, sortConfig ? { key: sortConfig.key, direction: sortConfig.direction } : undefined);
-    }, 300); // Debounce search
-
-    return () => clearTimeout(timer);
+    fetchMembers(searchQuery || undefined, sortConfig ? { key: sortConfig.key, direction: sortConfig.direction } : undefined);
   }, [searchQuery, sortConfig, fetchMembers]);
+
+  // Handle search on Enter key
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      setSearchQuery(searchInput);
+    }
+  };
+
+  // Handle clear search
+  const handleClearSearch = () => {
+    setSearchInput('');
+    setSearchQuery('');
+  };
 
   // Handle sorting
   const handleSort = (key: string) => {
@@ -512,9 +522,10 @@ export default function MembersPage() {
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Search members by name, phone, or email..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search members by name, phone, or email... (Press Enter to search)"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={handleSearchKeyDown}
                     className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                   />
                   <svg
@@ -527,9 +538,15 @@ export default function MembersPage() {
                   </svg>
                 </div>
               </div>
-              {searchQuery && (
+              <button
+                onClick={() => setSearchQuery(searchInput)}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors"
+              >
+                Search
+              </button>
+              {(searchQuery || searchInput) && (
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={handleClearSearch}
                   className="px-4 py-2 text-gray-600 hover:text-gray-800"
                 >
                   Clear
