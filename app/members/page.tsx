@@ -836,8 +836,8 @@ export default function MembersPage() {
             </div>
           )}
 
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-lg shadow overflow-hidden flex flex-col max-h-[calc(100vh-300px)]">
+          <div className="overflow-x-auto overflow-y-auto flex-1">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-light-gray">
                 <tr>
