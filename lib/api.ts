@@ -13,11 +13,24 @@ const api = axios.create({
   },
 });
 
-// Add token to requests
+// Add token and gym ID to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  
+  // Add X-Gym-Id header from user context
+  const storedUser = localStorage.getItem('user');
+  if (storedUser) {
+    try {
+      const user = JSON.parse(storedUser);
+      if (user.gymId) {
+        config.headers['X-Gym-Id'] = user.gymId;
+      }
+    } catch (e) {
+      console.warn('Failed to parse user from localStorage:', e);
+    }
   }
   
   // Log request details (except sensitive data)
@@ -27,6 +40,7 @@ api.interceptors.request.use((config) => {
     baseURL: config.baseURL,
     fullURL: `${config.baseURL}${config.url}`,
     hasToken: !!token,
+    hasGymId: !!config.headers['X-Gym-Id'],
   });
   
   return config;
