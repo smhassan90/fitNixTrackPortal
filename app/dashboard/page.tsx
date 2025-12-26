@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Loading from '@/components/Loading';
+import CurrentlyInGymModal from '@/components/CurrentlyInGymModal';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 import { colors, getGradient, getStatusColors } from '@/lib/colors';
@@ -37,12 +38,30 @@ interface DashboardStats {
   currentlyInGym?: number;
 }
 
+interface MemberInGym {
+  memberId: number;
+  memberName: string;
+  contact: string;
+  checkInTime: string | null;
+  checkInFormatted: string | null;
+  durationMinutes: number | null;
+  durationFormatted: string | null;
+  attendanceRecordId: string;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCurrentlyInGymModal, setShowCurrentlyInGymModal] = useState(false);
+  const [currentlyInGym, setCurrentlyInGym] = useState<{
+    count: number;
+    members: MemberInGym[];
+  }>({ count: 0, members: [] });
+  const [loadingCurrentlyInGym, setLoadingCurrentlyInGym] = useState(false);
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Fetch dashboard stats from API
   const fetchDashboardStats = useCallback(async () => {
@@ -102,9 +121,55 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Fetch currently in gym data
+  const fetchCurrentlyInGym = useCallback(async () => {
+    try {
+      setLoadingCurrentlyInGym(true);
+      console.log('🔵 Fetching currently in gym from API...');
+      
+      const response = await api.get('/api/dashboard/currently-in-gym');
+      console.log('Currently In Gym API Response:', response.data);
+      
+      if (response.data.success) {
+        const data = response.data.data;
+        setCurrentlyInGym({
+          count: data.count || 0,
+          members: data.members || [],
+        });
+        console.log('✅ Currently in gym loaded:', data.count, 'members');
+      } else {
+        throw new Error('API returned unsuccessful response');
+      }
+    } catch (err: any) {
+      console.error('Error fetching currently in gym:', err);
+      setCurrentlyInGym({ count: 0, members: [] });
+    } finally {
+      setLoadingCurrentlyInGym(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchDashboardStats();
-  }, [fetchDashboardStats]);
+    fetchCurrentlyInGym();
+  }, [fetchDashboardStats, fetchCurrentlyInGym]);
+
+  // Auto-refresh currently in gym every 30 seconds
+  useEffect(() => {
+    // Initial fetch
+    fetchCurrentlyInGym();
+    
+    // Set up interval
+    refreshIntervalRef.current = setInterval(() => {
+      fetchCurrentlyInGym();
+    }, 30000); // 30 seconds
+
+    // Cleanup on unmount
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
+  }, [fetchCurrentlyInGym]);
 
   const handleCardClick = (route: string, filter?: { key: string; value: string }) => {
     if (filter) {
@@ -157,7 +222,9 @@ export default function DashboardPage() {
   };
 
   const handleViewCurrentlyInGym = () => {
-    router.push('/attendance?filter=today');
+    setShowCurrentlyInGymModal(true);
+    // Refresh data when opening modal
+    fetchCurrentlyInGym();
   };
 
   return (
@@ -428,11 +495,9 @@ export default function DashboardPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                   <span>People Currently in Gym</span>
-                  {stats.currentlyInGym !== undefined && (
-                    <span className="bg-white bg-opacity-20 px-2 py-0.5 rounded-full text-sm font-semibold">
-                      {stats.currentlyInGym}
-                    </span>
-                  )}
+                  <span className="bg-white bg-opacity-20 px-2 py-0.5 rounded-full text-sm font-semibold">
+                    {currentlyInGym.count}
+                  </span>
                 </button>
               </div>
             </div>
@@ -461,6 +526,15 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Currently In Gym Modal */}
+      <CurrentlyInGymModal
+        isOpen={showCurrentlyInGymModal}
+        onClose={() => setShowCurrentlyInGymModal(false)}
+        members={currentlyInGym.members}
+        count={currentlyInGym.count}
+        loading={loadingCurrentlyInGym}
+      />
     </Layout>
   );
 }
