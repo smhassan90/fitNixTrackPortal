@@ -37,22 +37,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (storedToken && storedUser) {
         try {
           // Verify token is still valid by fetching current user
-          const response = await api.get('/api/auth/me');
-          if (response.data.success) {
-            const userData = response.data.data;
-            setUser({
-              id: userData.id,
-              name: userData.name,
-              email: userData.email,
-              role: userData.role,
-              gymId: userData.gymId,
-              gymName: userData.gymName,
-            });
-            setToken(storedToken);
+          // Try Next.js API route first
+          const response = await fetch('/api/auth/me', {
+            headers: {
+              'Authorization': `Bearer ${storedToken}`,
+            },
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              const userData = data.data;
+              setUser({
+                id: userData.id,
+                name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                gymId: userData.gymId,
+                gymName: userData.gymName,
+              });
+              setToken(storedToken);
+            } else {
+              // Token invalid, clear storage
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+            }
           } else {
-            // Token invalid, clear storage
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            // Try fallback to api instance (external API)
+            const apiResponse = await api.get('/api/auth/me');
+            if (apiResponse.data.success) {
+              const userData = apiResponse.data.data;
+              setUser({
+                id: userData.id,
+                name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                gymId: userData.gymId,
+                gymName: userData.gymName,
+              });
+              setToken(storedToken);
+            } else {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+            }
           }
         } catch (error) {
           // Token expired or invalid, clear storage
@@ -69,22 +96,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const loginUrl = `${apiUrl}/api/auth/login`;
-      
-      console.log('🔵 Attempting login with API...');
-      console.log('API Base URL:', apiUrl);
-      console.log('Login URL:', loginUrl);
+      // Try Next.js API route first (uses plain password comparison)
+      console.log('🔵 Attempting login with Next.js API route (plain password)...');
       console.log('Request payload:', { email, password: '***' });
       
-      const response = await api.post('/api/auth/login', { email, password });
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
       
-      console.log('✅ Login API Response received:', response);
-      console.log('Response data:', response.data);
+      const data = await response.json();
+      
+      console.log('✅ Login API Response received:', data);
       console.log('Response status:', response.status);
 
-      if (response.data.success) {
-        const { token: authToken, user: userData } = response.data.data;
+      if (data.success) {
+        const { token: authToken, user: userData } = data.data;
         
         console.log('Token received:', authToken ? 'Yes' : 'No');
         console.log('User data received:', userData);
@@ -104,16 +134,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         
         console.log('✅ Login successful - token and user stored');
+        return;
       } else {
-        console.error('❌ API returned success=false:', response.data);
-        throw new Error(response.data.error?.message || 'Login failed');
+        console.error('❌ API returned success=false:', data);
+        throw new Error(data.error?.message || 'Login failed');
       }
     } catch (error: any) {
       console.error('❌ Login error caught:', error);
-      console.error('Error type:', typeof error);
       console.error('Error message:', error.message);
-      console.error('Error response:', error.response);
-      console.error('Error config:', error.config);
       
       // Fallback to local authentication with plain password
       console.log('🔄 Falling back to local authentication with plain password...');
