@@ -18,11 +18,17 @@ interface Feature {
 }
 
 interface Package {
-  id: string;
+  id: string | number;
+  gymId?: number;
   name: string;
   price: number;
   duration: string;
   features: string[];
+  _count?: {
+    members: number;
+  };
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export default function PackagesPage() {
@@ -32,6 +38,7 @@ export default function PackagesPage() {
   const [availableFeatures, setAvailableFeatures] = useState<Feature[]>([]);
   const [loading, setLoading] = useState(true);
   const [featuresLoading, setFeaturesLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -44,7 +51,7 @@ export default function PackagesPage() {
     name: '',
     price: '',
     duration: '',
-    features: [] as string[],
+    featureIds: [] as number[],
   });
 
   const durationOptions = [
@@ -163,20 +170,33 @@ export default function PackagesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (formData.features.length === 0) {
-      showAlert('warning', 'Features Required', 'Please select at least one feature for the package.');
+    // Prevent double submission
+    if (submitting) {
       return;
     }
     
+    // FeatureIds is optional according to API, but we'll keep the validation for UX
+    // Remove this check if you want to allow packages without features
+    
     try {
+      setSubmitting(true);
       setLoading(true);
       
-      const packageData = {
+      const packageData: {
+        name: string;
+        price: number;
+        duration: string;
+        featureIds?: number[];
+      } = {
         name: formData.name,
         price: parseFloat(formData.price),
         duration: formData.duration,
-        features: formData.features,
       };
+      
+      // Only include featureIds if at least one is selected
+      if (formData.featureIds.length > 0) {
+        packageData.featureIds = formData.featureIds;
+      }
 
       if (editingPackage) {
         // Update existing package
@@ -210,17 +230,27 @@ export default function PackagesPage() {
       showAlert('error', 'Error', getErrorMessage(error));
     } finally {
       setLoading(false);
+      setSubmitting(false);
     }
   };
 
   const handleEdit = (pkg: Package) => {
     setEditingPackage(pkg);
     setShowAddForm(false);
+    
+    // Map feature names to feature IDs
+    const featureIds = pkg.features
+      .map(featureName => {
+        const feature = availableFeatures.find(f => f.name === featureName);
+        return feature?.id;
+      })
+      .filter((id): id is number => id !== undefined);
+    
     setFormData({
       name: pkg.name,
       price: pkg.price.toString(),
       duration: pkg.duration,
-      features: pkg.features,
+      featureIds: featureIds,
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -231,20 +261,26 @@ export default function PackagesPage() {
     resetForm();
   };
 
-  const handleFeatureToggle = (feature: string) => {
+  const handleFeatureToggle = (featureId: number) => {
     setFormData({
       ...formData,
-      features: formData.features.includes(feature)
-        ? formData.features.filter(f => f !== feature)
-        : [...formData.features, feature],
+      featureIds: formData.featureIds.includes(featureId)
+        ? formData.featureIds.filter(id => id !== featureId)
+        : [...formData.featureIds, featureId],
     });
   };
 
-  const handleDeleteClick = (id: string, name: string) => {
+  const handleDeleteClick = (pkg: Package) => {
+    // Check if package has members assigned
+    if (pkg._count?.members && pkg._count.members > 0) {
+      showAlert('error', 'Cannot Delete', `Cannot delete package "${pkg.name}" because it is assigned to ${pkg._count.members} member(s).`);
+      return;
+    }
+    
     setDeleteDialog({
       isOpen: true,
-      packageId: id,
-      packageName: name,
+      packageId: pkg.id.toString(),
+      packageName: pkg.name,
     });
   };
 
@@ -326,7 +362,7 @@ export default function PackagesPage() {
       name: '',
       price: '',
       duration: '',
-      features: [],
+      featureIds: [],
     });
   };
 
@@ -471,11 +507,11 @@ export default function PackagesPage() {
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {availableFeatures.map((feature) => {
-                        const isSelected = formData.features.includes(feature.name);
+                        const isSelected = formData.featureIds.includes(feature.id);
                         return (
                           <div
                             key={feature.id}
-                            onClick={() => handleFeatureToggle(feature.name)}
+                            onClick={() => handleFeatureToggle(feature.id)}
                             className={`
                               relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
                               ${isSelected
@@ -513,7 +549,7 @@ export default function PackagesPage() {
                     </div>
                   )}
                 </div>
-                {formData.features.length === 0 && (
+                {formData.featureIds.length === 0 && (
                   <p className="text-xs text-red-500 mt-2 flex items-center">
                     <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -521,27 +557,30 @@ export default function PackagesPage() {
                     Please select at least one feature
                   </p>
                 )}
-                {formData.features.length > 0 && (
+                {formData.featureIds.length > 0 && (
                   <div className="mt-3 flex items-center justify-between">
                     <p className="text-xs text-gray-600 flex items-center">
                       <svg className="w-4 h-4 mr-1 text-primary" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span className="font-semibold text-primary">{formData.features.length}</span>
-                      <span className="ml-1">feature{formData.features.length !== 1 ? 's' : ''} selected</span>
+                      <span className="font-semibold text-primary">{formData.featureIds.length}</span>
+                      <span className="ml-1">feature{formData.featureIds.length !== 1 ? 's' : ''} selected</span>
                     </p>
                     <div className="flex flex-wrap gap-1">
-                      {formData.features.slice(0, 3).map((feature) => (
-                        <span
-                          key={feature}
-                          className="inline-flex items-center px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium"
-                        >
-                          {feature}
-                        </span>
-                      ))}
-                      {formData.features.length > 3 && (
+                      {formData.featureIds.slice(0, 3).map((featureId) => {
+                        const feature = availableFeatures.find(f => f.id === featureId);
+                        return feature ? (
+                          <span
+                            key={featureId}
+                            className="inline-flex items-center px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium"
+                          >
+                            {feature.name}
+                          </span>
+                        ) : null;
+                      })}
+                      {formData.featureIds.length > 3 && (
                         <span className="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 text-gray-600 text-xs font-medium">
-                          +{formData.features.length - 3} more
+                          +{formData.featureIds.length - 3} more
                         </span>
                       )}
                     </div>
@@ -551,14 +590,23 @@ export default function PackagesPage() {
               <div className="flex gap-4 pt-4">
                 <button
                   type="submit"
-                  className="bg-primary text-white py-2 px-6 rounded-lg hover:bg-opacity-90 transition-colors font-medium"
+                  disabled={submitting || loading}
+                  className="bg-primary text-white py-2 px-6 rounded-lg hover:bg-opacity-90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {editingPackage ? 'Update Package' : 'Add Package'}
+                  {submitting || loading ? (
+                    <>
+                      <Loading inline size="sm" message="" />
+                      <span className="ml-2">{editingPackage ? 'Updating...' : 'Adding...'}</span>
+                    </>
+                  ) : (
+                    editingPackage ? 'Update Package' : 'Add Package'
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="bg-gray-300 text-dark-gray py-2 px-6 rounded-lg hover:bg-gray-400 transition-colors font-medium"
+                  disabled={submitting || loading}
+                  className="bg-gray-300 text-dark-gray py-2 px-6 rounded-lg hover:bg-gray-400 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
@@ -659,7 +707,7 @@ export default function PackagesPage() {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDeleteClick(pkg.id, pkg.name)}
+                        onClick={() => handleDeleteClick(pkg)}
                         className="text-red-600 hover:text-red-900"
                       >
                         Delete
