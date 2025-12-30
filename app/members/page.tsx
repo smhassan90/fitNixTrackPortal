@@ -301,10 +301,23 @@ export default function MembersPage() {
         comments: formData.comments || undefined,
         packageId: formData.packageId || undefined,
         discount: formData.discount ? parseFloat(formData.discount) : undefined,
-        trainerIds: formData.requiresTrainer && formData.trainerId ? [formData.trainerId] : undefined,
       };
 
-      // Remove undefined fields
+      // Handle trainerIds differently for create vs update
+      if (editingMember) {
+        // When updating: always include trainerIds to explicitly set trainers
+        // Empty array means remove all trainers, array with IDs means set those trainers
+        memberData.trainerIds = formData.requiresTrainer && formData.trainerId 
+          ? [formData.trainerId] 
+          : []; // Empty array to remove all trainers
+      } else {
+        // When creating: only include trainerIds if a trainer is selected
+        if (formData.requiresTrainer && formData.trainerId) {
+          memberData.trainerIds = [formData.trainerId];
+        }
+      }
+
+      // Remove undefined fields (but keep empty arrays for trainerIds when updating)
       Object.keys(memberData).forEach(key => 
         memberData[key] === undefined && delete memberData[key]
       );
