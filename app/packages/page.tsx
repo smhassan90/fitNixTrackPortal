@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
@@ -39,6 +39,7 @@ export default function PackagesPage() {
   const [loading, setLoading] = useState(true);
   const [featuresLoading, setFeaturesLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false); // Ref to prevent double submission even in React Strict Mode
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -141,8 +142,13 @@ export default function PackagesPage() {
 
       if (response.data.success) {
         const packagesList = response.data.data.packages || [];
-        setPackages(packagesList);
-        console.log('✅ Packages loaded:', packagesList.length);
+        // Ensure IDs are converted from BigInt to numbers
+        const normalizedPackages = packagesList.map((pkg: Package) => ({
+          ...pkg,
+          id: typeof pkg.id === 'bigint' ? Number(pkg.id) : typeof pkg.id === 'string' ? parseInt(pkg.id, 10) : pkg.id,
+        }));
+        setPackages(normalizedPackages);
+        console.log('✅ Packages loaded:', normalizedPackages.length);
       }
     } catch (error: any) {
       console.error('Error fetching packages:', error);
@@ -169,9 +175,11 @@ export default function PackagesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent event bubbling
     
-    // Prevent double submission
-    if (submitting) {
+    // Prevent double submission using both state and ref
+    if (submitting || loading || submittingRef.current) {
+      console.log('⚠️ Submission already in progress, ignoring duplicate call');
       return;
     }
     
@@ -179,6 +187,7 @@ export default function PackagesPage() {
     // Remove this check if you want to allow packages without features
     
     try {
+      submittingRef.current = true; // Set ref first to prevent race conditions
       setSubmitting(true);
       setLoading(true);
       
@@ -194,14 +203,24 @@ export default function PackagesPage() {
       };
       
       // Only include featureIds if at least one is selected
+      // Ensure all IDs are regular numbers (not BigInt)
       if (formData.featureIds.length > 0) {
-        packageData.featureIds = formData.featureIds;
+        packageData.featureIds = formData.featureIds.map(id => 
+          typeof id === 'bigint' ? Number(id) : typeof id === 'string' ? parseInt(id, 10) : id
+        );
       }
 
       if (editingPackage) {
         // Update existing package
-        console.log('🔵 Updating package:', editingPackage.id);
-        const response = await api.put(`/api/packages/${editingPackage.id}`, packageData);
+        // Convert ID to number to avoid BigInt issues
+        const packageId = typeof editingPackage.id === 'bigint' 
+          ? Number(editingPackage.id) 
+          : typeof editingPackage.id === 'string' 
+            ? parseInt(editingPackage.id, 10) 
+            : editingPackage.id;
+        
+        console.log('🔵 Updating package:', packageId);
+        const response = await api.put(`/api/packages/${packageId}`, packageData);
         console.log('Update package response:', response.data);
         
         if (response.data.success) {
@@ -231,6 +250,7 @@ export default function PackagesPage() {
     } finally {
       setLoading(false);
       setSubmitting(false);
+      submittingRef.current = false; // Reset ref
     }
   };
 
@@ -288,8 +308,15 @@ export default function PackagesPage() {
     if (deleteDialog.packageId) {
       try {
         setLoading(true);
-        console.log('🔵 Deleting package:', deleteDialog.packageId);
-        const response = await api.delete(`/api/packages/${deleteDialog.packageId}`);
+        // Convert ID to number to avoid BigInt issues
+        const packageId = typeof deleteDialog.packageId === 'bigint' 
+          ? Number(deleteDialog.packageId) 
+          : typeof deleteDialog.packageId === 'string' 
+            ? parseInt(deleteDialog.packageId, 10) 
+            : deleteDialog.packageId;
+        
+        console.log('🔵 Deleting package:', packageId);
+        const response = await api.delete(`/api/packages/${packageId}`);
         console.log('Delete package response:', response.data);
         
         if (response.data.success) {
