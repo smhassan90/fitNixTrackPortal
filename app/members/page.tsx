@@ -336,7 +336,13 @@ export default function MembersPage() {
         }
       } else {
         // Create new member
+        // Set membership start date to today so first payment is due today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Set to start of day
+        memberData.membershipStartDate = today.toISOString();
+        
         console.log('🔵 Creating new member');
+        console.log('Member data being sent:', JSON.stringify(memberData, null, 2));
         const response = await api.post('/api/members', memberData);
         console.log('Create member response:', response.data);
         
