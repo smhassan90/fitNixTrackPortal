@@ -111,7 +111,7 @@ export async function PUT(
     packages[packageIndex] = {
       ...packages[packageIndex],
       name: name.trim(),
-      price: parseFloat(price),
+      price: typeof price === 'string' ? parseFloat(price) : price,
       duration: duration.trim(),
       features: features.map((f: string) => f.trim()).filter((f: string) => f.length > 0),
     };
