@@ -233,6 +233,8 @@ export default function PackagesPage() {
       } else {
         // Create new package
         console.log('🔵 Creating new package');
+        console.log('Package data being sent:', JSON.stringify(packageData, null, 2));
+        
         const response = await api.post('/api/packages', packageData);
         console.log('Create package response:', response.data);
         
@@ -241,12 +243,46 @@ export default function PackagesPage() {
           await fetchPackages(); // Refresh list
           setShowAddForm(false);
           resetForm();
+        } else {
+          // Response indicates failure
+          showAlert('error', 'Error', response.data.error?.message || 'Failed to create package');
         }
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error: any) {
       console.error('Error saving package:', error);
-      showAlert('error', 'Error', getErrorMessage(error));
+      console.error('Error response data:', error.response?.data);
+      
+      // Check if it's an INTERNAL_ERROR related to BigInt - package might still be created
+      const errorCode = error.response?.data?.error?.code;
+      const errorMessage = error.response?.data?.error?.message || '';
+      
+      if (errorCode === 'INTERNAL_ERROR' && (errorMessage.includes('BigInt') || errorMessage.includes('packageFeature'))) {
+        // Package might have been created despite the error
+        // Refresh and check after a short delay
+        const packageName = formData.name;
+        const packagePrice = parseFloat(formData.price);
+        
+        setTimeout(async () => {
+          await fetchPackages();
+          
+          // Check if a package with the same name and price was just created
+          const createdPackage = packages.find(p => 
+            p.name === packageName && Math.abs(p.price - packagePrice) < 0.01
+          );
+          
+          if (createdPackage) {
+            showAlert('warning', 'Package Created with Warning', 
+              'Package was created but there was an issue assigning features. Please edit the package to add features manually.');
+            setShowAddForm(false);
+            resetForm();
+          } else {
+            showAlert('error', 'Error', 'Package creation failed. The error suggests a backend issue with feature assignment. Please try again or contact support.');
+          }
+        }, 1000);
+      } else {
+        showAlert('error', 'Error', getErrorMessage(error));
+      }
     } finally {
       setLoading(false);
       setSubmitting(false);
