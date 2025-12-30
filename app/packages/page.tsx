@@ -10,6 +10,13 @@ import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 
+interface Feature {
+  id: number;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface Package {
   id: string;
   name: string;
@@ -22,7 +29,9 @@ export default function PackagesPage() {
   const { user } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
   const [packages, setPackages] = useState<Package[]>([]);
+  const [availableFeatures, setAvailableFeatures] = useState<Feature[]>([]);
   const [loading, setLoading] = useState(true);
+  const [featuresLoading, setFeaturesLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -45,23 +54,40 @@ export default function PackagesPage() {
     '12 months',
   ];
 
-  const availableFeatures = [
-    'Gym Access',
-    'Locker Facility',
-    'Group Classes',
-    'Sauna Access',
-    'Personal Training Session',
-    'Nutrition Consultation',
-    'Cardio Equipment',
-    'Weight Training Equipment',
-    'Swimming Pool',
-    'Yoga Classes',
-    'Zumba Classes',
-    'Steam Room',
-    'Towel Service',
-    'Parking Facility',
-    '24/7 Access',
-  ];
+  // Fetch features from API
+  const fetchFeatures = useCallback(async () => {
+    try {
+      setFeaturesLoading(true);
+      console.log('🔵 Fetching features from API...');
+      
+      // Try Next.js API route first
+      const response = await fetch('/api/packages/features', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setAvailableFeatures(data.data.features || []);
+          console.log('✅ Features loaded:', data.data.features.length);
+        }
+      } else {
+        // Fallback to external API
+        const apiResponse = await api.get('/api/packages/features');
+        if (apiResponse.data.success) {
+          setAvailableFeatures(apiResponse.data.data.features || []);
+          console.log('✅ Features loaded from external API:', apiResponse.data.data.features.length);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error fetching features:', error);
+      // Don't show alert for features, just log
+    } finally {
+      setFeaturesLoading(false);
+    }
+  }, []);
 
   // Fetch packages from API
   const fetchPackages = useCallback(async () => {
@@ -88,6 +114,11 @@ export default function PackagesPage() {
       setLoading(false);
     }
   }, [sortConfig, showAlert]);
+
+  // Load features on mount
+  useEffect(() => {
+    fetchFeatures();
+  }, [fetchFeatures]);
 
   // Load packages on mount and when sort changes
   useEffect(() => {
@@ -271,7 +302,7 @@ export default function PackagesPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (loading) {
+  if (loading && packages.length === 0) {
     return (
       <Layout>
         <Loading message="Loading packages..." />
@@ -394,48 +425,58 @@ export default function PackagesPage() {
                   Features *
                 </label>
                 <div className="border border-gray-300 rounded-lg p-4 bg-gray-50 max-h-80 overflow-y-auto">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {availableFeatures.map((feature) => {
-                      const isSelected = formData.features.includes(feature);
-                      return (
-                        <div
-                          key={feature}
-                          onClick={() => handleFeatureToggle(feature)}
-                          className={`
-                            relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
-                            ${isSelected
-                              ? 'bg-primary border-primary text-white shadow-lg shadow-primary/30'
-                              : 'bg-white border-gray-200 text-gray-700 hover:border-primary hover:bg-primary/5 hover:shadow-md hover:shadow-primary/10'
-                            }
-                          `}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
-                              {feature}
-                            </span>
-                            <div className={`
-                              w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all
+                  {featuresLoading ? (
+                    <div className="text-center py-8">
+                      <Loading inline size="sm" message="Loading features..." />
+                    </div>
+                  ) : availableFeatures.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      No features available
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {availableFeatures.map((feature) => {
+                        const isSelected = formData.features.includes(feature.name);
+                        return (
+                          <div
+                            key={feature.id}
+                            onClick={() => handleFeatureToggle(feature.name)}
+                            className={`
+                              relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
                               ${isSelected
-                                ? 'bg-white border-white'
-                                : 'border-gray-300 bg-white'
+                                ? 'bg-primary border-primary text-white shadow-lg shadow-primary/30'
+                                : 'bg-white border-gray-200 text-gray-700 hover:border-primary hover:bg-primary/5 hover:shadow-md hover:shadow-primary/10'
                               }
-                            `}>
-                              {isSelected && (
-                                <svg className="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
+                            `}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+                                {feature.name}
+                              </span>
+                              <div className={`
+                                w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all
+                                ${isSelected
+                                  ? 'bg-white border-white'
+                                  : 'border-gray-300 bg-white'
+                                }
+                              `}>
+                                {isSelected && (
+                                  <svg className="w-3 h-3 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </div>
                             </div>
+                            {isSelected && (
+                              <div className="absolute top-1 right-1">
+                                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                              </div>
+                            )}
                           </div>
-                          {isSelected && (
-                            <div className="absolute top-1 right-1">
-                              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 {formData.features.length === 0 && (
                   <p className="text-xs text-red-500 mt-2 flex items-center">
