@@ -107,28 +107,10 @@ export default function PackagesPage() {
         console.error('External API also failed:', apiError);
       }
 
-      // If both fail, use fallback features
-      console.error('❌ Failed to load features from both APIs, using fallback');
-      const fallbackFeatures: Feature[] = [
-        { id: 1, name: 'Gym Access', createdAt: '', updatedAt: '' },
-        { id: 2, name: 'Locker Facility', createdAt: '', updatedAt: '' },
-        { id: 3, name: 'Group Classes', createdAt: '', updatedAt: '' },
-        { id: 4, name: 'Sauna Access', createdAt: '', updatedAt: '' },
-        { id: 5, name: 'Personal Training Session', createdAt: '', updatedAt: '' },
-        { id: 6, name: 'Nutrition Consultation', createdAt: '', updatedAt: '' },
-        { id: 7, name: 'Cardio Equipment', createdAt: '', updatedAt: '' },
-        { id: 8, name: 'Weight Training Equipment', createdAt: '', updatedAt: '' },
-        { id: 9, name: 'Swimming Pool', createdAt: '', updatedAt: '' },
-        { id: 10, name: 'Yoga Classes', createdAt: '', updatedAt: '' },
-        { id: 11, name: 'Zumba Classes', createdAt: '', updatedAt: '' },
-        { id: 12, name: 'Steam Room', createdAt: '', updatedAt: '' },
-        { id: 13, name: 'Towel Service', createdAt: '', updatedAt: '' },
-        { id: 14, name: 'Parking Facility', createdAt: '', updatedAt: '' },
-        { id: 15, name: '24/7 Access', createdAt: '', updatedAt: '' },
-      ];
-      setAvailableFeatures(fallbackFeatures);
-      console.log('✅ Using fallback features:', fallbackFeatures.length);
-      showAlert('warning', 'Warning', 'Using default features. Some features may not be available.');
+      // If both fail, show error and keep features empty
+      console.error('❌ Failed to load features from both APIs');
+      setAvailableFeatures([]);
+      showAlert('error', 'Error', 'Failed to load features from the server. Please refresh the page or contact support.');
     } catch (error: any) {
       console.error('Error fetching features:', error);
       showAlert('error', 'Error', 'Failed to load features. Please try again.');
