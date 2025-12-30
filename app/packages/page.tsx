@@ -60,34 +60,82 @@ export default function PackagesPage() {
       setFeaturesLoading(true);
       console.log('🔵 Fetching features from API...');
       
+      const token = localStorage.getItem('token');
+      console.log('Token available:', !!token);
+      
       // Try Next.js API route first
-      const response = await fetch('/api/packages/features', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
+      try {
+        const response = await fetch('/api/packages/features', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setAvailableFeatures(data.data.features || []);
-          console.log('✅ Features loaded:', data.data.features.length);
+        console.log('Features API response status:', response.status);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Features API response data:', data);
+          
+          if (data.success && data.data?.features) {
+            setAvailableFeatures(data.data.features);
+            console.log('✅ Features loaded:', data.data.features.length);
+            return;
+          } else {
+            console.warn('Features API returned success=false or missing features:', data);
+          }
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.warn('Features API error response:', response.status, errorData);
         }
-      } else {
-        // Fallback to external API
-        const apiResponse = await api.get('/api/packages/features');
-        if (apiResponse.data.success) {
-          setAvailableFeatures(apiResponse.data.data.features || []);
-          console.log('✅ Features loaded from external API:', apiResponse.data.data.features.length);
-        }
+      } catch (fetchError: any) {
+        console.warn('Next.js API route failed, trying external API:', fetchError);
       }
+
+      // Fallback to external API
+      try {
+        const apiResponse = await api.get('/api/packages/features');
+        console.log('External API response:', apiResponse.data);
+        
+        if (apiResponse.data.success && apiResponse.data.data?.features) {
+          setAvailableFeatures(apiResponse.data.data.features);
+          console.log('✅ Features loaded from external API:', apiResponse.data.data.features.length);
+          return;
+        }
+      } catch (apiError: any) {
+        console.error('External API also failed:', apiError);
+      }
+
+      // If both fail, use fallback features
+      console.error('❌ Failed to load features from both APIs, using fallback');
+      const fallbackFeatures: Feature[] = [
+        { id: 1, name: 'Gym Access', createdAt: '', updatedAt: '' },
+        { id: 2, name: 'Locker Facility', createdAt: '', updatedAt: '' },
+        { id: 3, name: 'Group Classes', createdAt: '', updatedAt: '' },
+        { id: 4, name: 'Sauna Access', createdAt: '', updatedAt: '' },
+        { id: 5, name: 'Personal Training Session', createdAt: '', updatedAt: '' },
+        { id: 6, name: 'Nutrition Consultation', createdAt: '', updatedAt: '' },
+        { id: 7, name: 'Cardio Equipment', createdAt: '', updatedAt: '' },
+        { id: 8, name: 'Weight Training Equipment', createdAt: '', updatedAt: '' },
+        { id: 9, name: 'Swimming Pool', createdAt: '', updatedAt: '' },
+        { id: 10, name: 'Yoga Classes', createdAt: '', updatedAt: '' },
+        { id: 11, name: 'Zumba Classes', createdAt: '', updatedAt: '' },
+        { id: 12, name: 'Steam Room', createdAt: '', updatedAt: '' },
+        { id: 13, name: 'Towel Service', createdAt: '', updatedAt: '' },
+        { id: 14, name: 'Parking Facility', createdAt: '', updatedAt: '' },
+        { id: 15, name: '24/7 Access', createdAt: '', updatedAt: '' },
+      ];
+      setAvailableFeatures(fallbackFeatures);
+      console.log('✅ Using fallback features:', fallbackFeatures.length);
+      showAlert('warning', 'Warning', 'Using default features. Some features may not be available.');
     } catch (error: any) {
       console.error('Error fetching features:', error);
-      // Don't show alert for features, just log
+      showAlert('error', 'Error', 'Failed to load features. Please try again.');
     } finally {
       setFeaturesLoading(false);
     }
-  }, []);
+  }, [showAlert]);
 
   // Fetch packages from API
   const fetchPackages = useCallback(async () => {
@@ -115,9 +163,14 @@ export default function PackagesPage() {
     }
   }, [sortConfig, showAlert]);
 
-  // Load features on mount
+  // Load features on mount (after a small delay to ensure token is available)
   useEffect(() => {
-    fetchFeatures();
+    // Small delay to ensure localStorage is accessible and token is set
+    const timer = setTimeout(() => {
+      fetchFeatures();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [fetchFeatures]);
 
   // Load packages on mount and when sort changes

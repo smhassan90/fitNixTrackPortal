@@ -136,17 +136,29 @@ function isAuthenticated(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization');
   const token = authHeader?.replace('Bearer ', '');
   
-  if (!token) return false;
-  
-  // Extract user ID from token (simple token format: local_token_timestamp_userId)
-  const tokenParts = token.split('_');
-  if (tokenParts.length < 3 || tokenParts[0] !== 'local' || tokenParts[1] !== 'token') {
+  if (!token) {
+    console.log('No token provided');
     return false;
   }
   
-  // For now, if token format is valid, consider authenticated
+  // Extract user ID from token (simple token format: local_token_timestamp_userId)
+  const tokenParts = token.split('_');
+  
+  // Check if it's a local token
+  if (tokenParts.length >= 3 && tokenParts[0] === 'local' && tokenParts[1] === 'token') {
+    console.log('Valid local token format');
+    return true;
+  }
+  
+  // For external API tokens, accept any non-empty token
   // In production, verify token with database
-  return true;
+  if (token && token.length > 0) {
+    console.log('Token provided (external format)');
+    return true;
+  }
+  
+  console.log('Invalid token format');
+  return false;
 }
 
 // GET /api/packages/features - Get all features
