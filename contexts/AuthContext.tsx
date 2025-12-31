@@ -119,19 +119,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('Token received:', authToken ? 'Yes' : 'No');
         console.log('User data received:', userData);
         
-        // Store token and user
-        localStorage.setItem('token', authToken);
-        localStorage.setItem('user', JSON.stringify(userData));
-        
-        setToken(authToken);
-        setUser({
-          id: userData.id,
+        // Convert numeric IDs to strings if needed
+        const normalizedUser = {
+          id: String(userData.id),
           name: userData.name,
           email: userData.email,
           role: userData.role,
-          gymId: userData.gymId,
-          gymName: userData.gymName,
-        });
+          gymId: String(userData.gymId),
+          gymName: userData.gymName || userData.gym?.name,
+        };
+        
+        // Store token and user
+        localStorage.setItem('token', authToken);
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
+        
+        setToken(authToken);
+        setUser(normalizedUser);
         
         console.log('✅ Login successful - token and user stored');
         return;
