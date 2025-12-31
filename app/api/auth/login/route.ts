@@ -5,6 +5,7 @@ const localUsers = [
   {
     id: '1',
     name: 'Touqeer Admin',
+    username: 'admin',
     email: 'admin@fitnix.com',
     password: 'password123', // Plain password - no hashing
     role: 'GYM_ADMIN',
@@ -16,21 +17,21 @@ const localUsers = [
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const { username, password } = body;
 
-    if (!email || !password) {
+    if (!username || !password) {
       return NextResponse.json(
-        { success: false, error: { message: 'Email and password are required' } },
+        { success: false, error: { message: 'Username and password are required' } },
         { status: 400 }
       );
     }
 
-    // Find user by email
-    const user = localUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    // Find user by username
+    const user = localUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
 
     if (!user) {
       return NextResponse.json(
-        { success: false, error: { message: 'Invalid email or password' } },
+        { success: false, error: { message: 'Invalid username or password' } },
         { status: 401 }
       );
     }
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Plain password comparison (no hashing)
     if (user.password !== password) {
       return NextResponse.json(
-        { success: false, error: { message: 'Invalid email or password' } },
+        { success: false, error: { message: 'Invalid username or password' } },
         { status: 401 }
       );
     }

@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import Loading from '@/components/Loading';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,12 +19,12 @@ export default function LoginPage() {
     setLoading(true);
 
     console.log('🔵 Login form submitted');
-    console.log('Email:', email);
+    console.log('Username:', username);
     console.log('Password length:', password.length);
 
     try {
       console.log('🔵 Calling login function from AuthContext...');
-      await login(email, password);
+      await login(username, password);
       console.log('✅ Login function completed successfully');
       router.push('/dashboard');
     } catch (err: any) {
@@ -52,17 +52,17 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-dark-gray mb-2">
-              Email
+            <label htmlFor="username" className="block text-sm font-medium text-dark-gray mb-2">
+              Username
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-              placeholder="admin@fitnix.com"
+              placeholder="admin"
             />
           </div>
 
@@ -100,7 +100,7 @@ export default function LoginPage() {
         <div className="mt-6 text-center text-sm text-gray-600">
           <p>Test credentials:</p>
           <p className="mt-2 font-mono text-xs">
-            admin@fitnix.com / password123
+            admin / password123
           </p>
         </div>
       </div>

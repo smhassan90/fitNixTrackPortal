@@ -16,7 +16,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
 }
@@ -94,18 +94,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (username: string, password: string) => {
     try {
       // Try Next.js API route first (uses plain password comparison)
       console.log('🔵 Attempting login with Next.js API route (plain password)...');
-      console.log('Request payload:', { email, password: '***' });
+      console.log('Request payload:', { username, password: '***' });
       
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       });
       
       const data = await response.json();
@@ -151,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         {
           id: '1',
           name: 'Touqeer Admin',
+          username: 'admin',
           email: 'admin@fitnix.com',
           password: 'password123', // Plain password
           role: 'GYM_ADMIN',
@@ -159,17 +160,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       ];
       
-      const user = localUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+      const user = localUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
       
       if (!user) {
         console.error('❌ User not found');
-        throw new Error('Invalid email or password');
+        throw new Error('Invalid username or password');
       }
       
       // Plain password comparison (no hashing)
       if (user.password !== password) {
         console.error('❌ Password mismatch');
-        throw new Error('Invalid email or password');
+        throw new Error('Invalid username or password');
       }
       
       // Generate a simple token for local auth
