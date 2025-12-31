@@ -98,14 +98,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       // Try Next.js API route first (uses plain password comparison)
       console.log('🔵 Attempting login with Next.js API route (plain password)...');
-      console.log('Request payload:', { username, password: '***' });
+      console.log('Request payload:', { email: username, password: '***' });
       
+      // Send plain password (no encoding/hashing) to API
+      // Send username value as 'email' in payload
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email: username, password }), // Plain password sent as-is, username sent as email
       });
       
       const data = await response.json();
