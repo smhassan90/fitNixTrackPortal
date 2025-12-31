@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Local user database with plain passwords (for development/testing)
+const localUsers = [
+  {
+    id: '1',
+    name: 'Touqeer Admin',
+    email: 'admin@fitnix.com',
+    password: 'password123', // Plain password - no hashing
+    role: 'GYM_ADMIN',
+    gymId: 'gym-1',
+    gymName: 'FitNix Elite Gym',
+  },
+];
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    // Receive plain password from request (no decoding needed)
+    // Receive 'email' field in payload (contains username value)
     const { email, password } = body;
 
     if (!email || !password) {
@@ -12,38 +27,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Forward request to external API
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-    const externalUrl = `${apiUrl}/api/auth/login`;
+    // Find user by email
+    const user = localUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
 
-    try {
-      const response = await fetch(externalUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Forward error response from external API
-        return NextResponse.json(
-          data,
-          { status: response.status }
-        );
-      }
-
-      // Forward successful response from external API
-      return NextResponse.json(data, { status: response.status });
-    } catch (fetchError: any) {
-      console.error('Error forwarding request to external API:', fetchError);
+    if (!user) {
       return NextResponse.json(
-        { success: false, error: { message: 'Failed to connect to external API' } },
-        { status: 503 }
+        { success: false, error: { message: 'Invalid email or password' } },
+        { status: 401 }
       );
     }
+
+    // Plain password comparison (no hashing)
+    if (user.password !== password) {
+      return NextResponse.json(
+        { success: false, error: { message: 'Invalid email or password' } },
+        { status: 401 }
+      );
+    }
+
+    // Generate a simple token
+    const token = `local_token_${Date.now()}_${user.id}`;
+
+    // Return user data (without password)
+    const userData = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      gymId: user.gymId,
+      gymName: user.gymName,
+    };
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        token,
+        user: userData,
+      },
+    });
   } catch (error: any) {
     console.error('Login API error:', error);
     return NextResponse.json(
