@@ -33,7 +33,18 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json(
-        { success: false, error: { message: 'Invalid username or password' } },
+        { 
+          success: false, 
+          error: { 
+            code: 'UNAUTHORIZED',
+            message: 'Invalid username or password',
+            details: {
+              reason: 'User not found',
+              field: 'email',
+              timestamp: new Date().toISOString()
+            }
+          } 
+        },
         { status: 401 }
       );
     }
@@ -41,7 +52,18 @@ export async function POST(request: NextRequest) {
     // Plain password comparison (no hashing/encoding - password received as plain text)
     if (user.password !== password) {
       return NextResponse.json(
-        { success: false, error: { message: 'Invalid username or password' } },
+        { 
+          success: false, 
+          error: { 
+            code: 'UNAUTHORIZED',
+            message: 'Invalid username or password',
+            details: {
+              reason: 'Password mismatch',
+              field: 'password',
+              timestamp: new Date().toISOString()
+            }
+          } 
+        },
         { status: 401 }
       );
     }
