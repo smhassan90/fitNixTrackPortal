@@ -237,33 +237,17 @@ export default function PaymentsPage() {
     setConfirmDialog({ isOpen: false, paymentId: null, payment: null });
   };
 
-  const handlePrintReceipt = async (payment: Payment) => {
+  const handlePrintReceipt = (payment: Payment) => {
     if (payment.status !== 'PAID') {
       showAlert('warning', 'Cannot Print Receipt', 'Receipt can only be printed for paid payments.');
       return;
-    }
-
-    let receiptPayment = payment;
-    try {
-      console.log('🔵 Fetching receipt data for payment:', payment.id);
-      const response = await api.get(`/api/payments/${payment.id}/receipt`);
-      console.log('Receipt API Response:', response.data);
-      
-      if (response.data.success) {
-        const receiptData = response.data.data;
-        // Use receipt data from API for printing
-        receiptPayment = receiptData.payment || payment;
-      }
-    } catch (error: any) {
-      console.error('Error fetching receipt:', error);
-      // Continue with existing payment data if API fails
     }
 
     const receiptHTML = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Payment Receipt - ${receiptPayment.member.name}</title>
+          <title>Payment Receipt - ${payment.member.name}</title>
           <style>
             @media print {
               @page { margin: 20mm; }
@@ -352,25 +336,25 @@ export default function PaymentsPage() {
           <div class="receipt-info">
             <div class="info-row">
               <span class="info-label">Receipt Number:</span>
-              <span class="info-value">#${receiptPayment.id}</span>
+              <span class="info-value">#${payment.id}</span>
             </div>
             <div class="info-row">
               <span class="info-label">Date:</span>
-              <span class="info-value">${formatDate(receiptPayment.paidDate || receiptPayment.dueDate)}</span>
+              <span class="info-value">${formatDate(payment.paidDate || payment.dueDate)}</span>
             </div>
             <div class="info-row">
               <span class="info-label">Member Name:</span>
-              <span class="info-value">${receiptPayment.member.name}</span>
+              <span class="info-value">${payment.member.name}</span>
             </div>
-            ${receiptPayment.member.phone ? `
+            ${payment.member.phone ? `
             <div class="info-row">
               <span class="info-label">Phone:</span>
-              <span class="info-value">${receiptPayment.member.phone}</span>
+              <span class="info-value">${payment.member.phone}</span>
             </div>
             ` : ''}
             <div class="info-row">
               <span class="info-label">Payment Month:</span>
-              <span class="info-value">${receiptPayment.month}</span>
+              <span class="info-value">${payment.month}</span>
             </div>
             <div class="info-row">
               <span class="info-label">Status:</span>
@@ -381,11 +365,11 @@ export default function PaymentsPage() {
           <div class="amount-section">
             <div class="amount-row">
               <span>Amount:</span>
-              <span>Rs. ${receiptPayment.amount.toFixed(2)}</span>
+              <span>Rs. ${payment.amount.toFixed(2)}</span>
             </div>
             <div class="amount-row total">
               <span>Total Paid:</span>
-              <span>Rs. ${receiptPayment.amount.toFixed(2)}</span>
+              <span>Rs. ${payment.amount.toFixed(2)}</span>
             </div>
           </div>
           
