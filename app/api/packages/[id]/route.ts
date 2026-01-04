@@ -71,6 +71,33 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    
+    // Check if token is a JWT (starts with eyJ) - if so, forward to external API
+    if (token && token.startsWith('eyJ')) {
+      // Forward to external API
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const externalUrl = `${apiUrl}/api/packages/${params.id}`;
+      
+      const body = await request.json();
+      
+      console.log(`🔵 Forwarding PUT /api/packages/${params.id} to external API`);
+      
+      const response = await fetch(externalUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader || '',
+        },
+        body: JSON.stringify(body),
+      });
+      
+      const data = await response.json().catch(() => ({}));
+      return NextResponse.json(data, { status: response.status });
+    }
+    
+    // Otherwise, use local logic for local tokens
     // Check if user is admin
     if (!isAdmin(request)) {
       return NextResponse.json(
