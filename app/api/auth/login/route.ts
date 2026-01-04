@@ -16,6 +16,9 @@ export async function POST(request: NextRequest) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
     const externalUrl = `${apiUrl}/api/auth/login`;
 
+    console.log('🔵 Forwarding login request to:', externalUrl);
+    console.log('🔵 API URL from env:', process.env.NEXT_PUBLIC_API_URL || 'not set (using default)');
+
     try {
       const response = await fetch(externalUrl, {
         method: 'POST',

@@ -22,6 +22,7 @@ interface Package {
   gymId?: number;
   name: string;
   price: number;
+  discount?: number | null;
   duration: string;
   features: string[];
   _count?: {
@@ -51,6 +52,7 @@ export default function PackagesPage() {
   const [formData, setFormData] = useState({
     name: '',
     price: '',
+    discount: '',
     duration: '',
     featureIds: [] as number[],
   });
@@ -193,6 +195,7 @@ export default function PackagesPage() {
       const packageData: {
         name: string;
         price: number;
+        discount?: number;
         duration: string;
         featureIds?: number[];
       } = {
@@ -200,6 +203,11 @@ export default function PackagesPage() {
         price: parseFloat(formData.price),
         duration: formData.duration,
       };
+      
+      // Include discount if provided (and > 0)
+      if (formData.discount && parseFloat(formData.discount) > 0) {
+        packageData.discount = parseFloat(formData.discount);
+      }
       
       // Only include featureIds if at least one is selected
       // Ensure all IDs are regular numbers (not BigInt)
@@ -307,6 +315,7 @@ export default function PackagesPage() {
     setFormData({
       name: pkg.name,
       price: pkg.price.toString(),
+      discount: pkg.discount ? pkg.discount.toString() : '',
       duration: pkg.duration,
       featureIds: featureIds,
     });
@@ -426,6 +435,7 @@ export default function PackagesPage() {
     setFormData({
       name: '',
       price: '',
+      discount: '',
       duration: '',
       featureIds: [],
     });
@@ -536,6 +546,35 @@ export default function PackagesPage() {
                   {formData.price && (
                     <p className="text-xs text-gray-500 mt-1">
                       Rs. {parseFloat(formData.price || '0').toLocaleString()}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-dark-gray mb-1">Discount (Rs.)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max={formData.price ? parseFloat(formData.price) : 99999999}
+                    step="50"
+                    value={formData.discount}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const price = parseFloat(formData.price || '0');
+                      if (value === '' || (parseFloat(value) >= 0 && parseFloat(value) <= price)) {
+                        setFormData({ ...formData, discount: value });
+                      }
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="e.g., 500"
+                  />
+                  {formData.price && formData.discount && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Final Price: Rs. {Math.max(0, parseFloat(formData.price || '0') - parseFloat(formData.discount || '0')).toLocaleString()}
+                    </p>
+                  )}
+                  {formData.discount && parseFloat(formData.discount) > 0 && !formData.price && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      Please enter price first
                     </p>
                   )}
                 </div>
@@ -742,8 +781,24 @@ export default function PackagesPage() {
                     <div className="text-sm font-medium text-dark-gray">{pkg.name}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">
-                      Rs. {pkg.price.toLocaleString()}
+                    <div className="text-sm text-gray-900">
+                      {pkg.discount && pkg.discount > 0 ? (
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="line-through text-gray-400">
+                              Rs. {pkg.price.toLocaleString()}
+                            </span>
+                            <span className="font-semibold text-primary">
+                              Rs. {Math.max(0, pkg.price - pkg.discount).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="text-xs text-green-600 mt-1">
+                            Save Rs. {pkg.discount.toLocaleString()}
+                          </div>
+                        </div>
+                      ) : (
+                        <span>Rs. {pkg.price.toLocaleString()}</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

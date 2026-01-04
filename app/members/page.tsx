@@ -27,6 +27,7 @@ interface Package {
   id: string;
   name: string;
   price: number;
+  discount?: number | null;
   duration: string;
   features: string[];
 }
@@ -250,7 +251,10 @@ export default function MembersPage() {
             const aTrainer = a.trainers.length > 0 ? trainers.find(t => t.id === a.trainers[0].id) : null;
             let aTotal = 0;
             if (aPkg2) {
-              aTotal += aPkg2.duration.includes('12') ? aPkg2.price / 12 : aPkg2.price;
+              const aPackagePrice = aPkg2.discount && aPkg2.discount > 0
+                ? Math.max(0, aPkg2.price - aPkg2.discount)
+                : aPkg2.price;
+              aTotal += aPkg2.duration.includes('12') ? aPackagePrice / 12 : aPackagePrice;
             }
             if (aTrainer?.charges) aTotal += aTrainer.charges;
             if (a.discount) aTotal = Math.max(0, aTotal - a.discount);
@@ -259,7 +263,10 @@ export default function MembersPage() {
             const bTrainer = b.trainers.length > 0 ? trainers.find(t => t.id === b.trainers[0].id) : null;
             let bTotal = 0;
             if (bPkg2) {
-              bTotal += bPkg2.duration.includes('12') ? bPkg2.price / 12 : bPkg2.price;
+              const bPackagePrice = bPkg2.discount && bPkg2.discount > 0
+                ? Math.max(0, bPkg2.price - bPkg2.discount)
+                : bPkg2.price;
+              bTotal += bPkg2.duration.includes('12') ? bPackagePrice / 12 : bPackagePrice;
             }
             if (bTrainer?.charges) bTotal += bTrainer.charges;
             if (b.discount) bTotal = Math.max(0, bTotal - b.discount);
@@ -466,12 +473,15 @@ export default function MembersPage() {
   const monthlyPayment = useMemo(() => {
     let total = 0;
     
-    // Package price (convert annual to monthly if needed)
+    // Package price (convert annual to monthly if needed, apply discount)
     if (selectedPackage) {
+      const packagePrice = selectedPackage.discount && selectedPackage.discount > 0
+        ? Math.max(0, selectedPackage.price - selectedPackage.discount)
+        : selectedPackage.price;
       if (selectedPackage.duration.includes('12')) {
-        total += selectedPackage.price / 12; // Annual package divided by 12
+        total += packagePrice / 12; // Annual package divided by 12
       } else {
-        total += selectedPackage.price;
+        total += packagePrice;
       }
     }
     
@@ -688,11 +698,16 @@ export default function MembersPage() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                   >
                     <option value="">Select a package</option>
-                    {availablePackages.map((pkg) => (
-                      <option key={pkg.id} value={pkg.id}>
-                        {pkg.name} - Rs. {pkg.price.toLocaleString()} ({pkg.duration})
-                      </option>
-                    ))}
+                    {availablePackages.map((pkg) => {
+                      const finalPrice = pkg.discount && pkg.discount > 0 
+                        ? Math.max(0, pkg.price - pkg.discount) 
+                        : pkg.price;
+                      return (
+                        <option key={pkg.id} value={pkg.id}>
+                          {pkg.name} - Rs. {finalPrice.toLocaleString()} {pkg.discount && pkg.discount > 0 ? `(Save ${pkg.discount.toLocaleString()})` : ''} ({pkg.duration})
+                        </option>
+                      );
+                    })}
                   </select>
                   {selectedPackage && (
                     <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -805,16 +820,43 @@ export default function MembersPage() {
                         <div>
                           <p className="text-sm font-medium text-white opacity-90 mb-2">Monthly Payment</p>
                           <div className="space-y-1 text-xs text-white opacity-80">
-                            {selectedPackage && (
-                              <div className="flex justify-between">
-                                <span>Package ({selectedPackage.name}):</span>
-                                <span>
-                                  Rs. {selectedPackage.duration.includes('12') 
-                                    ? (selectedPackage.price / 12).toLocaleString('en-US', { maximumFractionDigits: 0 })
-                                    : selectedPackage.price.toLocaleString()}
-                                </span>
-                              </div>
-                            )}
+                            {selectedPackage && (() => {
+                              const packagePrice = selectedPackage.discount && selectedPackage.discount > 0
+                                ? Math.max(0, selectedPackage.price - selectedPackage.discount)
+                                : selectedPackage.price;
+                              const monthlyPackagePrice = selectedPackage.duration.includes('12')
+                                ? packagePrice / 12
+                                : packagePrice;
+                              return (
+                                <div>
+                                  <div className="flex justify-between">
+                                    <span>Package ({selectedPackage.name}):</span>
+                                    <span>
+                                      {selectedPackage.discount && selectedPackage.discount > 0 ? (
+                                        <span>
+                                          <span className="line-through text-white opacity-60 mr-2">
+                                            Rs. {selectedPackage.duration.includes('12') 
+                                              ? (selectedPackage.price / 12).toLocaleString('en-US', { maximumFractionDigits: 0 })
+                                              : selectedPackage.price.toLocaleString()}
+                                          </span>
+                                          <span>
+                                            Rs. {monthlyPackagePrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                          </span>
+                                        </span>
+                                      ) : (
+                                        <span>Rs. {monthlyPackagePrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  {selectedPackage.discount && selectedPackage.discount > 0 && (
+                                    <div className="flex justify-between text-xs text-white opacity-80 mt-1">
+                                      <span>Discount:</span>
+                                      <span>Rs. {selectedPackage.discount.toLocaleString()}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                             {selectedTrainer && selectedTrainer.charges && (
                               <div className="flex justify-between">
                                 <span>Trainer ({selectedTrainer.name}):</span>
@@ -996,12 +1038,15 @@ export default function MembersPage() {
                   const memberPackage = availablePackages.find(p => p.id === member.packageId);
                   const memberTrainer = member.trainers.length > 0 ? trainers.find(t => t.id === member.trainers[0].id) : null;
                   
-                  // Calculate monthly payment for display
+                  // Calculate monthly payment for display (apply package discount)
                   let monthlyTotal = 0;
                   if (memberPackage) {
-                    monthlyTotal += memberPackage.duration.includes('12') 
-                      ? memberPackage.price / 12 
+                    const packagePrice = memberPackage.discount && memberPackage.discount > 0
+                      ? Math.max(0, memberPackage.price - memberPackage.discount)
                       : memberPackage.price;
+                    monthlyTotal += memberPackage.duration.includes('12') 
+                      ? packagePrice / 12 
+                      : packagePrice;
                   }
                   if (memberTrainer && memberTrainer.charges) {
                     monthlyTotal += memberTrainer.charges;
@@ -1044,7 +1089,17 @@ export default function MembersPage() {
                           {memberPackage ? (
                             <div>
                               <div className="font-medium">{memberPackage.name}</div>
-                              <div className="text-xs text-gray-400">Rs. {memberPackage.price.toLocaleString()}</div>
+                              {memberPackage.discount && memberPackage.discount > 0 ? (
+                                <div className="text-xs">
+                                  <span className="line-through text-gray-400">Rs. {memberPackage.price.toLocaleString()}</span>
+                                  <span className="text-primary font-semibold ml-2">
+                                    Rs. {Math.max(0, memberPackage.price - memberPackage.discount).toLocaleString()}
+                                  </span>
+                                  <div className="text-green-600 mt-0.5">Save Rs. {memberPackage.discount.toLocaleString()}</div>
+                                </div>
+                              ) : (
+                                <div className="text-xs text-gray-400">Rs. {memberPackage.price.toLocaleString()}</div>
+                              )}
                             </div>
                           ) : (
                             'No package'

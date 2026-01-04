@@ -1,10 +1,11 @@
 import axios from 'axios';
 
-// Base URL should be http://localhost:3001 (without /api)
-// Endpoints will be /api/attendance, /api/members, etc.
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Use relative URLs to go through Next.js API routes (which act as a proxy)
+// This avoids CORS issues since Next.js API routes run server-side
+// The Next.js API routes will forward requests to the external API
+const API_URL = ''; // Empty baseURL means relative URLs (same origin)
 
-console.log('🔧 API Client initialized with base URL:', API_URL);
+console.log('🔧 API Client initialized with relative URLs (using Next.js API routes as proxy)');
 
 const api = axios.create({
   baseURL: API_URL,
