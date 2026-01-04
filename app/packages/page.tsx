@@ -201,6 +201,9 @@ export default function PackagesPage() {
             ? parseInt(editingPackage.id, 10) 
             : editingPackage.id;
         
+        console.log('🔵 Updating package - Original ID:', editingPackage.id, 'Converted ID:', packageId);
+        console.log('🔵 Editing package data:', editingPackage);
+        
         // Build update payload - all fields are optional for updates
         const updateData: {
           name?: string;
@@ -227,8 +230,10 @@ export default function PackagesPage() {
           );
         }
         
-        console.log('🔵 Updating package:', packageId);
-        console.log('Update data:', JSON.stringify(updateData, null, 2));
+        console.log('🔵 Updating package ID:', packageId);
+        console.log('🔵 Update data:', JSON.stringify(updateData, null, 2));
+        console.log('🔵 Request URL will be: /api/packages/' + packageId);
+        
         const response = await api.put(`/api/packages/${packageId}`, updateData);
         console.log('Update package response:', response.data);
         
