@@ -37,6 +37,32 @@ function isAdmin(request: NextRequest): boolean {
 // GET /api/packages - List all packages
 export async function GET(request: NextRequest) {
   try {
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    
+    // Check if token is a JWT (starts with eyJ) - if so, forward to external API
+    if (token && token.startsWith('eyJ')) {
+      // Forward to external API
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const { searchParams } = new URL(request.url);
+      const queryString = searchParams.toString();
+      const externalUrl = `${apiUrl}/api/packages${queryString ? `?${queryString}` : ''}`;
+      
+      console.log(`🔵 Forwarding GET /api/packages to external API`);
+      
+      const response = await fetch(externalUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader || '',
+        },
+      });
+      
+      const data = await response.json().catch(() => ({}));
+      return NextResponse.json(data, { status: response.status });
+    }
+    
+    // Otherwise, use local logic for local tokens
     const { searchParams } = new URL(request.url);
     const sortBy = searchParams.get('sortBy') || 'name';
     const sortOrder = searchParams.get('sortOrder') || 'asc';
@@ -99,6 +125,33 @@ export async function GET(request: NextRequest) {
 // POST /api/packages - Create new package (Admin only)
 export async function POST(request: NextRequest) {
   try {
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    
+    // Check if token is a JWT (starts with eyJ) - if so, forward to external API
+    if (token && token.startsWith('eyJ')) {
+      // Forward to external API
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const externalUrl = `${apiUrl}/api/packages`;
+      
+      const body = await request.json();
+      
+      console.log(`🔵 Forwarding POST /api/packages to external API`);
+      
+      const response = await fetch(externalUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader || '',
+        },
+        body: JSON.stringify(body),
+      });
+      
+      const data = await response.json().catch(() => ({}));
+      return NextResponse.json(data, { status: response.status });
+    }
+    
+    // Otherwise, use local logic for local tokens
     // Check if user is admin
     if (!isAdmin(request)) {
       return NextResponse.json(

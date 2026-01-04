@@ -40,6 +40,30 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    
+    // Check if token is a JWT (starts with eyJ) - if so, forward to external API
+    if (token && token.startsWith('eyJ')) {
+      // Forward to external API
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const externalUrl = `${apiUrl}/api/packages/${params.id}`;
+      
+      console.log(`🔵 Forwarding GET /api/packages/${params.id} to external API`);
+      
+      const response = await fetch(externalUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader || '',
+        },
+      });
+      
+      const data = await response.json().catch(() => ({}));
+      return NextResponse.json(data, { status: response.status });
+    }
+    
+    // Otherwise, use local logic for local tokens
     const { id } = params;
     const packageItem = packages.find(p => p.id === id);
 
@@ -164,6 +188,30 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    
+    // Check if token is a JWT (starts with eyJ) - if so, forward to external API
+    if (token && token.startsWith('eyJ')) {
+      // Forward to external API
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const externalUrl = `${apiUrl}/api/packages/${params.id}`;
+      
+      console.log(`🔵 Forwarding DELETE /api/packages/${params.id} to external API`);
+      
+      const response = await fetch(externalUrl, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader || '',
+        },
+      });
+      
+      const data = await response.json().catch(() => ({}));
+      return NextResponse.json(data, { status: response.status });
+    }
+    
+    // Otherwise, use local logic for local tokens
     // Check if user is admin
     if (!isAdmin(request)) {
       return NextResponse.json(
