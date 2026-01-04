@@ -26,6 +26,35 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Check if token is JWT (from external API) - starts with 'eyJ'
+    if (token.startsWith('eyJ')) {
+      // Forward JWT token to external API
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const externalUrl = `${apiUrl}/api/auth/me`;
+      
+      console.log('🔵 Forwarding /api/auth/me to external API for JWT token');
+      
+      try {
+        const response = await fetch(externalUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': authHeader || '',
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        const data = await response.json().catch(() => ({}));
+        return NextResponse.json(data, { status: response.status });
+      } catch (fetchError: any) {
+        console.error('Error forwarding to external API:', fetchError);
+        return NextResponse.json(
+          { success: false, error: { message: 'Failed to connect to external API' } },
+          { status: 503 }
+        );
+      }
+    }
+
+    // Local token validation (for local tokens)
     // Extract user ID from token (simple token format: local_token_timestamp_userId)
     const tokenParts = token.split('_');
     if (tokenParts.length < 3 || tokenParts[0] !== 'local' || tokenParts[1] !== 'token') {

@@ -36,56 +36,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (storedToken && storedUser) {
         try {
-          // Verify token is still valid by fetching current user
-          // Try Next.js API route first
-          const response = await fetch('/api/auth/me', {
-            headers: {
-              'Authorization': `Bearer ${storedToken}`,
-            },
-          });
+          // Check if token is JWT (from external API) or local token
+          const isJWT = storedToken.startsWith('eyJ');
           
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              const userData = data.data;
-              setUser({
-                id: userData.id,
-                name: userData.name,
-                email: userData.email,
-                role: userData.role,
-                gymId: userData.gymId,
-                gymName: userData.gymName,
-              });
-              setToken(storedToken);
-            } else {
-              // Token invalid, clear storage
-              localStorage.removeItem('token');
-              localStorage.removeItem('user');
+          if (isJWT) {
+            // JWT token - validate with external API directly
+            console.log('🔵 Validating JWT token with external API...');
+            try {
+              const apiResponse = await api.get('/api/auth/me');
+              if (apiResponse.data.success) {
+                const userData = apiResponse.data.data;
+                // Convert numeric IDs to strings if needed
+                const normalizedUser = {
+                  id: String(userData.id),
+                  name: userData.name,
+                  email: userData.email,
+                  role: userData.role,
+                  gymId: String(userData.gymId),
+                  gymName: userData.gymName || userData.gym?.name,
+                };
+                setUser(normalizedUser);
+                setToken(storedToken);
+                // Update stored user data in case it changed
+                localStorage.setItem('user', JSON.stringify(normalizedUser));
+                console.log('✅ JWT token validated successfully');
+              } else {
+                // Token invalid, clear storage
+                console.error('❌ JWT token validation failed - API returned success=false');
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+              }
+            } catch (apiError: any) {
+              // If it's a 401, token is invalid - clear storage
+              if (apiError.response?.status === 401) {
+                console.error('❌ JWT token invalid (401) - clearing storage');
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+              } else {
+                // Network error or other issue - restore from localStorage
+                console.warn('⚠️ Token validation failed but restoring from localStorage:', apiError.message);
+                try {
+                  const parsedUser = JSON.parse(storedUser);
+                  setUser(parsedUser);
+                  setToken(storedToken);
+                } catch (parseError) {
+                  console.error('❌ Failed to parse stored user data');
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('user');
+                }
+              }
             }
           } else {
-            // Try fallback to api instance (external API)
-            const apiResponse = await api.get('/api/auth/me');
-            if (apiResponse.data.success) {
-              const userData = apiResponse.data.data;
-              setUser({
-                id: userData.id,
-                name: userData.name,
-                email: userData.email,
-                role: userData.role,
-                gymId: userData.gymId,
-                gymName: userData.gymName,
-              });
-              setToken(storedToken);
+            // Local token - validate with Next.js API route
+            console.log('🔵 Validating local token with Next.js API route...');
+            const response = await fetch('/api/auth/me', {
+              headers: {
+                'Authorization': `Bearer ${storedToken}`,
+              },
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success) {
+                const userData = data.data;
+                setUser({
+                  id: userData.id,
+                  name: userData.name,
+                  email: userData.email,
+                  role: userData.role,
+                  gymId: userData.gymId,
+                  gymName: userData.gymName,
+                });
+                setToken(storedToken);
+                console.log('✅ Local token validated successfully');
+              } else {
+                // Token invalid, clear storage
+                console.error('❌ Local token validation failed - API returned success=false');
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+              }
             } else {
+              // Token invalid, clear storage
+              console.error('❌ Local token validation failed - response not OK');
               localStorage.removeItem('token');
               localStorage.removeItem('user');
             }
           }
         } catch (error) {
-          // Token expired or invalid, clear storage
-          console.error('Token validation failed:', error);
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
+          // Unexpected error - restore from localStorage as fallback
+          console.error('⚠️ Token validation error (restoring from localStorage):', error);
+          try {
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+            setToken(storedToken);
+          } catch (parseError) {
+            console.error('❌ Failed to parse stored user data');
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          }
         }
       }
       setLoading(false);
