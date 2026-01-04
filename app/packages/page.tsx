@@ -192,33 +192,8 @@ export default function PackagesPage() {
       setSubmitting(true);
       setLoading(true);
       
-      const packageData: {
-        name: string;
-        price: number;
-        discount?: number;
-        duration: string;
-        featureIds?: number[];
-      } = {
-        name: formData.name,
-        price: parseFloat(formData.price),
-        duration: formData.duration,
-      };
-      
-      // Include discount if provided (and > 0)
-      if (formData.discount && parseFloat(formData.discount) > 0) {
-        packageData.discount = parseFloat(formData.discount);
-      }
-      
-      // Only include featureIds if at least one is selected
-      // Ensure all IDs are regular numbers (not BigInt)
-      if (formData.featureIds.length > 0) {
-        packageData.featureIds = formData.featureIds.map(id => 
-          typeof id === 'bigint' ? Number(id) : typeof id === 'string' ? parseInt(id, 10) : id
-        );
-      }
-
       if (editingPackage) {
-        // Update existing package
+        // Update existing package - only send fields that should be updated
         // Convert ID to number to avoid BigInt issues
         const packageId = typeof editingPackage.id === 'bigint' 
           ? Number(editingPackage.id) 
@@ -226,19 +201,73 @@ export default function PackagesPage() {
             ? parseInt(editingPackage.id, 10) 
             : editingPackage.id;
         
+        // Build update payload - all fields are optional for updates
+        const updateData: {
+          name?: string;
+          price?: number;
+          discount?: number;
+          duration?: string;
+          featureIds?: number[];
+        } = {};
+        
+        // Only include fields that are being updated
+        if (formData.name) updateData.name = formData.name;
+        if (formData.price) updateData.price = parseFloat(formData.price);
+        if (formData.duration) updateData.duration = formData.duration;
+        
+        // Always include discount if it's in the form (even if 0, to remove discount)
+        if (formData.discount !== '') {
+          updateData.discount = parseFloat(formData.discount || '0');
+        }
+        
+        // Include featureIds if provided (empty array will remove all features)
+        if (formData.featureIds.length > 0) {
+          updateData.featureIds = formData.featureIds.map(id => 
+            typeof id === 'bigint' ? Number(id) : typeof id === 'string' ? parseInt(id, 10) : id
+          );
+        }
+        
         console.log('🔵 Updating package:', packageId);
-        const response = await api.put(`/api/packages/${packageId}`, packageData);
+        console.log('Update data:', JSON.stringify(updateData, null, 2));
+        const response = await api.put(`/api/packages/${packageId}`, updateData);
         console.log('Update package response:', response.data);
         
         if (response.data.success) {
-          showAlert('success', 'Package Updated', 'Package updated successfully!');
+          showAlert('success', 'Package Updated', response.data.message || 'Package updated successfully!');
           await fetchPackages(); // Refresh list
           setEditingPackage(null);
           resetForm();
           setShowAddForm(false);
+        } else {
+          showAlert('error', 'Update Failed', response.data.error?.message || 'Failed to update package');
         }
       } else {
-        // Create new package
+        // Create new package - all required fields must be present
+        const packageData: {
+          name: string;
+          price: number;
+          discount?: number;
+          duration: string;
+          featureIds?: number[];
+        } = {
+          name: formData.name,
+          price: parseFloat(formData.price),
+          duration: formData.duration,
+        };
+        
+        // Include discount if provided (and > 0)
+        if (formData.discount && parseFloat(formData.discount) > 0) {
+          packageData.discount = parseFloat(formData.discount);
+        }
+        
+        // Only include featureIds if at least one is selected
+        // Ensure all IDs are regular numbers (not BigInt)
+        if (formData.featureIds.length > 0) {
+          packageData.featureIds = formData.featureIds.map(id => 
+            typeof id === 'bigint' ? Number(id) : typeof id === 'string' ? parseInt(id, 10) : id
+          );
+        }
+        
         console.log('🔵 Creating new package');
         console.log('Package data being sent:', JSON.stringify(packageData, null, 2));
         
@@ -263,33 +292,51 @@ export default function PackagesPage() {
       console.error('Error saving package:', error);
       console.error('Error response data:', error.response?.data);
       
-      // Check if it's an INTERNAL_ERROR related to BigInt - package might still be created
       const errorCode = error.response?.data?.error?.code;
       const errorMessage = error.response?.data?.error?.message || '';
+      const errorDetails = error.response?.data?.error?.details;
       
-      if (errorCode === 'INTERNAL_ERROR' && (errorMessage.includes('BigInt') || errorMessage.includes('packageFeature'))) {
-        // Package might have been created despite the error
-        // Refresh and check after a short delay
-        const packageName = formData.name;
-        const packagePrice = parseFloat(formData.price);
-        
-        setTimeout(async () => {
-          await fetchPackages();
+      // Handle specific error codes from API documentation
+      if (errorCode === 'FORBIDDEN') {
+        showAlert('error', 'Access Denied', 'You do not have permission to perform this action. Admin access required.');
+      } else if (errorCode === 'NOT_FOUND') {
+        showAlert('error', 'Package Not Found', editingPackage 
+          ? 'The package you are trying to update was not found. It may have been deleted.'
+          : 'Package not found.');
+      } else if (errorCode === 'VALIDATION_ERROR') {
+        // Show validation errors with details if available
+        let validationMessage = errorMessage;
+        if (errorDetails && Array.isArray(errorDetails) && errorDetails.length > 0) {
+          const detailMessages = errorDetails.map((d: any) => d.message).join(', ');
+          validationMessage = `${errorMessage}: ${detailMessages}`;
+        }
+        showAlert('error', 'Validation Error', validationMessage);
+      } else if (errorCode === 'INTERNAL_ERROR' && (errorMessage.includes('BigInt') || errorMessage.includes('packageFeature'))) {
+        // Package might have been created despite the error (only for create, not update)
+        if (!editingPackage) {
+          const packageName = formData.name;
+          const packagePrice = parseFloat(formData.price);
           
-          // Check if a package with the same name and price was just created
-          const createdPackage = packages.find(p => 
-            p.name === packageName && Math.abs(p.price - packagePrice) < 0.01
-          );
-          
-          if (createdPackage) {
-            showAlert('warning', 'Package Created with Warning', 
-              'Package was created but there was an issue assigning features. Please edit the package to add features manually.');
-            setShowAddForm(false);
-            resetForm();
-          } else {
-            showAlert('error', 'Error', 'Package creation failed. The error suggests a backend issue with feature assignment. Please try again or contact support.');
-          }
-        }, 1000);
+          setTimeout(async () => {
+            await fetchPackages();
+            
+            // Check if a package with the same name and price was just created
+            const createdPackage = packages.find(p => 
+              p.name === packageName && Math.abs(p.price - packagePrice) < 0.01
+            );
+            
+            if (createdPackage) {
+              showAlert('warning', 'Package Created with Warning', 
+                'Package was created but there was an issue assigning features. Please edit the package to add features manually.');
+              setShowAddForm(false);
+              resetForm();
+            } else {
+              showAlert('error', 'Error', 'Package creation failed. The error suggests a backend issue with feature assignment. Please try again or contact support.');
+            }
+          }, 1000);
+        } else {
+          showAlert('error', 'Error', getErrorMessage(error));
+        }
       } else {
         showAlert('error', 'Error', getErrorMessage(error));
       }
