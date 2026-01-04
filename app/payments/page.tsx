@@ -243,6 +243,7 @@ export default function PaymentsPage() {
       return;
     }
 
+    let receiptPayment = payment;
     try {
       console.log('🔵 Fetching receipt data for payment:', payment.id);
       const response = await api.get(`/api/payments/${payment.id}/receipt`);
@@ -251,21 +252,18 @@ export default function PaymentsPage() {
       if (response.data.success) {
         const receiptData = response.data.data;
         // Use receipt data from API for printing
-        payment = receiptData.payment || payment;
+        receiptPayment = receiptData.payment || payment;
       }
     } catch (error: any) {
       console.error('Error fetching receipt:', error);
       // Continue with existing payment data if API fails
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
     const receiptHTML = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Payment Receipt - ${payment.member.name}</title>
+          <title>Payment Receipt - ${receiptPayment.member.name}</title>
           <style>
             @media print {
               @page { margin: 20mm; }
@@ -354,25 +352,25 @@ export default function PaymentsPage() {
           <div class="receipt-info">
             <div class="info-row">
               <span class="info-label">Receipt Number:</span>
-              <span class="info-value">#${payment.id}</span>
+              <span class="info-value">#${receiptPayment.id}</span>
             </div>
             <div class="info-row">
               <span class="info-label">Date:</span>
-              <span class="info-value">${formatDate(payment.paidDate)}</span>
+              <span class="info-value">${formatDate(receiptPayment.paidDate || receiptPayment.dueDate)}</span>
             </div>
             <div class="info-row">
               <span class="info-label">Member Name:</span>
-              <span class="info-value">${payment.member.name}</span>
+              <span class="info-value">${receiptPayment.member.name}</span>
             </div>
-            ${payment.member.phone ? `
+            ${receiptPayment.member.phone ? `
             <div class="info-row">
               <span class="info-label">Phone:</span>
-              <span class="info-value">${payment.member.phone}</span>
+              <span class="info-value">${receiptPayment.member.phone}</span>
             </div>
             ` : ''}
             <div class="info-row">
               <span class="info-label">Payment Month:</span>
-              <span class="info-value">${payment.month}</span>
+              <span class="info-value">${receiptPayment.month}</span>
             </div>
             <div class="info-row">
               <span class="info-label">Status:</span>
@@ -383,11 +381,11 @@ export default function PaymentsPage() {
           <div class="amount-section">
             <div class="amount-row">
               <span>Amount:</span>
-              <span>Rs. ${payment.amount.toFixed(2)}</span>
+              <span>Rs. ${receiptPayment.amount.toFixed(2)}</span>
             </div>
             <div class="amount-row total">
               <span>Total Paid:</span>
-              <span>Rs. ${payment.amount.toFixed(2)}</span>
+              <span>Rs. ${receiptPayment.amount.toFixed(2)}</span>
             </div>
           </div>
           
@@ -400,12 +398,24 @@ export default function PaymentsPage() {
       </html>
     `;
 
-    printWindow.document.write(receiptHTML);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+    // Create a blob URL and open it in a new window
+    const blob = new Blob([receiptHTML], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, '_blank');
+    
+    if (!printWindow) {
+      showAlert('error', 'Print Error', 'Please allow popups for this site to print receipts.');
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+        // Clean up the blob URL after printing
+        URL.revokeObjectURL(url);
+      }, 250);
+    };
   };
 
   const handleCheckOverdue = async () => {
