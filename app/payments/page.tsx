@@ -237,10 +237,54 @@ export default function PaymentsPage() {
     setConfirmDialog({ isOpen: false, paymentId: null, payment: null });
   };
 
-  const handlePrintReceipt = (payment: Payment) => {
+  const handlePrintReceipt = async (payment: Payment) => {
     if (payment.status !== 'PAID') {
       showAlert('warning', 'Cannot Print Receipt', 'Receipt can only be printed for paid payments.');
       return;
+    }
+
+    // Fetch member details to get package information
+    let packageInfo: { name: string; price: number; discount?: number | null } | null = null;
+    let originalAmount = payment.amount;
+    let discountAmount = 0;
+
+    try {
+      const memberResponse = await api.get(`/api/members/${payment.memberId}`);
+      if (memberResponse.data.success && memberResponse.data.data.member) {
+        const member = memberResponse.data.data.member;
+        if (member.packageId) {
+          // Fetch package details
+          const packageResponse = await api.get(`/api/packages/${member.packageId}`);
+          if (packageResponse.data.success && packageResponse.data.data.package) {
+            packageInfo = packageResponse.data.data.package;
+            
+            // Calculate monthly amount from package
+            const packagePrice = packageInfo.price;
+            const packageDiscount = packageInfo.discount || 0;
+            const isAnnual = packageInfo.duration.includes('12');
+            
+            // Calculate monthly base amount
+            let monthlyBase = isAnnual ? packagePrice / 12 : packagePrice;
+            
+            // Apply package discount to monthly amount
+            if (packageDiscount > 0) {
+              // If annual package, discount is already applied to total, so divide by 12
+              if (isAnnual) {
+                monthlyBase = (packagePrice - packageDiscount) / 12;
+                discountAmount = packageDiscount / 12;
+              } else {
+                monthlyBase = packagePrice - packageDiscount;
+                discountAmount = packageDiscount;
+              }
+            }
+            
+            originalAmount = isAnnual ? packagePrice / 12 : packagePrice;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Could not fetch package information for receipt:', error);
+      // Continue with receipt generation even if package fetch fails
     }
 
     const receiptHTML = `
@@ -300,6 +344,18 @@ export default function PaymentsPage() {
               justify-content: space-between;
               font-size: 18px;
               margin: 10px 0;
+            }
+            .discount-row {
+              display: flex;
+              justify-content: space-between;
+              font-size: 16px;
+              margin: 8px 0;
+              color: #10b981;
+            }
+            .original-price {
+              text-decoration: line-through;
+              color: #999;
+              font-size: 16px;
             }
             .total {
               font-size: 24px;
@@ -363,10 +419,25 @@ export default function PaymentsPage() {
           </div>
           
           <div class="amount-section">
+            ${packageInfo && discountAmount > 0 ? `
             <div class="amount-row">
-              <span>Amount:</span>
-              <span>Rs. ${payment.amount.toFixed(2)}</span>
+              <span>Package:</span>
+              <span>${packageInfo.name}</span>
             </div>
+            <div class="amount-row">
+              <span>Original Amount:</span>
+              <span class="original-price">Rs. ${originalAmount.toFixed(2)}</span>
+            </div>
+            <div class="discount-row">
+              <span>Discount:</span>
+              <span>- Rs. ${discountAmount.toFixed(2)}</span>
+            </div>
+            ` : packageInfo ? `
+            <div class="amount-row">
+              <span>Package:</span>
+              <span>${packageInfo.name}</span>
+            </div>
+            ` : ''}
             <div class="amount-row total">
               <span>Total Paid:</span>
               <span>Rs. ${payment.amount.toFixed(2)}</span>

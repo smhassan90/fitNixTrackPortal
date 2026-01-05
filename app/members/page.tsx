@@ -43,6 +43,7 @@ interface Member {
   comments: string | null;
   packageId: string | null;
   discount?: number;
+  admissionAmount?: number | null;
   trainers: Trainer[];
 }
 
@@ -76,7 +77,39 @@ export default function MembersPage() {
     requiresTrainer: false,
     trainerId: '',
     discount: '',
+    waiveAdmissionFee: false,
   });
+  // Load admission amount from localStorage (managed in Settings page)
+  const getAdmissionAmount = () => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('admissionAmount');
+      return saved ? parseFloat(saved) : 1000; // Default: Rs. 1000
+    }
+    return 1000;
+  };
+
+  const [globalAdmissionAmount, setGlobalAdmissionAmount] = useState<number>(getAdmissionAmount);
+
+  // Sync with localStorage changes (when updated in Settings page)
+  useEffect(() => {
+    const checkAdmissionAmount = () => {
+      const current = getAdmissionAmount();
+      if (current !== globalAdmissionAmount) {
+        setGlobalAdmissionAmount(current);
+      }
+    };
+
+    // Check on focus (when switching back to this tab)
+    window.addEventListener('focus', checkAdmissionAmount);
+    
+    // Also check periodically for same-tab updates
+    const interval = setInterval(checkAdmissionAmount, 1000);
+
+    return () => {
+      window.removeEventListener('focus', checkAdmissionAmount);
+      clearInterval(interval);
+    };
+  }, [globalAdmissionAmount]);
 
   // Fetch members from API
   const fetchMembers = useCallback(async (search?: string, sort?: { key: string; direction: string }) => {
@@ -106,6 +139,7 @@ export default function MembersPage() {
           comments: m.comments,
           packageId: m.packageId,
           discount: m.discount,
+          admissionAmount: m.admissionAmount,
           trainers: m.trainers || [],
         }));
         setMembers(transformedMembers);
@@ -308,6 +342,7 @@ export default function MembersPage() {
         comments: formData.comments || undefined,
         packageId: formData.packageId || undefined,
         discount: formData.discount ? parseFloat(formData.discount) : undefined,
+        admissionAmount: formData.waiveAdmissionFee ? 0 : globalAdmissionAmount,
       };
 
       // Handle trainerIds differently for create vs update
@@ -355,9 +390,26 @@ export default function MembersPage() {
         console.log('Create member response:', response.data);
         
         if (response.data.success) {
+          const createdMember = response.data.data.member;
           showAlert('success', 'Member Added', 'Member added successfully!');
-          await fetchMembers(); // Refresh list
           setShowAddForm(false);
+          
+          // Try to refresh members list (don't block on error)
+          try {
+            await fetchMembers(); // Refresh list
+          } catch (refreshError) {
+            console.warn('Failed to refresh members list after creation:', refreshError);
+            // Don't show error - member was created successfully
+          }
+          
+          // Generate and print receipt (don't block on error)
+          try {
+            handlePrintMemberReceipt(createdMember, memberData);
+          } catch (receiptError) {
+            console.warn('Failed to print receipt:', receiptError);
+            // Don't show error - member was created successfully, receipt is optional
+          }
+          
           resetForm();
         }
       }
@@ -384,6 +436,7 @@ export default function MembersPage() {
       requiresTrainer: member.trainers.length > 0,
       trainerId: member.trainers.length > 0 ? member.trainers[0].id : '',
       discount: member.discount?.toString() || '',
+      waiveAdmissionFee: member.admissionAmount === 0 || member.admissionAmount === null,
     });
     // Scroll to form
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -442,6 +495,7 @@ export default function MembersPage() {
       requiresTrainer: false,
       trainerId: '',
       discount: '',
+      waiveAdmissionFee: false,
     });
   };
 
@@ -466,28 +520,91 @@ export default function MembersPage() {
     setFormData({ ...formData, cnic: formatted });
   };
 
-  const selectedTrainer = trainers.find(t => t.id === formData.trainerId);
-  const selectedPackage = availablePackages.find(p => p.id === formData.packageId);
+  // Get selected package and trainer for display - recalculate on every render
+  const selectedPackage = availablePackages.find(p => 
+    String(p.id) === String(formData.packageId)
+  );
+  const selectedTrainer = trainers.find(t => 
+    String(t.id) === String(formData.trainerId)
+  );
 
-  // Calculate monthly payment
+  // Calculate one-time payment (admission fee + first month's payment)
+  const oneTimePayment = useMemo(() => {
+    let total = 0;
+    
+    // Add admission fee (unless waived)
+    if (!formData.waiveAdmissionFee) {
+      total += globalAdmissionAmount;
+    }
+    
+    // Add first month's payment (package + trainer - discounts)
+    let monthlyTotal = 0;
+    
+    // Find selected package
+    const pkg = availablePackages.find(p => 
+      String(p.id) === String(formData.packageId)
+    );
+    
+    if (pkg) {
+      const packagePrice = pkg.discount && pkg.discount > 0
+        ? Math.max(0, pkg.price - pkg.discount)
+        : pkg.price;
+      if (pkg.duration.includes('12')) {
+        monthlyTotal += packagePrice / 12;
+      } else {
+        monthlyTotal += packagePrice;
+      }
+    }
+    
+    // Find selected trainer
+    const trainer = trainers.find(t => 
+      String(t.id) === String(formData.trainerId)
+    );
+    
+    if (trainer && trainer.charges) {
+      monthlyTotal += trainer.charges;
+    }
+    
+    // Apply discount
+    const discountAmount = parseFloat(formData.discount || '0');
+    monthlyTotal = Math.max(0, monthlyTotal - discountAmount);
+    
+    // Add first month to one-time payment
+    total += monthlyTotal;
+    
+    return total;
+  }, [formData.waiveAdmissionFee, formData.packageId, formData.trainerId, formData.discount, globalAdmissionAmount]);
+
+  // Calculate monthly payment - recalculate whenever formData changes
+  // Note: We access availablePackages and trainers from closure, but only depend on formData values
   const monthlyPayment = useMemo(() => {
     let total = 0;
     
+    // Find selected package using current formData
+    const pkg = availablePackages.find(p => 
+      String(p.id) === String(formData.packageId)
+    );
+    
     // Package price (convert annual to monthly if needed, apply discount)
-    if (selectedPackage) {
-      const packagePrice = selectedPackage.discount && selectedPackage.discount > 0
-        ? Math.max(0, selectedPackage.price - selectedPackage.discount)
-        : selectedPackage.price;
-      if (selectedPackage.duration.includes('12')) {
+    if (pkg) {
+      const packagePrice = pkg.discount && pkg.discount > 0
+        ? Math.max(0, pkg.price - pkg.discount)
+        : pkg.price;
+      if (pkg.duration.includes('12')) {
         total += packagePrice / 12; // Annual package divided by 12
       } else {
         total += packagePrice;
       }
     }
     
+    // Find selected trainer using current formData
+    const trainer = trainers.find(t => 
+      String(t.id) === String(formData.trainerId)
+    );
+    
     // Trainer charges
-    if (selectedTrainer && selectedTrainer.charges) {
-      total += selectedTrainer.charges;
+    if (trainer && trainer.charges) {
+      total += trainer.charges;
     }
     
     // Apply discount
@@ -495,7 +612,227 @@ export default function MembersPage() {
     total = Math.max(0, total - discountAmount);
     
     return total;
-  }, [selectedPackage, selectedTrainer, formData.discount]);
+  }, [formData.packageId, formData.trainerId, formData.discount]);
+
+  const handlePrintMemberReceipt = (member: any, memberData: any) => {
+    try {
+      // Get package and trainer info for receipt
+      const pkg = availablePackages.find(p => String(p.id) === String(memberData.packageId));
+      const trainer = trainers.find(t => String(t.id) === String(memberData.trainerId));
+    
+    // Calculate amounts
+    let monthlyTotal = 0;
+    if (pkg) {
+      const packagePrice = pkg.discount && pkg.discount > 0
+        ? Math.max(0, pkg.price - pkg.discount)
+        : pkg.price;
+      monthlyTotal += pkg.duration.includes('12') ? packagePrice / 12 : packagePrice;
+    }
+    if (trainer && trainer.charges) {
+      monthlyTotal += trainer.charges;
+    }
+    const discountAmount = parseFloat(memberData.discount || '0');
+    monthlyTotal = Math.max(0, monthlyTotal - discountAmount);
+    
+    // Get admission fee - check if it was waived (admissionAmount === 0) or use global amount
+    const admissionFee = memberData.admissionAmount !== undefined 
+      ? memberData.admissionAmount 
+      : globalAdmissionAmount;
+    const oneTimeTotal = admissionFee + monthlyTotal;
+    
+    const receiptHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Membership Receipt - ${member.name}</title>
+          <style>
+            @media print {
+              @page { margin: 20mm; }
+            }
+            body {
+              font-family: Arial, sans-serif;
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 3px solid #333;
+              padding-bottom: 20px;
+              margin-bottom: 30px;
+            }
+            .header h1 {
+              margin: 0;
+              color: #333;
+              font-size: 28px;
+            }
+            .header p {
+              margin: 5px 0;
+              color: #666;
+            }
+            .receipt-info {
+              margin-bottom: 30px;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 10px 0;
+              border-bottom: 1px solid #eee;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #333;
+            }
+            .info-value {
+              color: #666;
+            }
+            .amount-section {
+              background: #f5f5f5;
+              padding: 20px;
+              border-radius: 8px;
+              margin: 30px 0;
+            }
+            .amount-row {
+              display: flex;
+              justify-content: space-between;
+              font-size: 18px;
+              margin: 10px 0;
+            }
+            .total {
+              font-size: 24px;
+              font-weight: bold;
+              color: #333;
+              border-top: 2px solid #333;
+              padding-top: 10px;
+              margin-top: 10px;
+            }
+            .footer {
+              margin-top: 40px;
+              text-align: center;
+              color: #666;
+              font-size: 12px;
+              border-top: 1px solid #eee;
+              padding-top: 20px;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 5px 15px;
+              background: #10b981;
+              color: white;
+              border-radius: 20px;
+              font-weight: bold;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>FitNixTrack Gym</h1>
+            <p>Membership Receipt</p>
+          </div>
+          
+          <div class="receipt-info">
+            <div class="info-row">
+              <span class="info-label">Receipt Number:</span>
+              <span class="info-value">#${member.id}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Date:</span>
+              <span class="info-value">${formatDate(new Date().toISOString())}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Member Name:</span>
+              <span class="info-value">${member.name}</span>
+            </div>
+            ${member.phone ? `
+            <div class="info-row">
+              <span class="info-label">Phone:</span>
+              <span class="info-value">${member.phone}</span>
+            </div>
+            ` : ''}
+            ${member.email ? `
+            <div class="info-row">
+              <span class="info-label">Email:</span>
+              <span class="info-value">${member.email}</span>
+            </div>
+            ` : ''}
+            ${pkg ? `
+            <div class="info-row">
+              <span class="info-label">Package:</span>
+              <span class="info-value">${pkg.name} (${pkg.duration})</span>
+            </div>
+            ` : ''}
+            ${trainer ? `
+            <div class="info-row">
+              <span class="info-label">Trainer:</span>
+              <span class="info-value">${trainer.name}</span>
+            </div>
+            ` : ''}
+            <div class="info-row">
+              <span class="info-label">Status:</span>
+              <span class="info-value"><span class="status-badge">ACTIVE</span></span>
+            </div>
+          </div>
+          
+          <div class="amount-section">
+            <div class="amount-row">
+              <span>Admission Fee:</span>
+              <span>Rs. ${admissionFee.toFixed(2)}</span>
+            </div>
+            ${monthlyTotal > 0 ? `
+            <div class="amount-row">
+              <span>First Month Payment:</span>
+              <span>Rs. ${monthlyTotal.toFixed(2)}</span>
+            </div>
+            ` : ''}
+            <div class="amount-row total">
+              <span>Total One-Time Payment:</span>
+              <span>Rs. ${oneTimeTotal.toFixed(2)}</span>
+            </div>
+            ${monthlyTotal > 0 ? `
+            <div class="amount-row" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ccc;">
+              <span>Monthly Recurring Payment:</span>
+              <span>Rs. ${monthlyTotal.toFixed(2)}</span>
+            </div>
+            ` : ''}
+          </div>
+          
+          <div class="footer">
+            <p>Thank you for joining FitNixTrack Gym!</p>
+            <p>This is a computer-generated receipt.</p>
+            <p>Generated on: ${formatDate(new Date().toISOString())}</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    // Create a blob URL and open it in a new window
+    const blob = new Blob([receiptHTML], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, '_blank');
+    
+    if (!printWindow) {
+      showAlert('error', 'Print Error', 'Please allow popups for this site to print receipts.');
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+        // Clean up the blob URL after printing
+        URL.revokeObjectURL(url);
+      }, 250);
+    };
+    
+    printWindow.onerror = () => {
+      console.warn('Error opening print window');
+      URL.revokeObjectURL(url);
+    };
+    } catch (error) {
+      console.error('Error generating receipt:', error);
+      // Don't throw - receipt printing failure shouldn't block member creation success
+    }
+  };
 
   const openAddForm = () => {
     setEditingMember(null);
@@ -783,6 +1120,48 @@ export default function MembersPage() {
                   )}
                 </div>
                 
+                {/* Admission Amount Field */}
+                <div className="md:col-span-2">
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <label className="block text-sm font-medium text-dark-gray mb-1">
+                          Admission Fee
+                        </label>
+                        <p className="text-xs text-gray-500">
+                          One-time admission fee: <span className="font-semibold text-dark-gray">Rs. {globalAdmissionAmount.toLocaleString()}</span>
+                          <span className="ml-2 text-blue-600 hover:text-blue-800">
+                            <a href="/settings" className="underline">Change in Settings</a>
+                          </span>
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={formData.waiveAdmissionFee}
+                            onChange={(e) => {
+                              setFormData({ ...formData, waiveAdmissionFee: e.target.checked });
+                            }}
+                            className="w-5 h-5 text-primary border-gray-300 rounded focus:ring-primary"
+                          />
+                          <span className="text-sm font-medium text-dark-gray">Waive Admission Fee</span>
+                        </label>
+                      </div>
+                    </div>
+                    {formData.waiveAdmissionFee && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mt-2">
+                        <p className="text-xs text-yellow-800 flex items-center">
+                          <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          Admission fee will be waived for this member
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Discount Field */}
                 {selectedPackage && (
                   <div className="md:col-span-2">
@@ -812,15 +1191,38 @@ export default function MembersPage() {
                   </div>
                 )}
                 
-                {/* Monthly Payment Summary */}
-                {selectedPackage && (
-                  <div className="md:col-span-2">
-                    <div className="bg-gradient-to-r from-primary to-primary-dark rounded-lg p-5 text-white">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="text-sm font-medium text-white opacity-90 mb-2">Monthly Payment</p>
-                          <div className="space-y-1 text-xs text-white opacity-80">
-                            {selectedPackage && (() => {
+                {/* Payment Summary */}
+                <div className="md:col-span-2">
+                  <div className="bg-gradient-to-r from-primary to-primary-dark rounded-lg p-5 text-white">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-white opacity-90 mb-2">Payment Summary</p>
+                        <div className="space-y-1 text-xs text-white opacity-80">
+                          {/* Admission Fee */}
+                          <div className="flex justify-between items-center pb-2 border-b border-white border-opacity-20">
+                            <span>Admission Fee:</span>
+                            <span>
+                              {formData.waiveAdmissionFee ? (
+                                <span className="line-through opacity-60">Rs. {globalAdmissionAmount.toLocaleString()}</span>
+                              ) : (
+                                <span>Rs. {globalAdmissionAmount.toLocaleString()}</span>
+                              )}
+                            </span>
+                          </div>
+                          {formData.waiveAdmissionFee && (
+                            <div className="flex justify-between items-center text-yellow-200 pb-2 border-b border-white border-opacity-20">
+                              <span className="flex items-center">
+                                <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                </svg>
+                                Admission Fee Waived
+                              </span>
+                              <span className="text-green-300">Rs. 0</span>
+                            </div>
+                          )}
+                          {/* Monthly Payment Breakdown */}
+                          <div className="pt-2 space-y-1">
+                            {selectedPackage ? (() => {
                               const packagePrice = selectedPackage.discount && selectedPackage.discount > 0
                                 ? Math.max(0, selectedPackage.price - selectedPackage.discount)
                                 : selectedPackage.price;
@@ -850,37 +1252,74 @@ export default function MembersPage() {
                                   </div>
                                   {selectedPackage.discount && selectedPackage.discount > 0 && (
                                     <div className="flex justify-between text-xs text-white opacity-80 mt-1">
-                                      <span>Discount:</span>
+                                      <span>Package Discount:</span>
                                       <span>Rs. {selectedPackage.discount.toLocaleString()}</span>
                                     </div>
                                   )}
                                 </div>
                               );
-                            })()}
-                            {selectedTrainer && selectedTrainer.charges && (
-                              <div className="flex justify-between">
+                            })() : (
+                              <div className="flex justify-between text-white opacity-60">
+                                <span>Package:</span>
+                                <span>Not selected</span>
+                              </div>
+                            )}
+                            {selectedTrainer && selectedTrainer.charges ? (
+                              <div className="flex justify-between pt-1">
                                 <span>Trainer ({selectedTrainer.name}):</span>
                                 <span>Rs. {selectedTrainer.charges.toLocaleString()}</span>
                               </div>
-                            )}
+                            ) : formData.requiresTrainer && !selectedTrainer ? (
+                              <div className="flex justify-between text-white opacity-60 pt-1">
+                                <span>Trainer:</span>
+                                <span>Not selected</span>
+                              </div>
+                            ) : null}
                             {formData.discount && parseFloat(formData.discount) > 0 && (
-                              <div className="flex justify-between text-green-200">
-                                <span>Discount:</span>
+                              <div className="flex justify-between text-xs text-green-300 pt-1">
+                                <span>Additional Discount:</span>
                                 <span>- Rs. {parseFloat(formData.discount).toLocaleString()}</span>
                               </div>
                             )}
                           </div>
                         </div>
-                        <div className="text-right border-l border-white border-opacity-30 pl-5">
+                      </div>
+                      <div className="text-right border-l border-white border-opacity-30 pl-5 ml-5">
+                        {/* One-Time Payment */}
+                        <div className="mb-4 pb-4 border-b border-white border-opacity-20">
+                          <p className="text-xs text-white opacity-80 mb-1">One-Time Payment</p>
+                          <p className="text-2xl font-bold">
+                            Rs. {oneTimePayment.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          </p>
+                          <div className="text-xs text-white opacity-70 mt-1 space-y-0.5">
+                            {!formData.waiveAdmissionFee && (
+                              <div>Admission: Rs. {globalAdmissionAmount.toLocaleString()}</div>
+                            )}
+                            {formData.waiveAdmissionFee && (
+                              <div className="text-yellow-200">Admission fee waived</div>
+                            )}
+                            {monthlyPayment > 0 && (
+                              <div>First month: Rs. {monthlyPayment.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Monthly Payment */}
+                        <div>
                           <p className="text-xs text-white opacity-80 mb-1">Total Monthly</p>
                           <p className="text-3xl font-bold">
                             Rs. {monthlyPayment.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                           </p>
+                          {monthlyPayment === 0 && !selectedPackage && !selectedTrainer && (
+                            <p className="text-xs text-white opacity-60 mt-1">Select package or trainer</p>
+                          )}
+                          {monthlyPayment > 0 && (
+                            <p className="text-xs text-white opacity-70 mt-1">Recurring monthly</p>
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
-                )}
+                </div>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-dark-gray mb-1">Comments</label>
                   <textarea
