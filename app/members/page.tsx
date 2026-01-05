@@ -217,13 +217,24 @@ export default function MembersPage() {
     // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(member =>
-        String(member.id || '').toLowerCase().includes(query) ||
-        member.name.toLowerCase().includes(query) ||
-        member.phone?.toLowerCase().includes(query) ||
-        member.email?.toLowerCase().includes(query) ||
-        member.cnic?.toLowerCase().includes(query)
-      );
+      filtered = filtered.filter(member => {
+        try {
+          const idStr = member.id ? String(member.id).toLowerCase() : '';
+          const nameStr = member.name ? member.name.toLowerCase() : '';
+          const phoneStr = member.phone ? member.phone.toLowerCase() : '';
+          const emailStr = member.email ? member.email.toLowerCase() : '';
+          const cnicStr = member.cnic ? member.cnic.toLowerCase() : '';
+          
+          return idStr.includes(query) ||
+            nameStr.includes(query) ||
+            phoneStr.includes(query) ||
+            emailStr.includes(query) ||
+            cnicStr.includes(query);
+        } catch (error) {
+          console.warn('Error filtering member:', member, error);
+          return false;
+        }
+      });
     }
 
     // Apply sorting
@@ -262,14 +273,14 @@ export default function MembersPage() {
             bValue = b.cnic?.toLowerCase() || '';
             break;
           case 'package':
-            const aPkg = availablePackages.find(p => p.id === a.packageId);
-            const bPkg = availablePackages.find(p => p.id === b.packageId);
+            const aPkg = availablePackages.find(p => String(p.id) === String(a.packageId));
+            const bPkg = availablePackages.find(p => String(p.id) === String(b.packageId));
             aValue = aPkg?.name?.toLowerCase() || '';
             bValue = bPkg?.name?.toLowerCase() || '';
             break;
           case 'monthlyPayment':
-            const aPkg2 = availablePackages.find(p => p.id === a.packageId);
-            const aTrainer = a.trainers.length > 0 ? trainers.find(t => t.id === a.trainers[0].id) : null;
+            const aPkg2 = availablePackages.find(p => String(p.id) === String(a.packageId));
+            const aTrainer = a.trainers.length > 0 ? trainers.find(t => String(t.id) === String(a.trainers[0].id)) : null;
             let aTotal = 0;
             if (aPkg2) {
               const aPackagePrice = aPkg2.discount && aPkg2.discount > 0
@@ -280,8 +291,8 @@ export default function MembersPage() {
             if (aTrainer?.charges) aTotal += aTrainer.charges;
             if (a.discount) aTotal = Math.max(0, aTotal - a.discount);
             
-            const bPkg2 = availablePackages.find(p => p.id === b.packageId);
-            const bTrainer = b.trainers.length > 0 ? trainers.find(t => t.id === b.trainers[0].id) : null;
+            const bPkg2 = availablePackages.find(p => String(p.id) === String(b.packageId));
+            const bTrainer = b.trainers.length > 0 ? trainers.find(t => String(t.id) === String(b.trainers[0].id)) : null;
             let bTotal = 0;
             if (bPkg2) {
               const bPackagePrice = bPkg2.discount && bPkg2.discount > 0
@@ -296,8 +307,8 @@ export default function MembersPage() {
             bValue = bTotal;
             break;
           case 'trainer':
-            const aTrainer2 = a.trainers.length > 0 ? trainers.find(t => t.id === a.trainers[0].id) : null;
-            const bTrainer2 = b.trainers.length > 0 ? trainers.find(t => t.id === b.trainers[0].id) : null;
+            const aTrainer2 = a.trainers.length > 0 ? trainers.find(t => String(t.id) === String(a.trainers[0].id)) : null;
+            const bTrainer2 = b.trainers.length > 0 ? trainers.find(t => String(t.id) === String(b.trainers[0].id)) : null;
             aValue = aTrainer2?.name?.toLowerCase() || '';
             bValue = bTrainer2?.name?.toLowerCase() || '';
             break;
@@ -510,7 +521,7 @@ export default function MembersPage() {
   // Get selected package and trainer for display - recalculate on every render
   const selectedPackage = availablePackages.find(p => 
     String(p.id) === String(formData.packageId)
-  );
+  ) || null;
   const selectedTrainer = trainers.find(t => 
     String(t.id) === String(formData.trainerId)
   );
@@ -530,7 +541,7 @@ export default function MembersPage() {
     // Find selected package
     const pkg = availablePackages.find(p => 
       String(p.id) === String(formData.packageId)
-    );
+    ) || null;
     
     if (pkg) {
       const packagePrice = pkg.discount && pkg.discount > 0
@@ -570,7 +581,7 @@ export default function MembersPage() {
     // Find selected package using current formData
     const pkg = availablePackages.find(p => 
       String(p.id) === String(formData.packageId)
-    );
+    ) || null;
     
     // Package price (convert annual to monthly if needed, apply discount)
     if (pkg) {
@@ -1461,8 +1472,8 @@ export default function MembersPage() {
                 </tr>
               ) : (
                 filteredMembers.map((member) => {
-                  const memberPackage = availablePackages.find(p => p.id === member.packageId);
-                  const memberTrainer = member.trainers.length > 0 ? trainers.find(t => t.id === member.trainers[0].id) : null;
+                  const memberPackage = availablePackages.find(p => String(p.id) === String(member.packageId));
+                  const memberTrainer = member.trainers.length > 0 ? trainers.find(t => String(t.id) === String(member.trainers[0].id)) : null;
                   
                   // Calculate monthly payment for display (apply package discount)
                   let monthlyTotal = 0;
