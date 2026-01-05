@@ -244,7 +244,7 @@ export default function PaymentsPage() {
     }
 
     // Fetch member details to get package information
-    let packageInfo: { name: string; price: number; discount?: number | null } | null = null;
+    let packageInfo: { name: string; price: number; discount?: number | null; duration?: string } | null = null;
     let originalAmount = payment.amount;
     let discountAmount = 0;
 
@@ -259,26 +259,28 @@ export default function PaymentsPage() {
             packageInfo = packageResponse.data.data.package;
             
             // Calculate monthly amount from package
-            const packagePrice = packageInfo.price;
-            const packageDiscount = packageInfo.discount || 0;
-            const isAnnual = packageInfo.duration.includes('12');
-            
-            // Calculate monthly base amount
-            let monthlyBase = isAnnual ? packagePrice / 12 : packagePrice;
-            
-            // Apply package discount to monthly amount
-            if (packageDiscount > 0) {
-              // If annual package, discount is already applied to total, so divide by 12
-              if (isAnnual) {
-                monthlyBase = (packagePrice - packageDiscount) / 12;
-                discountAmount = packageDiscount / 12;
-              } else {
-                monthlyBase = packagePrice - packageDiscount;
-                discountAmount = packageDiscount;
+            if (packageInfo) {
+              const packagePrice = packageInfo.price;
+              const packageDiscount = packageInfo.discount || 0;
+              const isAnnual = packageInfo.duration?.includes('12') || false;
+              
+              // Calculate monthly base amount
+              let monthlyBase = isAnnual ? packagePrice / 12 : packagePrice;
+              
+              // Apply package discount to monthly amount
+              if (packageDiscount > 0) {
+                // If annual package, discount is already applied to total, so divide by 12
+                if (isAnnual) {
+                  monthlyBase = (packagePrice - packageDiscount) / 12;
+                  discountAmount = packageDiscount / 12;
+                } else {
+                  monthlyBase = packagePrice - packageDiscount;
+                  discountAmount = packageDiscount;
+                }
               }
+              
+              originalAmount = isAnnual ? packagePrice / 12 : packagePrice;
             }
-            
-            originalAmount = isAnnual ? packagePrice / 12 : packagePrice;
           }
         }
       }
