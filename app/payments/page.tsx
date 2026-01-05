@@ -688,25 +688,27 @@ export default function PaymentsPage() {
                 className="w-full px-4 py-2 border rounded-lg"
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="block text-sm font-medium text-dark-gray mb-1">&nbsp;</label>
-              <button
-                onClick={handleApplyFilters}
-                className="w-full bg-primary text-white py-2 px-4 rounded-lg hover:bg-primary-dark transition-colors font-medium"
-              >
-                Go
-              </button>
-              <button
-                onClick={() => {
-                  setFilterInputs({ memberId: '', status: '', month: '' });
-                  setFilters({ memberId: '', status: '', month: '' });
-                  setSearchInput('');
-                  setSearchQuery('');
-                }}
-                className="w-full bg-gray-300 text-dark-gray py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
-              >
-                Reset All
-              </button>
+            <div>
+              <label className="block text-sm font-medium text-dark-gray mb-1">Actions</label>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleApplyFilters}
+                  className="w-full bg-primary text-white py-2.5 px-4 rounded-lg hover:bg-primary-dark transition-colors font-medium text-base"
+                >
+                  Go
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterInputs({ memberId: '', status: '', month: '' });
+                    setFilters({ memberId: '', status: '', month: '' });
+                    setSearchInput('');
+                    setSearchQuery('');
+                  }}
+                  className="w-full bg-gray-300 text-dark-gray py-2.5 px-4 rounded-lg hover:bg-gray-400 transition-colors text-base"
+                >
+                  Reset All
+                </button>
+              </div>
             </div>
           </div>
         </div>
