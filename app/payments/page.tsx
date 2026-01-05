@@ -40,13 +40,22 @@ export default function PaymentsPage() {
   const [allPayments, setAllPayments] = useState<Payment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // What user types
+  const [searchQuery, setSearchQuery] = useState(''); // Actual filter value
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; paymentId: string | null; payment: Payment | null }>({
     isOpen: false,
     paymentId: null,
     payment: null,
   });
+  // Filter inputs (what user selects - doesn't trigger API)
+  const [filterInputs, setFilterInputs] = useState({
+    memberId: '',
+    status: '',
+    month: '',
+  });
+  
+  // Active filters (what triggers API call)
   const [filters, setFilters] = useState({
     memberId: '',
     status: '',
@@ -63,7 +72,7 @@ export default function PaymentsPage() {
       if (filters.memberId) params.append('memberId', filters.memberId);
       if (filters.status) params.append('status', filters.status);
       if (filters.month) params.append('month', filters.month);
-      if (searchQuery) params.append('search', searchQuery);
+      // Note: searchQuery is handled client-side, not sent to API
       if (sortConfig?.key) params.append('sortBy', sortConfig.key);
       if (sortConfig?.direction) params.append('sortOrder', sortConfig.direction);
       params.append('limit', '1000');
@@ -73,8 +82,18 @@ export default function PaymentsPage() {
 
       if (response.data.success) {
         const paymentsList = response.data.data.payments || [];
-        setAllPayments(paymentsList);
-        console.log('✅ Payments loaded:', paymentsList.length);
+        // Normalize IDs to strings to prevent toLowerCase errors
+        const normalizedPayments = paymentsList.map((p: any) => ({
+          ...p,
+          id: String(p.id || ''),
+          memberId: String(p.memberId || ''),
+          member: p.member ? {
+            ...p.member,
+            id: String(p.member.id || ''),
+          } : p.member,
+        }));
+        setAllPayments(normalizedPayments);
+        console.log('✅ Payments loaded:', normalizedPayments.length);
       }
     } catch (error: any) {
       console.error('Error fetching payments:', error);
@@ -82,7 +101,7 @@ export default function PaymentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, searchQuery, sortConfig, showAlert]);
+  }, [filters, sortConfig, showAlert]); // Removed searchQuery - handled client-side
 
   // Fetch members for filter dropdown
   const fetchMembers = useCallback(async () => {
@@ -111,11 +130,21 @@ export default function PaymentsPage() {
   useEffect(() => {
     fetchPayments();
   }, [fetchPayments]);
+  
+  // Function to apply filters (called when Go button is clicked)
+  const handleApplyFilters = () => {
+    setFilters({
+      memberId: filterInputs.memberId,
+      status: filterInputs.status,
+      month: filterInputs.month,
+    });
+  };
 
   // Initialize filters from URL query parameters
   useEffect(() => {
     const statusParam = searchParams.get('status');
     if (statusParam) {
+      setFilterInputs(prev => ({ ...prev, status: statusParam }));
       setFilters(prev => ({ ...prev, status: statusParam }));
     }
   }, [searchParams]);
@@ -132,33 +161,47 @@ export default function PaymentsPage() {
   // Filter and sort payments
   const payments = useMemo(() => {
     let filtered = allPayments.filter(payment => {
-      if (filters.memberId && payment.memberId !== filters.memberId) return false;
-      if (filters.status && payment.status !== filters.status) return false;
-      if (filters.month && payment.month !== filters.month) return false;
-      return true;
+      try {
+        if (filters.memberId && String(payment.memberId || '') !== String(filters.memberId)) return false;
+        if (filters.status && String(payment.status || '') !== String(filters.status)) return false;
+        if (filters.month && String(payment.month || '') !== String(filters.month)) return false;
+        return true;
+      } catch (error) {
+        console.warn('Error in initial filter:', payment, error);
+        return false;
+      }
     });
 
     // Apply search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(payment => {
-        const memberName = payment.member.name?.toLowerCase() || '';
-        const memberPhone = payment.member.phone?.toLowerCase() || '';
-        const memberEmail = payment.member.email?.toLowerCase() || '';
-        const amount = payment.amount.toString();
-        const month = payment.month.toLowerCase();
-        const status = payment.status.toLowerCase();
-        const paymentId = payment.id.toLowerCase();
-        
-        return (
-          memberName.includes(query) ||
-          memberPhone.includes(query) ||
-          memberEmail.includes(query) ||
-          amount.includes(query) ||
-          month.includes(query) ||
-          status.includes(query) ||
-          paymentId.includes(query)
-        );
+        try {
+          const memberName = payment.member?.name ? String(payment.member.name).toLowerCase() : '';
+          const memberPhone = payment.member?.phone ? String(payment.member.phone).toLowerCase() : '';
+          const memberEmail = payment.member?.email ? String(payment.member.email).toLowerCase() : '';
+          const memberId = payment.member?.id ? String(payment.member.id).toLowerCase() : '';
+          const amount = payment.amount ? String(payment.amount).toLowerCase() : '';
+          const month = payment.month ? String(payment.month).toLowerCase() : '';
+          const status = payment.status ? String(payment.status).toLowerCase() : '';
+          const paymentId = payment.id ? String(payment.id).toLowerCase() : '';
+          const memberIdAlt = payment.memberId ? String(payment.memberId).toLowerCase() : '';
+          
+          return (
+            memberName.includes(query) ||
+            memberPhone.includes(query) ||
+            memberEmail.includes(query) ||
+            memberId.includes(query) ||
+            memberIdAlt.includes(query) ||
+            amount.includes(query) ||
+            month.includes(query) ||
+            status.includes(query) ||
+            paymentId.includes(query)
+          );
+        } catch (error) {
+          console.warn('Error filtering payment:', payment, error);
+          return false;
+        }
       });
     }
 
@@ -561,13 +604,18 @@ export default function PaymentsPage() {
         {/* Search/Filter */}
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="flex items-center space-x-4 mb-4">
-            <div className="flex-1">
-              <div className="relative">
+            <div className="flex-1 flex items-center gap-2">
+              <div className="relative flex-1">
                 <input
                   type="text"
                   placeholder="Search payments by member name, phone, email, amount, month, or status..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      setSearchQuery(searchInput);
+                    }
+                  }}
                   className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                 />
                 <svg
@@ -579,15 +627,24 @@ export default function PaymentsPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
-            </div>
-            {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                onClick={() => setSearchQuery(searchInput)}
+                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors font-medium"
               >
-                Clear
+                Go
+              </button>
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchInput('');
+                    setSearchQuery('');
+                  }}
+                  className="px-4 py-2 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Clear
                 </button>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -597,8 +654,8 @@ export default function PaymentsPage() {
             <div>
               <label className="block text-sm font-medium text-dark-gray mb-1">Member</label>
               <select
-                value={filters.memberId}
-                onChange={(e) => setFilters({ ...filters, memberId: e.target.value })}
+                value={filterInputs.memberId}
+                onChange={(e) => setFilterInputs({ ...filterInputs, memberId: e.target.value })}
                 className="w-full px-4 py-2 border rounded-lg"
               >
                 <option value="">All Members</option>
@@ -612,8 +669,8 @@ export default function PaymentsPage() {
             <div>
               <label className="block text-sm font-medium text-dark-gray mb-1">Status</label>
               <select
-                value={filters.status}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                value={filterInputs.status}
+                onChange={(e) => setFilterInputs({ ...filterInputs, status: e.target.value })}
                 className="w-full px-4 py-2 border rounded-lg"
               >
                 <option value="">All Status</option>
@@ -626,15 +683,24 @@ export default function PaymentsPage() {
               <label className="block text-sm font-medium text-dark-gray mb-1">Month</label>
               <input
                 type="month"
-                value={filters.month}
-                onChange={(e) => setFilters({ ...filters, month: e.target.value })}
+                value={filterInputs.month}
+                onChange={(e) => setFilterInputs({ ...filterInputs, month: e.target.value })}
                 className="w-full px-4 py-2 border rounded-lg"
               />
             </div>
-            <div className="flex items-end">
+            <div className="flex flex-col gap-2">
+              <label className="block text-sm font-medium text-dark-gray mb-1">&nbsp;</label>
+              <button
+                onClick={handleApplyFilters}
+                className="w-full bg-primary text-white py-2 px-4 rounded-lg hover:bg-primary-dark transition-colors font-medium"
+              >
+                Go
+              </button>
               <button
                 onClick={() => {
+                  setFilterInputs({ memberId: '', status: '', month: '' });
                   setFilters({ memberId: '', status: '', month: '' });
+                  setSearchInput('');
                   setSearchQuery('');
                 }}
                 className="w-full bg-gray-300 text-dark-gray py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
