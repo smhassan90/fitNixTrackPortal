@@ -6,31 +6,83 @@ import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAlert } from '@/hooks/useAlert';
+import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errorHandler';
+
+interface Settings {
+  admissionFee: number;
+  gym: {
+    id: number;
+    name: string;
+    address: string | null;
+    phone: string | null;
+    email: string | null;
+  };
+}
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
-  const [loading, setLoading] = useState(false);
-  
-  // Load admission amount from localStorage or use default
-  const [admissionAmount, setAdmissionAmount] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('admissionAmount');
-      return saved || '1000';
-    }
-    return '1000';
-  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [admissionAmount, setAdmissionAmount] = useState<string>('');
 
-  const handleSave = () => {
+  // Fetch settings from API
+  const fetchSettings = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/api/settings');
+      if (response.data.success) {
+        setSettings(response.data.data);
+        setAdmissionAmount(response.data.data.admissionFee.toString());
+      }
+    } catch (error: any) {
+      console.error('Error fetching settings:', error);
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const handleSave = async () => {
     const amount = parseFloat(admissionAmount);
     if (isNaN(amount) || amount < 0) {
-      showAlert('error', 'Invalid Amount', 'Please enter a valid admission fee amount.');
+      showAlert('error', 'Invalid Amount', 'Please enter a valid admission fee amount (must be 0 or greater).');
       return;
     }
 
-    // Save to localStorage
-    localStorage.setItem('admissionAmount', amount.toString());
-    showAlert('success', 'Settings Saved', 'Admission fee has been updated successfully!');
+    // Check if user is admin
+    if (user?.role !== 'GYM_ADMIN') {
+      showAlert('error', 'Access Denied', 'Only administrators can update settings.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const response = await api.put('/api/settings', {
+        admissionFee: amount,
+      });
+
+      if (response.data.success) {
+        setSettings(response.data.data);
+        setAdmissionAmount(response.data.data.admissionFee.toString());
+        showAlert('success', 'Settings Saved', response.data.message || 'Admission fee has been updated successfully!');
+      }
+    } catch (error: any) {
+      console.error('Error updating settings:', error);
+      if (error.response?.status === 403) {
+        showAlert('error', 'Access Denied', 'Only administrators can update settings.');
+      } else {
+        showAlert('error', 'Error', getErrorMessage(error));
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {

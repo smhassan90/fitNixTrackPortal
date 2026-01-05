@@ -77,39 +77,26 @@ export default function MembersPage() {
     requiresTrainer: false,
     trainerId: '',
     discount: '',
-    waiveAdmissionFee: false,
+    admissionFeeWaived: false, // Changed from waiveAdmissionFee to match API
   });
-  // Load admission amount from localStorage (managed in Settings page)
-  const getAdmissionAmount = () => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('admissionAmount');
-      return saved ? parseFloat(saved) : 1000; // Default: Rs. 1000
-    }
-    return 1000;
-  };
+  
+  const [globalAdmissionAmount, setGlobalAdmissionAmount] = useState<number>(0);
 
-  const [globalAdmissionAmount, setGlobalAdmissionAmount] = useState<number>(getAdmissionAmount);
-
-  // Sync with localStorage changes (when updated in Settings page)
+  // Fetch admission fee from API
   useEffect(() => {
-    const checkAdmissionAmount = () => {
-      const current = getAdmissionAmount();
-      if (current !== globalAdmissionAmount) {
-        setGlobalAdmissionAmount(current);
+    const fetchAdmissionFee = async () => {
+      try {
+        const response = await api.get('/api/settings');
+        if (response.data.success) {
+          setGlobalAdmissionAmount(response.data.data.admissionFee || 0);
+        }
+      } catch (error) {
+        console.warn('Could not fetch admission fee, using default:', error);
+        setGlobalAdmissionAmount(0);
       }
     };
-
-    // Check on focus (when switching back to this tab)
-    window.addEventListener('focus', checkAdmissionAmount);
-    
-    // Also check periodically for same-tab updates
-    const interval = setInterval(checkAdmissionAmount, 1000);
-
-    return () => {
-      window.removeEventListener('focus', checkAdmissionAmount);
-      clearInterval(interval);
-    };
-  }, [globalAdmissionAmount]);
+    fetchAdmissionFee();
+  }, []);
 
   // Fetch members from API
   const fetchMembers = useCallback(async (search?: string, sort?: { key: string; direction: string }) => {
@@ -342,7 +329,7 @@ export default function MembersPage() {
         comments: formData.comments || undefined,
         packageId: formData.packageId || undefined,
         discount: formData.discount ? parseFloat(formData.discount) : undefined,
-        admissionAmount: formData.waiveAdmissionFee ? 0 : globalAdmissionAmount,
+        admissionFeeWaived: formData.admissionFeeWaived,
       };
 
       // Handle trainerIds differently for create vs update
@@ -436,7 +423,7 @@ export default function MembersPage() {
       requiresTrainer: member.trainers.length > 0,
       trainerId: member.trainers.length > 0 ? member.trainers[0].id : '',
       discount: member.discount?.toString() || '',
-      waiveAdmissionFee: member.admissionAmount === 0 || member.admissionAmount === null,
+      admissionFeeWaived: member.admissionAmount === 0 || member.admissionAmount === null,
     });
     // Scroll to form
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -495,7 +482,7 @@ export default function MembersPage() {
       requiresTrainer: false,
       trainerId: '',
       discount: '',
-      waiveAdmissionFee: false,
+      admissionFeeWaived: false,
     });
   };
 
@@ -533,7 +520,7 @@ export default function MembersPage() {
     let total = 0;
     
     // Add admission fee (unless waived)
-    if (!formData.waiveAdmissionFee) {
+    if (!formData.admissionFeeWaived) {
       total += globalAdmissionAmount;
     }
     
@@ -573,7 +560,7 @@ export default function MembersPage() {
     total += monthlyTotal;
     
     return total;
-  }, [formData.waiveAdmissionFee, formData.packageId, formData.trainerId, formData.discount, globalAdmissionAmount]);
+  }, [formData.admissionFeeWaived, formData.packageId, formData.trainerId, formData.discount, globalAdmissionAmount]);
 
   // Calculate monthly payment - recalculate whenever formData changes
   // Note: We access availablePackages and trainers from closure, but only depend on formData values
@@ -635,8 +622,8 @@ export default function MembersPage() {
     monthlyTotal = Math.max(0, monthlyTotal - discountAmount);
     
     // Get admission fee - check if it was waived (admissionAmount === 0) or use global amount
-    const admissionFee = memberData.admissionAmount !== undefined 
-      ? memberData.admissionAmount 
+    const admissionFee = memberData.admissionFeeWaived 
+      ? 0 
       : globalAdmissionAmount;
     const oneTimeTotal = admissionFee + monthlyTotal;
     
@@ -1139,9 +1126,9 @@ export default function MembersPage() {
                         <label className="flex items-center space-x-2 cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={formData.waiveAdmissionFee}
+                            checked={formData.admissionFeeWaived}
                             onChange={(e) => {
-                              setFormData({ ...formData, waiveAdmissionFee: e.target.checked });
+                              setFormData({ ...formData, admissionFeeWaived: e.target.checked });
                             }}
                             className="w-5 h-5 text-primary border-gray-300 rounded focus:ring-primary"
                           />
@@ -1149,7 +1136,7 @@ export default function MembersPage() {
                         </label>
                       </div>
                     </div>
-                    {formData.waiveAdmissionFee && (
+                    {formData.admissionFeeWaived && (
                       <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mt-2">
                         <p className="text-xs text-yellow-800 flex items-center">
                           <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -1202,14 +1189,14 @@ export default function MembersPage() {
                           <div className="flex justify-between items-center pb-2 border-b border-white border-opacity-20">
                             <span>Admission Fee:</span>
                             <span>
-                              {formData.waiveAdmissionFee ? (
+                              {formData.admissionFeeWaived ? (
                                 <span className="line-through opacity-60">Rs. {globalAdmissionAmount.toLocaleString()}</span>
                               ) : (
                                 <span>Rs. {globalAdmissionAmount.toLocaleString()}</span>
                               )}
                             </span>
                           </div>
-                          {formData.waiveAdmissionFee && (
+                          {formData.admissionFeeWaived && (
                             <div className="flex justify-between items-center text-yellow-200 pb-2 border-b border-white border-opacity-20">
                               <span className="flex items-center">
                                 <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -1292,10 +1279,10 @@ export default function MembersPage() {
                             Rs. {oneTimePayment.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                           </p>
                           <div className="text-xs text-white opacity-70 mt-1 space-y-0.5">
-                            {!formData.waiveAdmissionFee && (
+                            {!formData.admissionFeeWaived && (
                               <div>Admission: Rs. {globalAdmissionAmount.toLocaleString()}</div>
                             )}
-                            {formData.waiveAdmissionFee && (
+                            {formData.admissionFeeWaived && (
                               <div className="text-yellow-200">Admission fee waived</div>
                             )}
                             {monthlyPayment > 0 && (
