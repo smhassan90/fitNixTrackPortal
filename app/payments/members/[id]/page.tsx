@@ -12,6 +12,14 @@ import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
+import {
+  hasBlockingUnpaidBeforeAdvance,
+  isInstallmentUnpaid,
+  payableUnpaidInstallments,
+  uiBucketForInstallment,
+  uiLabelForBucket,
+  type InstallmentUiBucket,
+} from '@/lib/monthlyInstallmentUi';
 
 type InstallmentStatus = 'PENDING' | 'OVERDUE' | 'PAID' | string;
 
@@ -60,11 +68,6 @@ export default function MemberPaymentsDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [memberName, setMemberName] = useState<string>('');
   const [monthlyInstallments, setMonthlyInstallments] = useState<MonthlyInstallment[]>([]);
-  const [groupedFromApi, setGroupedFromApi] = useState<{
-    paid: MonthlyInstallment[];
-    pending: MonthlyInstallment[];
-    overdue: MonthlyInstallment[];
-  }>({ paid: [], pending: [], overdue: [] });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [singleConfirm, setSingleConfirm] = useState<MonthlyInstallment | null>(null);
@@ -80,16 +83,8 @@ export default function MemberPaymentsDetailPage() {
       }
       const data = response.data.data || {};
       const timeline = (data.monthlyInstallments || []) as Record<string, unknown>[];
-      const g = data.monthlyGrouped || {};
-
       const normalized = timeline.map(normalizeInstallment).sort(sortByDueDate);
       setMonthlyInstallments(normalized);
-
-      setGroupedFromApi({
-        paid: ((g.paid || []) as Record<string, unknown>[]).map(normalizeInstallment).sort(sortByDueDate),
-        pending: ((g.pending || []) as Record<string, unknown>[]).map(normalizeInstallment).sort(sortByDueDate),
-        overdue: ((g.overdue || []) as Record<string, unknown>[]).map(normalizeInstallment).sort(sortByDueDate),
-      });
 
       const nameFromPayload =
         data.member?.name ||
@@ -121,33 +116,56 @@ export default function MemberPaymentsDetailPage() {
     fetchDetail();
   }, [fetchDetail]);
 
+  /**
+   * Overdue = due date has passed, or billing month is before this month.
+   * Pending = due in the current month, due day not passed yet.
+   * Advance = due in a future month. Prepay is enabled only when nothing overdue and current month is paid (no blocking unpaid).
+   */
   const grouped = useMemo(() => {
-    const sum =
-      groupedFromApi.paid.length +
-      groupedFromApi.pending.length +
-      groupedFromApi.overdue.length;
-    if (sum > 0) return groupedFromApi;
     const paid: MonthlyInstallment[] = [];
-    const pending: MonthlyInstallment[] = [];
     const overdue: MonthlyInstallment[] = [];
+    const pending: MonthlyInstallment[] = [];
+    const advance: MonthlyInstallment[] = [];
+
     for (const i of monthlyInstallments) {
-      if (i.status === 'PAID') paid.push(i);
-      else if (i.status === 'OVERDUE') overdue.push(i);
-      else if (i.status === 'PENDING') pending.push(i);
-      else pending.push(i);
+      if (i.status === 'PAID') {
+        paid.push(i);
+        continue;
+      }
+      switch (uiBucketForInstallment(i)) {
+        case 'overdue':
+          overdue.push(i);
+          break;
+        case 'pending':
+          pending.push(i);
+          break;
+        case 'advance':
+          advance.push(i);
+          break;
+        default:
+          pending.push(i);
+      }
     }
+
+    const blocking = hasBlockingUnpaidBeforeAdvance(monthlyInstallments);
+    const advanceSorted = advance.sort(sortByDueDate);
     return {
       paid: paid.sort(sortByDueDate),
-      pending: pending.sort(sortByDueDate),
       overdue: overdue.sort(sortByDueDate),
+      pending: pending.sort(sortByDueDate),
+      advanceReady: blocking ? [] : advanceSorted,
+      advanceLocked: blocking ? advanceSorted : [],
     };
-  }, [groupedFromApi, monthlyInstallments]);
+  }, [monthlyInstallments]);
+
+  const advanceBlocking = useMemo(
+    () => hasBlockingUnpaidBeforeAdvance(monthlyInstallments),
+    [monthlyInstallments]
+  );
 
   const selectableUnpaid = useMemo(() => {
-    return [...grouped.pending, ...grouped.overdue].filter(
-      (i) => i.status === 'PENDING' || i.status === 'OVERDUE'
-    );
-  }, [grouped.pending, grouped.overdue]);
+    return payableUnpaidInstallments(monthlyInstallments);
+  }, [monthlyInstallments]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -205,14 +223,16 @@ export default function MemberPaymentsDetailPage() {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PAID':
+  const getBucketColor = (bucket: InstallmentUiBucket) => {
+    switch (bucket) {
+      case 'paid':
         return 'bg-green-100 text-green-800';
-      case 'PENDING':
+      case 'pending':
         return 'bg-yellow-100 text-yellow-800';
-      case 'OVERDUE':
+      case 'overdue':
         return 'bg-red-100 text-red-800';
+      case 'advance':
+        return 'bg-sky-100 text-sky-900';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -306,7 +326,13 @@ export default function MemberPaymentsDetailPage() {
     };
   };
 
-  const renderSection = (title: string, items: MonthlyInstallment[], showSelect: boolean) => {
+  const renderSection = (
+    title: string,
+    items: MonthlyInstallment[],
+    showSelect: boolean,
+    options?: { lockPayActions?: boolean }
+  ) => {
+    const lockPay = options?.lockPayActions === true;
     if (items.length === 0) {
       return (
         <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 p-6 text-center text-sm text-gray-500">
@@ -333,17 +359,25 @@ export default function MemberPaymentsDetailPage() {
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white">
             {items.map((row) => {
-              const canSelect = showSelect && (row.status === 'PENDING' || row.status === 'OVERDUE');
+              const bucket = uiBucketForInstallment(row);
+              const canInteract = showSelect && isInstallmentUnpaid(row) && !lockPay;
               return (
-                <tr key={row.id} className="hover:bg-gray-50/80">
+                <tr key={row.id} className={lockPay ? 'bg-gray-50/50' : 'hover:bg-gray-50/80'}>
                   {showSelect && user?.role === 'GYM_ADMIN' && (
                     <td className="px-4 py-3">
-                      {canSelect ? (
+                      {canInteract ? (
                         <input
                           type="checkbox"
                           checked={selectedIds.has(row.id)}
                           onChange={() => toggleSelect(row.id)}
                           className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                      ) : lockPay && isInstallmentUnpaid(row) ? (
+                        <input
+                          type="checkbox"
+                          disabled
+                          className="h-4 w-4 cursor-not-allowed rounded border-gray-300 opacity-40"
+                          title="Pay overdue and current month first"
                         />
                       ) : (
                         <span className="inline-block w-4" />
@@ -354,20 +388,28 @@ export default function MemberPaymentsDetailPage() {
                   <td className="px-4 py-3 text-sm">Rs. {row.amount.toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{formatDate(row.dueDate)}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${getStatusColor(row.status)}`}>
-                      {row.status}
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${getBucketColor(bucket)}`}
+                    >
+                      {uiLabelForBucket(bucket)}
                     </span>
                   </td>
                   {user?.role === 'GYM_ADMIN' && (
                     <td className="px-4 py-3 text-sm">
                       {row.status !== 'PAID' ? (
-                        <button
-                          type="button"
-                          onClick={() => setSingleConfirm(row)}
-                          className="rounded-lg bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
-                        >
-                          Mark paid
-                        </button>
+                        lockPay ? (
+                          <span className="text-xs text-gray-500" title="Pay overdue and current month first">
+                            Locked
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setSingleConfirm(row)}
+                            className="rounded-lg bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
+                          >
+                            Mark paid
+                          </button>
+                        )
                       ) : (
                         <button
                           type="button"
@@ -421,7 +463,11 @@ export default function MemberPaymentsDetailPage() {
               ← Back to payments
             </Link>
             <h1 className="mt-2 text-3xl font-bold text-dark-gray">{memberName || 'Member payments'}</h1>
-            <p className="mt-1 text-sm text-gray-500">Monthly installments (fresh overdue status from server)</p>
+            <p className="mt-1 text-sm text-gray-500">
+              Overdue once the due date has passed; pending when the due date is still in the current month; advance for
+              months after this month. You can prepay advance months only after overdue and current-month fees are
+              settled. If advance is empty, the next installment may not exist in the API yet.
+            </p>
           </div>
           {user?.role === 'GYM_ADMIN' && selectableUnpaid.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
@@ -487,6 +533,44 @@ export default function MemberPaymentsDetailPage() {
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-dark-gray">Pending</h2>
               {renderSection('pending', grouped.pending, true)}
+            </section>
+
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold text-dark-gray">Advance</h2>
+              {grouped.advanceReady.length === 0 && grouped.advanceLocked.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/80 p-6 text-sm text-amber-900">
+                  {advanceBlocking ? (
+                    <p>
+                      No prepay rows yet. Pay <strong>overdue</strong> and <strong>current-month</strong> installments
+                      first; then future months will move here and unlock for payment.
+                    </p>
+                  ) : (
+                    <p>
+                      There are no <strong>future-month</strong> installment rows from the server (everything returned is
+                      already paid through the latest row). The backend normally creates the next month after you mark
+                      the latest one paid—if February is paid and March still does not appear, that has to be fixed in the
+                      API.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <h3 className="text-base font-medium text-dark-gray">Ready to prepay</h3>
+                    <p className="text-xs text-gray-500">Overdue and current month are clear — you can pay these now.</p>
+                    {renderSection('advance (ready)', grouped.advanceReady, true)}
+                  </div>
+                  {grouped.advanceLocked.length > 0 && (
+                    <div className="space-y-2 pt-2">
+                      <h3 className="text-base font-medium text-dark-gray">Future months (locked)</h3>
+                      <p className="text-xs text-gray-500">
+                        Pay all overdue and current-month installments first to unlock prepay for these.
+                      </p>
+                      {renderSection('advance (locked)', grouped.advanceLocked, true, { lockPayActions: true })}
+                    </div>
+                  )}
+                </>
+              )}
             </section>
 
             <section className="space-y-3">

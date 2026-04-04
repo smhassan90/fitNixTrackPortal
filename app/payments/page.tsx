@@ -10,6 +10,11 @@ import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
+import {
+  tailwindBadgeForUiBucket,
+  uiBucketForNextUnpaid,
+  uiLabelForBucket,
+} from '@/lib/monthlyInstallmentUi';
 
 type SortByKey = 'name' | 'nextDueDate' | 'overdueCount';
 
@@ -229,14 +234,6 @@ export default function PaymentsPage() {
     }
   };
 
-  const getNextStatusStyle = (row: MemberPaymentSummaryRow) => {
-    if (!row.nextUnpaid) return 'bg-gray-100 text-gray-700';
-    if (row.nextUnpaid.status === 'OVERDUE' || row.nextUnpaid.isOverdue) {
-      return 'bg-red-100 text-red-800';
-    }
-    return 'bg-yellow-100 text-yellow-800';
-  };
-
   const emptyMessage = useMemo(() => {
     if (searchQuery || onlyWithOpenInstallments) {
       return 'No members match your search or filters.';
@@ -437,9 +434,11 @@ export default function PaymentsPage() {
                         <td className="whitespace-nowrap px-6 py-4">
                           {row.nextUnpaid ? (
                             <span
-                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${getNextStatusStyle(row)}`}
+                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${tailwindBadgeForUiBucket(
+                                uiBucketForNextUnpaid(row.nextUnpaid)
+                              )}`}
                             >
-                              {row.nextUnpaid.status === 'OVERDUE' || row.nextUnpaid.isOverdue ? 'Overdue' : 'Pending'}
+                              {uiLabelForBucket(uiBucketForNextUnpaid(row.nextUnpaid))}
                             </span>
                           ) : (
                             <span className="text-sm text-gray-500">—</span>
