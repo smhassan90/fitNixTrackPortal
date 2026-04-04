@@ -13,9 +13,7 @@ import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 import {
-  hasBlockingUnpaidBeforeAdvance,
   isInstallmentUnpaid,
-  payableUnpaidInstallments,
   uiBucketForInstallment,
   uiLabelForBucket,
   type InstallmentUiBucket,
@@ -31,6 +29,8 @@ interface MonthlyInstallment {
   status: InstallmentStatus;
   dueDate: string;
   paidDate: string | null;
+  /** Server-computed using GYM_TIMEZONE; prefer over client inference. */
+  displayBucket?: string | null;
   member?: { id: string; name: string; phone: string | null; email: string | null };
 }
 
@@ -44,6 +44,7 @@ function normalizeInstallment(raw: Record<string, unknown>): MonthlyInstallment 
     status: String(raw.status ?? ''),
     dueDate: String(raw.dueDate ?? ''),
     month: String(raw.month ?? ''),
+    displayBucket: raw.displayBucket != null ? String(raw.displayBucket) : undefined,
     paidDate: raw.paidDate != null ? String(raw.paidDate) : null,
     member: m
       ? {
@@ -117,9 +118,8 @@ export default function MemberPaymentsDetailPage() {
   }, [fetchDetail]);
 
   /**
-   * Overdue = due date has passed, or billing month is before this month.
-   * Pending = due in the current month, due day not passed yet.
-   * Advance = due in a future month. Prepay is enabled only when nothing overdue and current month is paid (no blocking unpaid).
+   * Sections follow API displayBucket per row (gym TZ on server). Falls back to browser-local rules only if displayBucket is missing.
+   * Order: Overdue → Pending → Advance → Paid (same as monthlyGrouped).
    */
   const grouped = useMemo(() => {
     const paid: MonthlyInstallment[] = [];
@@ -147,24 +147,16 @@ export default function MemberPaymentsDetailPage() {
       }
     }
 
-    const blocking = hasBlockingUnpaidBeforeAdvance(monthlyInstallments);
-    const advanceSorted = advance.sort(sortByDueDate);
     return {
       paid: paid.sort(sortByDueDate),
       overdue: overdue.sort(sortByDueDate),
       pending: pending.sort(sortByDueDate),
-      advanceReady: blocking ? [] : advanceSorted,
-      advanceLocked: blocking ? advanceSorted : [],
+      advance: advance.sort(sortByDueDate),
     };
   }, [monthlyInstallments]);
 
-  const advanceBlocking = useMemo(
-    () => hasBlockingUnpaidBeforeAdvance(monthlyInstallments),
-    [monthlyInstallments]
-  );
-
   const selectableUnpaid = useMemo(() => {
-    return payableUnpaidInstallments(monthlyInstallments);
+    return monthlyInstallments.filter(isInstallmentUnpaid);
   }, [monthlyInstallments]);
 
   const toggleSelect = (id: string) => {
@@ -326,13 +318,7 @@ export default function MemberPaymentsDetailPage() {
     };
   };
 
-  const renderSection = (
-    title: string,
-    items: MonthlyInstallment[],
-    showSelect: boolean,
-    options?: { lockPayActions?: boolean }
-  ) => {
-    const lockPay = options?.lockPayActions === true;
+  const renderSection = (title: string, items: MonthlyInstallment[], showSelect: boolean) => {
     if (items.length === 0) {
       return (
         <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 p-6 text-center text-sm text-gray-500">
@@ -360,24 +346,17 @@ export default function MemberPaymentsDetailPage() {
           <tbody className="divide-y divide-gray-200 bg-white">
             {items.map((row) => {
               const bucket = uiBucketForInstallment(row);
-              const canInteract = showSelect && isInstallmentUnpaid(row) && !lockPay;
+              const canSelect = showSelect && isInstallmentUnpaid(row);
               return (
-                <tr key={row.id} className={lockPay ? 'bg-gray-50/50' : 'hover:bg-gray-50/80'}>
+                <tr key={row.id} className="hover:bg-gray-50/80">
                   {showSelect && user?.role === 'GYM_ADMIN' && (
                     <td className="px-4 py-3">
-                      {canInteract ? (
+                      {canSelect ? (
                         <input
                           type="checkbox"
                           checked={selectedIds.has(row.id)}
                           onChange={() => toggleSelect(row.id)}
                           className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                        />
-                      ) : lockPay && isInstallmentUnpaid(row) ? (
-                        <input
-                          type="checkbox"
-                          disabled
-                          className="h-4 w-4 cursor-not-allowed rounded border-gray-300 opacity-40"
-                          title="Pay overdue and current month first"
                         />
                       ) : (
                         <span className="inline-block w-4" />
@@ -397,19 +376,13 @@ export default function MemberPaymentsDetailPage() {
                   {user?.role === 'GYM_ADMIN' && (
                     <td className="px-4 py-3 text-sm">
                       {row.status !== 'PAID' ? (
-                        lockPay ? (
-                          <span className="text-xs text-gray-500" title="Pay overdue and current month first">
-                            Locked
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setSingleConfirm(row)}
-                            className="rounded-lg bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
-                          >
-                            Mark paid
-                          </button>
-                        )
+                        <button
+                          type="button"
+                          onClick={() => setSingleConfirm(row)}
+                          className="rounded-lg bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
+                        >
+                          Mark paid
+                        </button>
                       ) : (
                         <button
                           type="button"
@@ -464,9 +437,9 @@ export default function MemberPaymentsDetailPage() {
             </Link>
             <h1 className="mt-2 text-3xl font-bold text-dark-gray">{memberName || 'Member payments'}</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Overdue once the due date has passed; pending when the due date is still in the current month; advance for
-              months after this month. You can prepay advance months only after overdue and current-month fees are
-              settled. If advance is empty, the next installment may not exist in the API yet.
+              Overdue / pending / advance labels come from the API (<span className="font-medium">displayBucket</span>,
+              gym calendar via server <span className="font-medium">GYM_TIMEZONE</span>). You can mark any unpaid row
+              returned as paid; the list refreshes after pay so the next installment can appear.
             </p>
           </div>
           {user?.role === 'GYM_ADMIN' && selectableUnpaid.length > 0 && (
@@ -537,39 +510,17 @@ export default function MemberPaymentsDetailPage() {
 
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-dark-gray">Advance</h2>
-              {grouped.advanceReady.length === 0 && grouped.advanceLocked.length === 0 ? (
+              <p className="text-xs text-gray-500">
+                Future billing months (advance). If this is empty, the API has not returned a next open row yet—this GET
+                and mark-paid both trigger server sync on the backend.
+              </p>
+              {grouped.advance.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/80 p-6 text-sm text-amber-900">
-                  {advanceBlocking ? (
-                    <p>
-                      No prepay rows yet. Pay <strong>overdue</strong> and <strong>current-month</strong> installments
-                      first; then future months will move here and unlock for payment.
-                    </p>
-                  ) : (
-                    <p>
-                      There are no <strong>future-month</strong> installment rows from the server (everything returned is
-                      already paid through the latest row). The backend normally creates the next month after you mark
-                      the latest one paid—if February is paid and March still does not appear, that has to be fixed in the
-                      API.
-                    </p>
-                  )}
+                  No advance installments in the response. When the package schedule continues, the server should add the
+                  next row after you pay or when you open this page.
                 </div>
               ) : (
-                <>
-                  <div className="space-y-2">
-                    <h3 className="text-base font-medium text-dark-gray">Ready to prepay</h3>
-                    <p className="text-xs text-gray-500">Overdue and current month are clear — you can pay these now.</p>
-                    {renderSection('advance (ready)', grouped.advanceReady, true)}
-                  </div>
-                  {grouped.advanceLocked.length > 0 && (
-                    <div className="space-y-2 pt-2">
-                      <h3 className="text-base font-medium text-dark-gray">Future months (locked)</h3>
-                      <p className="text-xs text-gray-500">
-                        Pay all overdue and current-month installments first to unlock prepay for these.
-                      </p>
-                      {renderSection('advance (locked)', grouped.advanceLocked, true, { lockPayActions: true })}
-                    </div>
-                  )}
-                </>
+                renderSection('advance', grouped.advance, true)
               )}
             </section>
 

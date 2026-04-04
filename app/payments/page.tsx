@@ -36,6 +36,8 @@ interface NextUnpaid {
   month: string;
   status: 'PENDING' | 'OVERDUE';
   isOverdue: boolean;
+  /** Server displayBucket (gym TZ); matches member detail. */
+  displayBucket?: string | null;
 }
 
 interface MemberPaymentSummaryRow {
@@ -76,6 +78,7 @@ function normalizeMemberSummary(raw: Record<string, unknown>): MemberPaymentSumm
       month: String(nu.month ?? ''),
       status: (nu.status === 'OVERDUE' ? 'OVERDUE' : 'PENDING') as 'PENDING' | 'OVERDUE',
       isOverdue: Boolean(nu.isOverdue),
+      displayBucket: nu.displayBucket != null ? String(nu.displayBucket) : undefined,
     };
   }
 
@@ -400,59 +403,69 @@ export default function PaymentsPage() {
                       </td>
                     </tr>
                   ) : (
-                    rows.map((row) => (
-                      <tr
-                        key={row.member.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => router.push(`/payments/members/${row.member.id}`)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            router.push(`/payments/members/${row.member.id}`);
-                          }
-                        }}
-                        className="cursor-pointer transition-colors hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
-                      >
-                        <td className="whitespace-nowrap px-6 py-4">
-                          <div className="text-sm font-medium text-dark-gray">{row.member.name}</div>
-                          <div className="text-sm text-gray-500">{row.member.phone || row.member.email || '—'}</div>
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                          {row.nextUnpaid ? (
-                            <>
-                              Rs. {row.nextUnpaid.amount.toFixed(2)}
-                              <div className="text-xs text-gray-500">{row.nextUnpaid.month}</div>
-                            </>
-                          ) : (
-                            <span className="text-gray-500">Caught up</span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-600">
-                          {row.nextUnpaid ? formatDate(row.nextUnpaid.dueDate) : '—'}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4">
-                          {row.nextUnpaid ? (
-                            <span
-                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${tailwindBadgeForUiBucket(
-                                uiBucketForNextUnpaid(row.nextUnpaid)
-                              )}`}
-                            >
-                              {uiLabelForBucket(uiBucketForNextUnpaid(row.nextUnpaid))}
-                            </span>
-                          ) : (
-                            <span className="text-sm text-gray-500">—</span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                          {row.overdueMonthCount > 0 ? (
-                            <span className="font-medium text-red-700">{row.overdueMonthCount}</span>
-                          ) : (
-                            <span className="text-gray-400">0</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
+                    rows.map((row) => {
+                      const nextBucket = row.nextUnpaid
+                        ? uiBucketForNextUnpaid({
+                            displayBucket: row.nextUnpaid.displayBucket,
+                            dueDate: row.nextUnpaid.dueDate,
+                            status: row.nextUnpaid.status,
+                            isOverdue: row.nextUnpaid.isOverdue,
+                          })
+                        : null;
+                      return (
+                        <tr
+                          key={row.member.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => router.push(`/payments/members/${row.member.id}`)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              router.push(`/payments/members/${row.member.id}`);
+                            }
+                          }}
+                          className="cursor-pointer transition-colors hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+                        >
+                          <td className="whitespace-nowrap px-6 py-4">
+                            <div className="text-sm font-medium text-dark-gray">{row.member.name}</div>
+                            <div className="text-sm text-gray-500">{row.member.phone || row.member.email || '—'}</div>
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            {row.nextUnpaid ? (
+                              <>
+                                Rs. {row.nextUnpaid.amount.toFixed(2)}
+                                <div className="text-xs text-gray-500">{row.nextUnpaid.month}</div>
+                              </>
+                            ) : (
+                              <span className="text-gray-500">Caught up</span>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-600">
+                            {row.nextUnpaid ? formatDate(row.nextUnpaid.dueDate) : '—'}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4">
+                            {row.nextUnpaid && nextBucket ? (
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${tailwindBadgeForUiBucket(
+                                  nextBucket
+                                )}`}
+                              >
+                                {uiLabelForBucket(nextBucket)}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-gray-500">—</span>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            {row.overdueMonthCount > 0 ? (
+                              <span className="font-medium text-red-700">{row.overdueMonthCount}</span>
+                            ) : (
+                              <span className="text-gray-400">0</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
