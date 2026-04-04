@@ -179,6 +179,10 @@ export default function DashboardPage() {
     }
   };
 
+  const handlePaymentsLink = (search: string) => {
+    router.push(`/payments${search}`);
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -283,7 +287,7 @@ export default function DashboardPage() {
 
           {/* Pending Payments Card */}
           <div 
-            onClick={() => handleCardClick('/payments', { key: 'status', value: 'PENDING' })}
+            onClick={() => handlePaymentsLink('?onlyWithOpenInstallments=true&sortBy=nextDueDate&sortOrder=asc')}
             className="bg-orange p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200 cursor-pointer hover:shadow-xl"
           >
             <div className="flex items-center justify-between">
@@ -303,7 +307,7 @@ export default function DashboardPage() {
 
           {/* Overdue Payments Card */}
           <div 
-            onClick={() => handleCardClick('/payments', { key: 'status', value: 'OVERDUE' })}
+            onClick={() => handlePaymentsLink('?onlyWithOpenInstallments=true&sortBy=overdueCount&sortOrder=desc')}
             className="bg-gradient-to-br from-error to-error-dark p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200 cursor-pointer hover:shadow-xl"
           >
             <div className="flex items-center justify-between">

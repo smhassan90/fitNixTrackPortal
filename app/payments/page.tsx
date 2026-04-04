@@ -1,855 +1,494 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
-import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 
-interface Member {
+type SortByKey = 'name' | 'nextDueDate' | 'overdueCount';
+
+interface MemberSummaryMember {
   id: string;
   name: string;
+  email: string | null;
+  phone: string | null;
+  packageId: string | null;
+  membershipStart: string | null;
+  membershipEnd: string | null;
+  monthlyPaymentAmount: number | null;
 }
 
-interface Payment {
-  id: string;
-  memberId: string;
-  month: string;
+interface NextUnpaid {
+  paymentId: number;
   amount: number;
-  status: 'PENDING' | 'PAID' | 'OVERDUE';
   dueDate: string;
-  paidDate: string | null;
-  member: {
-    id: string;
-    name: string;
-    phone: string | null;
-    email: string | null;
+  month: string;
+  status: 'PENDING' | 'OVERDUE';
+  isOverdue: boolean;
+}
+
+interface MemberPaymentSummaryRow {
+  member: MemberSummaryMember;
+  nextUnpaid: NextUnpaid | null;
+  overdueMonthCount: number;
+}
+
+interface PaginationState {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+function normalizeMemberSummary(raw: Record<string, unknown>): MemberPaymentSummaryRow {
+  const m = raw.member as Record<string, unknown> | undefined;
+  const member: MemberSummaryMember = {
+    id: String(m?.id ?? ''),
+    name: String(m?.name ?? ''),
+    email: m?.email != null ? String(m.email) : null,
+    phone: m?.phone != null ? String(m.phone) : null,
+    packageId: m?.packageId != null ? String(m.packageId) : null,
+    membershipStart: m?.membershipStart != null ? String(m.membershipStart) : null,
+    membershipEnd: m?.membershipEnd != null ? String(m.membershipEnd) : null,
+    monthlyPaymentAmount:
+      m?.monthlyPaymentAmount != null ? Number(m.monthlyPaymentAmount) : null,
+  };
+
+  const nu = raw.nextUnpaid as Record<string, unknown> | null | undefined;
+  let nextUnpaid: NextUnpaid | null = null;
+  if (nu && typeof nu === 'object') {
+    const pid = nu.paymentId ?? nu.id;
+    nextUnpaid = {
+      paymentId: Number(pid) || 0,
+      amount: Number(nu.amount) || 0,
+      dueDate: String(nu.dueDate ?? ''),
+      month: String(nu.month ?? ''),
+      status: (nu.status === 'OVERDUE' ? 'OVERDUE' : 'PENDING') as 'PENDING' | 'OVERDUE',
+      isOverdue: Boolean(nu.isOverdue),
+    };
+  }
+
+  return {
+    member,
+    nextUnpaid,
+    overdueMonthCount: Number(raw.overdueMonthCount) || 0,
   };
 }
 
 export default function PaymentsPage() {
-  const { user } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
-  const [allPayments, setAllPayments] = useState<Payment[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
+
+  const [rows, setRows] = useState<MemberPaymentSummaryRow[]>([]);
+  const [pagination, setPagination] = useState<PaginationState>({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+  });
   const [loading, setLoading] = useState(true);
-  const [searchInput, setSearchInput] = useState(''); // What user types
-  const [searchQuery, setSearchQuery] = useState(''); // Actual filter value
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
-  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; paymentId: string | null; payment: Payment | null }>({
-    isOpen: false,
-    paymentId: null,
-    payment: null,
-  });
-  // Filter inputs (what user selects - doesn't trigger API)
-  const [filterInputs, setFilterInputs] = useState({
-    memberId: '',
-    status: '',
-    month: '',
-  });
-  
-  // Active filters (what triggers API call)
-  const [filters, setFilters] = useState({
-    memberId: '',
-    status: '',
-    month: '',
-  });
+  const [listError, setListError] = useState<string | null>(null);
 
-  // Fetch payments from API
-  const fetchPayments = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log('🔵 Fetching payments from API...');
-      const params = new URLSearchParams();
-      
-      if (filters.memberId) params.append('memberId', filters.memberId);
-      if (filters.status) params.append('status', filters.status);
-      if (filters.month) params.append('month', filters.month);
-      // Note: searchQuery is handled client-side, not sent to API
-      if (sortConfig?.key) params.append('sortBy', sortConfig.key);
-      if (sortConfig?.direction) params.append('sortOrder', sortConfig.direction);
-      params.append('limit', '1000');
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
-      const response = await api.get(`/api/payments?${params}`);
-      console.log('Payments API Response:', response.data);
+  const [sortBy, setSortBy] = useState<SortByKey>('nextDueDate');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
-      if (response.data.success) {
-        const paymentsList = response.data.data.payments || [];
-        // Normalize IDs to strings to prevent toLowerCase errors
-        const normalizedPayments = paymentsList.map((p: any) => ({
-          ...p,
-          id: String(p.id || ''),
-          memberId: String(p.memberId || ''),
-          member: p.member ? {
-            ...p.member,
-            id: String(p.member.id || ''),
-          } : p.member,
-        }));
-        setAllPayments(normalizedPayments);
-        console.log('✅ Payments loaded:', normalizedPayments.length);
-      }
-    } catch (error: any) {
-      console.error('Error fetching payments:', error);
-      showAlert('error', 'Error', getErrorMessage(error));
-    } finally {
-      setLoading(false);
+  const [onlyOpenInput, setOnlyOpenInput] = useState(false);
+  const [onlyWithOpenInstallments, setOnlyWithOpenInstallments] = useState(false);
+
+  const syncFromUrl = useCallback(() => {
+    const open = searchParams.get('onlyWithOpenInstallments');
+    const sortByParam = searchParams.get('sortBy') as SortByKey | null;
+    const sortOrderParam = searchParams.get('sortOrder') as 'asc' | 'desc' | null;
+
+    setOnlyOpenInput(open === 'true');
+    setOnlyWithOpenInstallments(open === 'true');
+
+    if (sortByParam === 'name' || sortByParam === 'nextDueDate' || sortByParam === 'overdueCount') {
+      setSortBy(sortByParam);
     }
-  }, [filters, sortConfig, showAlert]); // Removed searchQuery - handled client-side
-
-  // Fetch members for filter dropdown
-  const fetchMembers = useCallback(async () => {
-    try {
-      console.log('🔵 Fetching members for payments filter...');
-      const response = await api.get('/api/members?limit=1000');
-      console.log('Members API Response:', response.data);
-
-      if (response.data.success) {
-        const membersList = response.data.data.members || [];
-        setMembers(membersList);
-        console.log('✅ Members loaded:', membersList.length);
-      }
-    } catch (error: any) {
-      console.error('Error fetching members:', error);
-      // Don't show alert for members, just log
-    }
-  }, []);
-
-  // Load data on mount
-  useEffect(() => {
-    fetchMembers();
-  }, [fetchMembers]);
-
-  // Fetch payments when filters, search, or sort changes
-  useEffect(() => {
-    fetchPayments();
-  }, [fetchPayments]);
-  
-  // Function to apply filters (called when Go button is clicked)
-  const handleApplyFilters = () => {
-    setFilters({
-      memberId: filterInputs.memberId,
-      status: filterInputs.status,
-      month: filterInputs.month,
-    });
-  };
-
-  // Initialize filters from URL query parameters
-  useEffect(() => {
-    const statusParam = searchParams.get('status');
-    if (statusParam) {
-      setFilterInputs(prev => ({ ...prev, status: statusParam }));
-      setFilters(prev => ({ ...prev, status: statusParam }));
+    if (sortOrderParam === 'asc' || sortOrderParam === 'desc') {
+      setSortOrder(sortOrderParam);
     }
   }, [searchParams]);
 
-  // Handle sorting
-  const handleSort = (key: string) => {
-    let direction: 'asc' | 'desc' = 'asc';
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
+  useEffect(() => {
+    syncFromUrl();
+  }, [syncFromUrl]);
 
-  // Filter and sort payments
-  const payments = useMemo(() => {
-    let filtered = allPayments.filter(payment => {
-      try {
-        if (filters.memberId && String(payment.memberId || '') !== String(filters.memberId)) return false;
-        if (filters.status && String(payment.status || '') !== String(filters.status)) return false;
-        if (filters.month && String(payment.month || '') !== String(filters.month)) return false;
-        return true;
-      } catch (error) {
-        console.warn('Error in initial filter:', payment, error);
-        return false;
-      }
-    });
-
-    // Apply search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(payment => {
-        try {
-          const memberName = payment.member?.name ? String(payment.member.name).toLowerCase() : '';
-          const memberPhone = payment.member?.phone ? String(payment.member.phone).toLowerCase() : '';
-          const memberEmail = payment.member?.email ? String(payment.member.email).toLowerCase() : '';
-          const memberId = payment.member?.id ? String(payment.member.id).toLowerCase() : '';
-          const amount = payment.amount ? String(payment.amount).toLowerCase() : '';
-          const month = payment.month ? String(payment.month).toLowerCase() : '';
-          const status = payment.status ? String(payment.status).toLowerCase() : '';
-          const paymentId = payment.id ? String(payment.id).toLowerCase() : '';
-          const memberIdAlt = payment.memberId ? String(payment.memberId).toLowerCase() : '';
-          
-          return (
-            memberName.includes(query) ||
-            memberPhone.includes(query) ||
-            memberEmail.includes(query) ||
-            memberId.includes(query) ||
-            memberIdAlt.includes(query) ||
-            amount.includes(query) ||
-            month.includes(query) ||
-            status.includes(query) ||
-            paymentId.includes(query)
-          );
-        } catch (error) {
-          console.warn('Error filtering payment:', payment, error);
-          return false;
-        }
-      });
-    }
-
-    // Apply sorting
-    if (sortConfig) {
-      filtered = [...filtered].sort((a, b) => {
-        let aValue: any;
-        let bValue: any;
-
-        switch (sortConfig.key) {
-          case 'month':
-            aValue = a.month;
-            bValue = b.month;
-            break;
-          case 'member':
-            aValue = a.member.name?.toLowerCase() || '';
-            bValue = b.member.name?.toLowerCase() || '';
-            break;
-          case 'amount':
-            aValue = a.amount;
-            bValue = b.amount;
-            break;
-          case 'dueDate':
-            aValue = new Date(a.dueDate).getTime();
-            bValue = new Date(b.dueDate).getTime();
-            break;
-          case 'status':
-            aValue = a.status.toLowerCase();
-            bValue = b.status.toLowerCase();
-            break;
-          default:
-            return 0;
-        }
-
-        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-
-    return filtered;
-  }, [allPayments, filters, searchQuery, sortConfig]);
-
-
-  const handleMarkPaid = async (id: string) => {
+  const fetchSummaries = useCallback(async () => {
     try {
       setLoading(true);
-      console.log('🔵 Marking payment as paid:', id);
-      const response = await api.patch(`/api/payments/${id}/mark-paid`);
-      console.log('Mark paid response:', response.data);
-      
-      if (response.data.success) {
-        showAlert('success', 'Payment Recorded', `Payment has been marked as paid successfully.`);
-        await fetchPayments(); // Refresh list
+      setListError(null);
+      const params = new URLSearchParams();
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      if (onlyWithOpenInstallments) params.set('onlyWithOpenInstallments', 'true');
+      params.set('sortBy', sortBy);
+      params.set('sortOrder', sortOrder);
+      params.set('page', String(pagination.page));
+      params.set('limit', String(pagination.limit));
+
+      const response = await api.get(`/api/payments/member-summaries?${params.toString()}`);
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.error?.message || 'Failed to load payment summaries');
       }
-    } catch (error: any) {
-      console.error('Error marking payment as paid:', error);
-      showAlert('error', 'Error', getErrorMessage(error));
+
+      const data = response.data.data || {};
+      const rawList = data.members ?? data.memberSummaries ?? data.summaries ?? [];
+      const normalized = (rawList as Record<string, unknown>[]).map(normalizeMemberSummary);
+      setRows(normalized);
+
+      const p = data.pagination;
+      if (p && typeof p === 'object') {
+        setPagination((prev) => ({
+          page: p.page != null && !Number.isNaN(Number(p.page)) ? Number(p.page) : prev.page,
+          limit: p.limit != null && !Number.isNaN(Number(p.limit)) ? Number(p.limit) : prev.limit,
+          total: p.total != null && !Number.isNaN(Number(p.total)) ? Number(p.total) : normalized.length,
+          totalPages:
+            p.totalPages != null && !Number.isNaN(Number(p.totalPages))
+              ? Number(p.totalPages)
+              : Math.max(1, Math.ceil((Number(p.total) || normalized.length) / prev.limit)),
+        }));
+      } else {
+        setPagination((prev) => ({
+          ...prev,
+          total: normalized.length,
+          totalPages: Math.max(1, Math.ceil(normalized.length / prev.limit)),
+        }));
+      }
+    } catch (e: unknown) {
+      const msg = getErrorMessage(e);
+      setListError(msg);
+      setRows([]);
+      showAlert('error', 'Error', msg);
     } finally {
       setLoading(false);
     }
+  }, [
+    searchQuery,
+    onlyWithOpenInstallments,
+    sortBy,
+    sortOrder,
+    pagination.page,
+    pagination.limit,
+    showAlert,
+  ]);
+
+  useEffect(() => {
+    fetchSummaries();
+  }, [fetchSummaries]);
+
+  const handleSort = (key: SortByKey) => {
+    if (sortBy === key) {
+      setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(key);
+      setSortOrder(key === 'overdueCount' ? 'desc' : 'asc');
+    }
+    setPagination((p) => ({ ...p, page: 1 }));
   };
 
-  const handleMarkPaidClick = (payment: Payment) => {
-    setConfirmDialog({
-      isOpen: true,
-      paymentId: payment.id,
-      payment: payment,
-    });
+  const handleApplySearch = () => {
+    setSearchQuery(searchInput);
+    setPagination((p) => ({ ...p, page: 1 }));
   };
 
-  const handleConfirmMarkPaid = () => {
-    if (confirmDialog.paymentId) {
-      handleMarkPaid(confirmDialog.paymentId);
-    }
-    setConfirmDialog({ isOpen: false, paymentId: null, payment: null });
-  };
-
-  const handlePrintReceipt = async (payment: Payment) => {
-    if (payment.status !== 'PAID') {
-      showAlert('warning', 'Cannot Print Receipt', 'Receipt can only be printed for paid payments.');
-      return;
-    }
-
-    // Fetch member details to get package information
-    let packageInfo: { name: string; price: number; discount?: number | null; duration?: string } | null = null;
-    let originalAmount = payment.amount;
-    let discountAmount = 0;
-
-    try {
-      const memberResponse = await api.get(`/api/members/${payment.memberId}`);
-      if (memberResponse.data.success && memberResponse.data.data.member) {
-        const member = memberResponse.data.data.member;
-        if (member.packageId) {
-          // Fetch package details
-          const packageResponse = await api.get(`/api/packages/${member.packageId}`);
-          if (packageResponse.data.success && packageResponse.data.data.package) {
-            packageInfo = packageResponse.data.data.package;
-            
-            // Calculate monthly amount from package
-            if (packageInfo) {
-              const packagePrice = packageInfo.price;
-              const packageDiscount = packageInfo.discount || 0;
-              const isAnnual = packageInfo.duration?.includes('12') || false;
-              
-              // Calculate monthly base amount
-              let monthlyBase = isAnnual ? packagePrice / 12 : packagePrice;
-              
-              // Apply package discount to monthly amount
-              if (packageDiscount > 0) {
-                // If annual package, discount is already applied to total, so divide by 12
-                if (isAnnual) {
-                  monthlyBase = (packagePrice - packageDiscount) / 12;
-                  discountAmount = packageDiscount / 12;
-                } else {
-                  monthlyBase = packagePrice - packageDiscount;
-                  discountAmount = packageDiscount;
-                }
-              }
-              
-              originalAmount = isAnnual ? packagePrice / 12 : packagePrice;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('Could not fetch package information for receipt:', error);
-      // Continue with receipt generation even if package fetch fails
-    }
-
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Payment Receipt - ${payment.member.name}</title>
-          <style>
-            @media print {
-              @page { margin: 20mm; }
-            }
-            body {
-              font-family: Arial, sans-serif;
-              max-width: 600px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            .header {
-              text-align: center;
-              border-bottom: 3px solid #333;
-              padding-bottom: 20px;
-              margin-bottom: 30px;
-            }
-            .header h1 {
-              margin: 0;
-              color: #333;
-              font-size: 28px;
-            }
-            .header p {
-              margin: 5px 0;
-              color: #666;
-            }
-            .receipt-info {
-              margin-bottom: 30px;
-            }
-            .info-row {
-              display: flex;
-              justify-content: space-between;
-              padding: 10px 0;
-              border-bottom: 1px solid #eee;
-            }
-            .info-label {
-              font-weight: bold;
-              color: #333;
-            }
-            .info-value {
-              color: #666;
-            }
-            .amount-section {
-              background: #f5f5f5;
-              padding: 20px;
-              border-radius: 8px;
-              margin: 30px 0;
-            }
-            .amount-row {
-              display: flex;
-              justify-content: space-between;
-              font-size: 18px;
-              margin: 10px 0;
-            }
-            .discount-row {
-              display: flex;
-              justify-content: space-between;
-              font-size: 16px;
-              margin: 8px 0;
-              color: #10b981;
-            }
-            .original-price {
-              text-decoration: line-through;
-              color: #999;
-              font-size: 16px;
-            }
-            .total {
-              font-size: 24px;
-              font-weight: bold;
-              color: #333;
-              border-top: 2px solid #333;
-              padding-top: 10px;
-              margin-top: 10px;
-            }
-            .footer {
-              margin-top: 40px;
-              text-align: center;
-              color: #666;
-              font-size: 12px;
-              border-top: 1px solid #eee;
-              padding-top: 20px;
-            }
-            .status-badge {
-              display: inline-block;
-              padding: 5px 15px;
-              background: #10b981;
-              color: white;
-              border-radius: 20px;
-              font-weight: bold;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>FitNixTrack Gym</h1>
-            <p>Payment Receipt</p>
-          </div>
-          
-          <div class="receipt-info">
-            <div class="info-row">
-              <span class="info-label">Receipt Number:</span>
-              <span class="info-value">#${payment.id}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Date:</span>
-              <span class="info-value">${formatDate(payment.paidDate || payment.dueDate)}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Member Name:</span>
-              <span class="info-value">${payment.member.name}</span>
-            </div>
-            ${payment.member.phone ? `
-            <div class="info-row">
-              <span class="info-label">Phone:</span>
-              <span class="info-value">${payment.member.phone}</span>
-            </div>
-            ` : ''}
-            <div class="info-row">
-              <span class="info-label">Payment Month:</span>
-              <span class="info-value">${payment.month}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Status:</span>
-              <span class="info-value"><span class="status-badge">PAID</span></span>
-            </div>
-          </div>
-          
-          <div class="amount-section">
-            ${packageInfo && discountAmount > 0 ? `
-            <div class="amount-row">
-              <span>Package:</span>
-              <span>${packageInfo.name}</span>
-            </div>
-            <div class="amount-row">
-              <span>Original Amount:</span>
-              <span class="original-price">Rs. ${originalAmount.toFixed(2)}</span>
-            </div>
-            <div class="discount-row">
-              <span>Discount:</span>
-              <span>- Rs. ${discountAmount.toFixed(2)}</span>
-            </div>
-            ` : packageInfo ? `
-            <div class="amount-row">
-              <span>Package:</span>
-              <span>${packageInfo.name}</span>
-            </div>
-            ` : ''}
-            <div class="amount-row total">
-              <span>Total Paid:</span>
-              <span>Rs. ${payment.amount.toFixed(2)}</span>
-            </div>
-          </div>
-          
-          <div class="footer">
-            <p>Thank you for your payment!</p>
-            <p>This is a computer-generated receipt.</p>
-            <p>Generated on: ${formatDate(new Date().toISOString())}</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-    // Create a blob URL and open it in a new window
-    const blob = new Blob([receiptHTML], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const printWindow = window.open(url, '_blank');
-    
-    if (!printWindow) {
-      showAlert('error', 'Print Error', 'Please allow popups for this site to print receipts.');
-      URL.revokeObjectURL(url);
-      return;
-    }
-
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.print();
-        // Clean up the blob URL after printing
-        URL.revokeObjectURL(url);
-      }, 250);
-    };
+  const handleApplyOpenFilter = () => {
+    setOnlyWithOpenInstallments(onlyOpenInput);
+    setPagination((p) => ({ ...p, page: 1 }));
   };
 
   const handleCheckOverdue = async () => {
     try {
       setLoading(true);
-      console.log('🔵 Checking for overdue payments...');
       const response = await api.post('/api/payments/generate-overdue');
-      console.log('Generate overdue response:', response.data);
-      
-      if (response.data.success) {
-        const updatedCount = response.data.data.updated || 0;
+      if (response.data?.success) {
+        const updatedCount = response.data.data?.updated ?? 0;
         if (updatedCount > 0) {
-          showAlert('success', 'Overdue Payments Updated', `${updatedCount} payment(s) marked as overdue.`);
+          showAlert('success', 'Overdue updated', `${updatedCount} payment(s) marked as overdue.`);
         } else {
-          showAlert('info', 'All Payments Up to Date', 'No overdue payments found. All payments are current.');
+          showAlert('info', 'Up to date', 'No new overdue installments.');
         }
-        await fetchPayments(); // Refresh list
+        await fetchSummaries();
       }
-    } catch (error: any) {
-      console.error('Error checking overdue payments:', error);
-      showAlert('error', 'Error', getErrorMessage(error));
+    } catch (e: unknown) {
+      showAlert('error', 'Error', getErrorMessage(e));
     } finally {
       setLoading(false);
     }
   };
 
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PAID':
-        return 'bg-green-100 text-green-800';
-      case 'PENDING':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'OVERDUE':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  const getNextStatusStyle = (row: MemberPaymentSummaryRow) => {
+    if (!row.nextUnpaid) return 'bg-gray-100 text-gray-700';
+    if (row.nextUnpaid.status === 'OVERDUE' || row.nextUnpaid.isOverdue) {
+      return 'bg-red-100 text-red-800';
     }
+    return 'bg-yellow-100 text-yellow-800';
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <Loading message="Loading payments..." />
-      </Layout>
-    );
-  }
+  const emptyMessage = useMemo(() => {
+    if (searchQuery || onlyWithOpenInstallments) {
+      return 'No members match your search or filters.';
+    }
+    return 'No members found.';
+  }, [searchQuery, onlyWithOpenInstallments]);
+
+  const showInitialSpinner = loading && rows.length === 0 && !listError;
 
   return (
     <Layout>
-      <Alert
-        isOpen={alert.isOpen}
-        onClose={closeAlert}
-        type={alert.type}
-        title={alert.title}
-        message={alert.message}
-      />
-      <ConfirmationDialog
-        isOpen={confirmDialog.isOpen}
-        onClose={() => setConfirmDialog({ isOpen: false, paymentId: null, payment: null })}
-        onConfirm={handleConfirmMarkPaid}
-        title="Mark Payment as Paid"
-        message={confirmDialog.payment ? `Are you sure you want to mark the payment of Rs. ${confirmDialog.payment.amount.toFixed(2)} for ${confirmDialog.payment.member.name} as PAID?` : ''}
-        confirmText="Mark as Paid"
-        cancelText="Cancel"
-        type="warning"
-      />
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-          <h1 className="text-3xl font-bold text-dark-gray">Payments</h1>
-            <p className="text-sm text-gray-500 mt-1">Payment records are automatically created when members join</p>
-          </div>
-          <div className="flex gap-2">
-            {user?.role === 'GYM_ADMIN' && (
+      <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
+
+      {showInitialSpinner ? (
+        <Loading message="Loading payments…" />
+      ) : (
+        <div className="space-y-6">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-dark-gray">Payments</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                One row per member — open a member to view history and mark multiple months paid.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {user?.role === 'GYM_ADMIN' && (
                 <button
+                  type="button"
                   onClick={handleCheckOverdue}
-                  className="bg-orange text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+                  className="rounded-lg bg-orange px-4 py-2 text-white transition-colors hover:bg-opacity-90"
                 >
-                  Check Overdue
+                  Check overdue
                 </button>
+              )}
+            </div>
+          </div>
+
+          {listError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
+              <p className="font-medium">Could not load payment list</p>
+              <p className="text-sm">{listError}</p>
+              <button
+                type="button"
+                onClick={() => fetchSummaries()}
+                className="mt-3 rounded-lg bg-red-700 px-3 py-1.5 text-sm text-white hover:bg-red-800"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          <div className="rounded-lg bg-white p-4 shadow">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+              <div className="relative min-w-0 flex-1">
+                <label className="mb-1 block text-sm font-medium text-dark-gray">Search</label>
+                <div className="flex gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <input
+                      type="text"
+                      placeholder="Name, email, phone, or member ID…"
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleApplySearch();
+                      }}
+                      className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 focus:border-transparent focus:ring-2 focus:ring-primary"
+                    />
+                    <svg
+                      className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplySearch}
+                    className="rounded-lg bg-primary px-5 py-2 font-medium text-white hover:bg-primary-dark"
+                  >
+                    Go
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-dark-gray">
+                  <input
+                    type="checkbox"
+                    checked={onlyOpenInput}
+                    onChange={(e) => setOnlyOpenInput(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  Open installments only
+                </label>
+                <button
+                  type="button"
+                  onClick={handleApplyOpenFilter}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                >
+                  Apply filter
+                </button>
+                {(searchQuery || onlyWithOpenInstallments) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput('');
+                      setSearchQuery('');
+                      setOnlyOpenInput(false);
+                      setOnlyWithOpenInstallments(false);
+                      setSortBy('nextDueDate');
+                      setSortOrder('asc');
+                      setPagination((p) => ({ ...p, page: 1 }));
+                      router.push('/payments');
+                    }}
+                    className="text-sm text-gray-600 hover:text-gray-900"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-lg bg-white shadow">
+            {loading && rows.length > 0 && (
+              <div className="border-b border-gray-100 bg-gray-50 px-4 py-2 text-sm text-gray-500">Updating…</div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-light-gray">
+                  <tr>
+                    <th
+                      className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-dark-gray hover:bg-gray-200"
+                      onClick={() => handleSort('name')}
+                    >
+                      Member {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-dark-gray">
+                      Next due
+                    </th>
+                    <th
+                      className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-dark-gray hover:bg-gray-200"
+                      onClick={() => handleSort('nextDueDate')}
+                    >
+                      Due date {sortBy === 'nextDueDate' && (sortOrder === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-dark-gray">
+                      Status
+                    </th>
+                    <th
+                      className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-dark-gray hover:bg-gray-200"
+                      onClick={() => handleSort('overdueCount')}
+                    >
+                      Overdue months {sortBy === 'overdueCount' && (sortOrder === 'asc' ? '↑' : '↓')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {rows.length === 0 && !loading ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                        {listError ? '—' : emptyMessage}
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((row) => (
+                      <tr
+                        key={row.member.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => router.push(`/payments/members/${row.member.id}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            router.push(`/payments/members/${row.member.id}`);
+                          }
+                        }}
+                        className="cursor-pointer transition-colors hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+                      >
+                        <td className="whitespace-nowrap px-6 py-4">
+                          <div className="text-sm font-medium text-dark-gray">{row.member.name}</div>
+                          <div className="text-sm text-gray-500">{row.member.phone || row.member.email || '—'}</div>
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                          {row.nextUnpaid ? (
+                            <>
+                              Rs. {row.nextUnpaid.amount.toFixed(2)}
+                              <div className="text-xs text-gray-500">{row.nextUnpaid.month}</div>
+                            </>
+                          ) : (
+                            <span className="text-gray-500">Caught up</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-600">
+                          {row.nextUnpaid ? formatDate(row.nextUnpaid.dueDate) : '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4">
+                          {row.nextUnpaid ? (
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${getNextStatusStyle(row)}`}
+                            >
+                              {row.nextUnpaid.status === 'OVERDUE' || row.nextUnpaid.isOverdue ? 'Overdue' : 'Pending'}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-500">—</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                          {row.overdueMonthCount > 0 ? (
+                            <span className="font-medium text-red-700">{row.overdueMonthCount}</span>
+                          ) : (
+                            <span className="text-gray-400">0</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {pagination.totalPages > 1 && (
+              <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row">
+                <p className="text-sm text-gray-600">
+                  Page {pagination.page} of {pagination.totalPages} ({pagination.total} members)
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={pagination.page <= 1 || loading}
+                    onClick={() => setPagination((p) => ({ ...p, page: Math.max(1, p.page - 1) }))}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pagination.page >= pagination.totalPages || loading}
+                    onClick={() =>
+                      setPagination((p) => ({ ...p, page: Math.min(p.totalPages, p.page + 1) }))
+                    }
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
-
-        {/* Search/Filter */}
-        <div className="bg-white p-4 rounded-lg shadow">
-          <div className="flex items-center space-x-4 mb-4">
-            <div className="flex-1 flex items-center gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  placeholder="Search payments by member name, phone, email, amount, month, or status..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      setSearchQuery(searchInput);
-                    }
-                  }}
-                  className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                />
-                <svg
-                  className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <button
-                onClick={() => setSearchQuery(searchInput)}
-                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors font-medium"
-              >
-                Go
-              </button>
-              {searchQuery && (
-                <button
-                  onClick={() => {
-                    setSearchInput('');
-                    setSearchQuery('');
-                  }}
-                  className="px-4 py-2 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-white p-4 rounded-lg shadow">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-dark-gray mb-1">Member</label>
-              <select
-                value={filterInputs.memberId}
-                onChange={(e) => setFilterInputs({ ...filterInputs, memberId: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg"
-              >
-                <option value="">All Members</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-dark-gray mb-1">Status</label>
-              <select
-                value={filterInputs.status}
-                onChange={(e) => setFilterInputs({ ...filterInputs, status: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg"
-              >
-                <option value="">All Status</option>
-                <option value="PENDING">Pending</option>
-                <option value="PAID">Paid</option>
-                <option value="OVERDUE">Overdue</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-dark-gray mb-1">Month</label>
-              <input
-                type="month"
-                value={filterInputs.month}
-                onChange={(e) => setFilterInputs({ ...filterInputs, month: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-dark-gray mb-1">Actions</label>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={handleApplyFilters}
-                  className="w-full bg-primary text-white py-2.5 px-4 rounded-lg hover:bg-primary-dark transition-colors font-medium text-base"
-                >
-                  Go
-                </button>
-                <button
-                  onClick={() => {
-                    setFilterInputs({ memberId: '', status: '', month: '' });
-                    setFilters({ memberId: '', status: '', month: '' });
-                    setSearchInput('');
-                    setSearchQuery('');
-                  }}
-                  className="w-full bg-gray-300 text-dark-gray py-2.5 px-4 rounded-lg hover:bg-gray-400 transition-colors text-base"
-                >
-                  Reset All
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-light-gray">
-              <tr>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort('month')}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Month</span>
-                    {sortConfig?.key === 'month' && (
-                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort('member')}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Member</span>
-                    {sortConfig?.key === 'member' && (
-                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort('amount')}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Amount</span>
-                    {sortConfig?.key === 'amount' && (
-                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort('dueDate')}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Due Date</span>
-                    {sortConfig?.key === 'dueDate' && (
-                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort('status')}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>Status</span>
-                    {sortConfig?.key === 'status' && (
-                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                    )}
-                  </div>
-                </th>
-                {user?.role === 'GYM_ADMIN' && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                    Actions
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {payments.length === 0 ? (
-                <tr>
-                  <td colSpan={user?.role === 'GYM_ADMIN' ? 6 : 5} className="px-6 py-8 text-center text-gray-500">
-                    {searchQuery || filters.memberId || filters.status || filters.month
-                      ? 'No payments found matching your search or filters.'
-                      : 'No payments found.'}
-                  </td>
-                </tr>
-              ) : (
-                payments.map((payment) => (
-                <tr key={payment.id}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{payment.month}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-dark-gray">{payment.member.name}</div>
-                    <div className="text-sm text-gray-500">{payment.member.phone || 'N/A'}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">Rs. {payment.amount.toFixed(2)}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">
-                      {formatDate(payment.dueDate)}
-                    </div>
-                    {payment.paidDate && (
-                      <div className="text-xs text-gray-400">
-                        Paid: {formatDate(payment.paidDate)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
-                        payment.status
-                      )}`}
-                    >
-                      {payment.status}
-                    </span>
-                  </td>
-                  {user?.role === 'GYM_ADMIN' && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {payment.status !== 'PAID' ? (
-                        <button
-                          onClick={() => handleMarkPaidClick(payment)}
-                          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium"
-                        >
-                          Mark as Paid
-                        </button>
-                      ) : (
-                      <button
-                          onClick={() => handlePrintReceipt(payment)}
-                          className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-900 p-2.5 rounded-lg transition-colors font-medium flex items-center justify-center shadow-sm"
-                          title="Print Receipt"
-                      >
-                          <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                          </svg>
-                      </button>
-                      )}
-                    </td>
-                  )}
-                </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </Layout>
   );
 }
-
