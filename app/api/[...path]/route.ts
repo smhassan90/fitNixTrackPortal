@@ -54,9 +54,7 @@ async function handleRequest(
     const searchParams = request.nextUrl.searchParams;
     const queryString = searchParams.toString();
     const fullUrl = queryString ? `${externalUrl}?${queryString}` : externalUrl;
-    
-    console.log(`🔵 Proxying ${method} request to:`, fullUrl);
-    
+
     // Get request body if present
     let body = null;
     if (method !== 'GET' && method !== 'DELETE') {

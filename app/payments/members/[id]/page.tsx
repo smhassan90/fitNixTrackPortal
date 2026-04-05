@@ -59,268 +59,6 @@ function sortByDueDate(a: MonthlyInstallment, b: MonthlyInstallment) {
   return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
 }
 
-/** Enable via: dev build, NEXT_PUBLIC_DEBUG_MEMBER_PAYMENTS=true, or localStorage DEBUG_MEMBER_PAYMENTS=1 */
-function shouldLogMemberPaymentsDebug(): boolean {
-  if (typeof window === 'undefined') return false;
-  return (
-    process.env.NODE_ENV === 'development' ||
-    process.env.NEXT_PUBLIC_DEBUG_MEMBER_PAYMENTS === 'true' ||
-    window.localStorage?.getItem('DEBUG_MEMBER_PAYMENTS') === '1'
-  );
-}
-
-function ymFromMonthLabel(month: string): { y: number; m: number } | null {
-  const m = month.trim().match(/^(\d{4})-(\d{2})/);
-  if (!m) return null;
-  return { y: Number(m[1]), m: Number(m[2]) };
-}
-
-function calendarMonthIndex(y: number, month1to12: number): number {
-  return y * 12 + (month1to12 - 1);
-}
-
-const EXPECTED_MONTHLY_PAYMENTS_API_BEHAVIOR = `What the backend should do for this endpoint:
-- GET /api/members/:memberId/payments?type=monthly must return data.monthlyInstallments[] that reflects the full open + paid schedule the gym needs to operate.
-- For active monthly memberships: after the last PAID billing month, still return unpaid rows (status PENDING or OVERDUE) for each subsequent billing period up to "now" per GYM_TIMEZONE (dueDate, month label e.g. YYYY-MM, amount). Without those rows, the portal cannot show Overdue/Pending or mark the next month paid.
-- Prefer setting displayBucket per row on the server (overdue/pending/advance/paid) using gym timezone so the UI matches your rules.
-- If the portal uses bulk mark-paid with numeric paymentIds[], installment primary keys should be numeric (or the API should accept string IDs consistently).`;
-
-/**
- * Console output for backend handoff: request, raw response, normalized rows, diagnosis, and a copy-paste prompt.
- */
-function logMemberPaymentsTimelineDebug(opts: {
-  memberId: string;
-  requestPath: string;
-  httpStatus: number;
-  responseBody: unknown;
-  normalized: MonthlyInstallment[];
-}) {
-  if (!shouldLogMemberPaymentsDebug()) return;
-
-  const tag = '[FitNix Payments → BACKEND DEBUG]';
-  const { memberId, requestPath, httpStatus, responseBody, normalized } = opts;
-
-  const data = (responseBody as { data?: Record<string, unknown> })?.data ?? responseBody;
-  const dataObj = typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {};
-
-  const rowsSummary = normalized.map((r) => ({
-    id: r.id,
-    idIsNumeric: !Number.isNaN(Number(r.id)) && String(Number(r.id)) === String(r.id).trim(),
-    month: r.month,
-    amount: r.amount,
-    status: r.status,
-    dueDate: r.dueDate,
-    paidDate: r.paidDate,
-    displayBucket: r.displayBucket ?? '(missing — UI falls back to browser-local date rules)',
-  }));
-
-  const unpaid = normalized.filter((r) => r.status !== 'PAID');
-  const paid = normalized.filter((r) => r.status === 'PAID');
-  const paidWithMonth = paid
-    .map((r) => ({ row: r, ym: ymFromMonthLabel(r.month) }))
-    .filter((x): x is { row: MonthlyInstallment; ym: { y: number; m: number } } => x.ym !== null);
-  let lastPaidYm: { y: number; m: number } | null = null;
-  for (const { ym } of paidWithMonth) {
-    if (!lastPaidYm || calendarMonthIndex(ym.y, ym.m) > calendarMonthIndex(lastPaidYm.y, lastPaidYm.m)) {
-      lastPaidYm = ym;
-    }
-  }
-
-  const today = new Date();
-  const todayYm = { y: today.getFullYear(), m: today.getMonth() + 1 };
-  const todayIdx = calendarMonthIndex(todayYm.y, todayYm.m);
-  const lastPaidIdx = lastPaidYm ? calendarMonthIndex(lastPaidYm.y, lastPaidYm.m) : null;
-
-  const memberNameFromPayload =
-    (dataObj.member as { name?: string } | undefined)?.name ??
-    dataObj.memberName ??
-    normalized[0]?.member?.name ??
-    '(not in payload)';
-
-  let diagnosis: string;
-  if (normalized.length === 0) {
-    diagnosis =
-      'ISSUE: Empty timeline. Backend returned no monthlyInstallments (or empty array). UI cannot show Overdue/Pending.';
-  } else if (unpaid.length === 0 && lastPaidIdx !== null && lastPaidIdx < todayIdx) {
-    diagnosis =
-      `LIKELY BACKEND BUG: All ${normalized.length} row(s) are PAID through ${lastPaidYm!.y}-${String(lastPaidYm!.m).padStart(2, '0')}, but the current calendar month (browser) is ${todayYm.y}-${String(todayYm.m).padStart(2, '0')}. ` +
-      'There are ZERO unpaid rows for later months — the portal correctly shows empty Overdue/Pending. Root cause is almost certainly installment generation/sync on GET or after mark-paid (not the React UI).';
-  } else if (unpaid.length === 0 && lastPaidIdx !== null && lastPaidIdx >= todayIdx) {
-    diagnosis =
-      'All rows are PAID and the latest paid month is still the current or a future calendar month vs browser today — empty unpaid sections may be expected.';
-  } else if (unpaid.length > 0) {
-    diagnosis =
-      `Timeline looks consistent: ${unpaid.length} unpaid row(s); UI should list them under Overdue/Pending/Advance from status/displayBucket. If labels are wrong, fix displayBucket or dates on the API.`;
-  } else {
-    diagnosis = 'Unpaid count is 0; verify month field format (YYYY-MM) and business rules.';
-  }
-
-  const successFlag = (responseBody as { success?: boolean })?.success;
-  const importantPayload = {
-    success: successFlag,
-    dataKeys: typeof dataObj === 'object' ? Object.keys(dataObj) : [],
-    monthlyInstallments: dataObj.monthlyInstallments ?? '(missing key — UI expects data.monthlyInstallments)',
-    memberSummary: dataObj.member ?? dataObj.memberName ?? null,
-  };
-
-  const copyPastePrompt = `
-================================================================================
-COPY-PASTE FOR BACKEND — FitNix member monthly payments (auto-generated)
-================================================================================
-
-## 1) REQUEST (exact call from portal)
-- Method: GET
-- URL path (relative, same-origin): ${requestPath}
-- Path parameter memberId: ${memberId}
-- Query string: type=monthly
-- Note: Next.js /api/[...path] proxy forwards to NEXT_PUBLIC_API_URL + /api/...
-
-## 2) RESPONSE (facts)
-- HTTP status: ${httpStatus}
-- Top-level success: ${String(successFlag)}
-- Member name from payload (if any): ${memberNameFromPayload}
-
-## 3) IMPORTANT PART OF RESPONSE (what the UI reads)
-${JSON.stringify(importantPayload, null, 2)}
-
-## 4) ROWS AFTER CLIENT NORMALIZATION (${normalized.length} row(s))
-${JSON.stringify(rowsSummary, null, 2)}
-
-## 5) OBSERVED ISSUE (diagnosis)
-${diagnosis}
-
-## 6) CLIENT DATE HINT (backend should use GYM_TIMEZONE, not this)
-- Browser ISO: ${today.toISOString()}
-- Browser local YYYY-MM-DD: ${todayYm.y}-${String(todayYm.m).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}
-- Latest PAID month parsed from row.month (YYYY-MM): ${lastPaidYm ? `${lastPaidYm.y}-${String(lastPaidYm.m).padStart(2, '0')}` : 'N/A'}
-
-## 7) EXPECTED BEHAVIOR (what we need from the API)
-${EXPECTED_MONTHLY_PAYMENTS_API_BEHAVIOR}
-
-## 8) FULL RAW RESPONSE BODY (for deep debugging)
-${JSON.stringify(responseBody, null, 2)}
-================================================================================
-END COPY-PASTE
-================================================================================
-`.trim();
-
-  console.groupCollapsed(`${tag} GET member monthly payments`);
-  console.log(`${tag} WHAT WE SENT (client → proxy → your API)`);
-  console.log({
-    method: 'GET',
-    path: requestPath,
-    pathParam_memberId: memberId,
-    queryParams: { type: 'monthly' },
-    note: 'Browser calls same-origin /api/...; Next.js proxy forwards to NEXT_PUBLIC_API_URL',
-  });
-
-  console.log(`${tag} HTTP STATUS`, httpStatus);
-
-  console.log(
-    `%c${tag} COPY-PASTE PROMPT (select all text below the line in console, or expand string)`,
-    'font-weight:bold;color:#0a0;'
-  );
-  console.log(copyPastePrompt);
-
-  console.log(`${tag} FULL JSON RESPONSE BODY (duplicate of section 8 above)`);
-  console.log(JSON.stringify(responseBody, null, 2));
-
-  console.log(`${tag} NORMALIZED TIMELINE ROWS (${normalized.length})`, rowsSummary);
-
-  console.log(`${tag} COUNTS`, {
-    totalRows: normalized.length,
-    paidCount: paid.length,
-    unpaidCount: unpaid.length,
-    memberNameFromPayload,
-  });
-
-  console.log(`${tag} CLIENT "TODAY" (browser — API should use GYM_TIMEZONE)`, {
-    iso: today.toISOString(),
-    localDate: `${todayYm.y}-${String(todayYm.m).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
-  });
-
-  if (lastPaidYm) {
-    console.log(`${tag} LATEST PAID MONTH (from row.month labels)`, `${lastPaidYm.y}-${String(lastPaidYm.m).padStart(2, '0')}`);
-  } else {
-    console.log(`${tag} LATEST PAID MONTH`, '(could not parse YYYY-MM from paid rows’ month field)');
-  }
-
-  console.warn(`${tag} DIAGNOSIS (short)`, diagnosis);
-  console.groupEnd();
-}
-
-function logMemberPaymentsGetFailedHandoff(opts: {
-  memberId: string;
-  requestPath: string;
-  httpStatus: number;
-  responseBody: unknown;
-  reason: 'success_false' | 'network';
-  errorMessage?: string;
-}) {
-  if (!shouldLogMemberPaymentsDebug()) return;
-  const tag = '[FitNix Payments → BACKEND DEBUG]';
-  const { memberId, requestPath, httpStatus, responseBody, reason, errorMessage } = opts;
-  const prompt = `
-================================================================================
-COPY-PASTE FOR BACKEND — member payments GET failed (${reason})
-================================================================================
-## REQUEST
-- GET ${requestPath}
-- memberId: ${memberId}
-- Query: type=monthly
-
-## RESPONSE / ERROR
-- HTTP status: ${httpStatus}
-- Client error message: ${errorMessage ?? '(n/a)'}
-
-## RESPONSE BODY (if any)
-${JSON.stringify(responseBody, null, 2)}
-
-## EXPECTED BEHAVIOR
-${EXPECTED_MONTHLY_PAYMENTS_API_BEHAVIOR}
-- This request should return success: true and data.monthlyInstallments for the member.
-
-================================================================================
-`.trim();
-  console.error(`${tag} ${prompt}`);
-}
-
-const EXPECTED_MARK_PAID_API_BEHAVIOR = `Expected from mark-paid APIs:
-- Respond with success: true when the installment is persisted as PAID (paidDate set, status PAID).
-- After payment, GET /api/members/:memberId/payments?type=monthly should return an updated timeline: paid rows updated, and (for active memberships) any **new** unpaid months that should exist per billing rules should appear so the gym can collect the next period.
-- POST /api/payments/bulk-mark-paid body: { paymentIds: number[] } — IDs must match your Payment primary keys; if you use UUIDs, align with the portal or accept strings.`;
-
-function logMarkPaidCopyPastePrompt(opts: {
-  kind: 'POST /api/payments/bulk-mark-paid' | 'PATCH /api/payments/:id/mark-paid';
-  path: string;
-  requestSummary: Record<string, unknown>;
-  httpStatus: number;
-  responseBody: unknown;
-}) {
-  if (!shouldLogMemberPaymentsDebug()) return;
-  const tag = '[FitNix Payments → BACKEND DEBUG]';
-  const success = (opts.responseBody as { success?: boolean })?.success;
-  const prompt = `
-================================================================================
-COPY-PASTE FOR BACKEND — ${opts.kind}
-================================================================================
-## REQUEST
-- Path: ${opts.path}
-${JSON.stringify(opts.requestSummary, null, 2)}
-
-## RESPONSE
-- HTTP status: ${opts.httpStatus}
-- success: ${String(success)}
-${JSON.stringify(opts.responseBody, null, 2)}
-
-## EXPECTED BEHAVIOR
-${EXPECTED_MARK_PAID_API_BEHAVIOR}
-================================================================================
-`.trim();
-  console.log(`%c${tag} COPY-PASTE (mark-paid)`, 'font-weight:bold;color:#06c;');
-  console.log(prompt);
-}
-
 export default function MemberPaymentsDetailPage() {
   const params = useParams();
   const memberId = String(params.id ?? '');
@@ -340,29 +78,13 @@ export default function MemberPaymentsDetailPage() {
     try {
       setLoading(true);
       setError(null);
-      const requestPath = `/api/members/${memberId}/payments?type=monthly`;
-      const response = await api.get(requestPath);
+      const response = await api.get(`/api/members/${memberId}/payments?type=monthly`);
       if (!response.data?.success) {
-        logMemberPaymentsGetFailedHandoff({
-          memberId,
-          requestPath,
-          httpStatus: response.status,
-          responseBody: response.data,
-          reason: 'success_false',
-          errorMessage: (response.data as { error?: { message?: string } })?.error?.message,
-        });
         throw new Error(response.data?.error?.message || 'Failed to load payments');
       }
       const data = response.data.data || {};
       const timeline = (data.monthlyInstallments || []) as Record<string, unknown>[];
       const normalized = timeline.map(normalizeInstallment).sort(sortByDueDate);
-      logMemberPaymentsTimelineDebug({
-        memberId,
-        requestPath,
-        httpStatus: response.status,
-        responseBody: response.data,
-        normalized,
-      });
       setMonthlyInstallments(normalized);
 
       const nameFromPayload =
@@ -383,17 +105,6 @@ export default function MemberPaymentsDetailPage() {
       }
     } catch (e: unknown) {
       const msg = getErrorMessage(e);
-      if (shouldLogMemberPaymentsDebug()) {
-        const err = e as { response?: { status?: number; data?: unknown }; config?: { url?: string } };
-        logMemberPaymentsGetFailedHandoff({
-          memberId,
-          requestPath: `/api/members/${memberId}/payments?type=monthly`,
-          httpStatus: err.response?.status ?? 0,
-          responseBody: err.response?.data ?? { note: 'No response body (network/CORS/timeout?)' },
-          reason: 'network',
-          errorMessage: msg,
-        });
-      }
       setError(msg);
       showAlert('error', 'Error', msg);
     } finally {
@@ -444,6 +155,11 @@ export default function MemberPaymentsDetailPage() {
     };
   }, [monthlyInstallments]);
 
+  const openBucketsAllEmpty =
+    grouped.overdue.length === 0 &&
+    grouped.pending.length === 0 &&
+    grouped.advance.length === 0;
+
   const selectableUnpaid = useMemo(() => {
     return monthlyInstallments.filter(isInstallmentUnpaid);
   }, [monthlyInstallments]);
@@ -470,46 +186,10 @@ export default function MemberPaymentsDetailPage() {
       showAlert('warning', 'Nothing selected', 'Select at least one unpaid installment.');
       return;
     }
-    const tag = '[FitNix Payments → BACKEND DEBUG]';
-    let paymentsDebugGroup = false;
     try {
       setBulkSubmitting(true);
       const paymentIds = ids.map((id) => Number(id)).filter((n) => !Number.isNaN(n));
-      if (shouldLogMemberPaymentsDebug()) {
-        console.groupCollapsed(`${tag} POST /api/payments/bulk-mark-paid`);
-        paymentsDebugGroup = true;
-        console.log(`${tag} REQUEST`, {
-          method: 'POST',
-          path: '/api/payments/bulk-mark-paid',
-          body: { paymentIds },
-          selectedCheckboxIds_asStrings: ids,
-          numericIdsSent_count: paymentIds.length,
-          droppedBecauseNotNumeric_count: ids.length - paymentIds.length,
-          issueIfDropped:
-            ids.length !== paymentIds.length
-              ? 'BACKEND: IDs are not all numeric — portal strips non-numeric; bulk payload may be wrong. Use numeric payment PKs or accept string IDs in API.'
-              : undefined,
-        });
-      }
       const response = await api.post('/api/payments/bulk-mark-paid', { paymentIds });
-      if (shouldLogMemberPaymentsDebug()) {
-        console.log(`${tag} RESPONSE`, { httpStatus: response.status, body: response.data });
-        if (!response.data?.success) {
-          console.error(`${tag} bulk-mark-paid returned success:false`, response.data);
-        }
-        logMarkPaidCopyPastePrompt({
-          kind: 'POST /api/payments/bulk-mark-paid',
-          path: '/api/payments/bulk-mark-paid',
-          requestSummary: {
-            method: 'POST',
-            body: { paymentIds },
-            selectedCheckboxIds_asStrings: ids,
-            droppedNonNumeric_count: ids.length - paymentIds.length,
-          },
-          httpStatus: response.status,
-          responseBody: response.data,
-        });
-      }
       if (!response.data?.success) {
         throw new Error(response.data?.error?.message || 'Bulk mark paid failed');
       }
@@ -517,57 +197,16 @@ export default function MemberPaymentsDetailPage() {
       clearSelection();
       await fetchDetail();
     } catch (e: unknown) {
-      if (shouldLogMemberPaymentsDebug()) {
-        const err = e as { response?: { status?: number; data?: unknown } };
-        console.error(`${tag} POST bulk-mark-paid ERROR (network or thrown)`, {
-          message: getErrorMessage(e),
-          httpStatus: err.response?.status,
-          responseBody: err.response?.data,
-        });
-      }
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {
-      if (paymentsDebugGroup) {
-        console.groupEnd();
-      }
       setBulkSubmitting(false);
     }
   };
 
   const handleSingleMarkPaid = async (inst: MonthlyInstallment) => {
-    const tag = '[FitNix Payments → BACKEND DEBUG]';
-    const path = `/api/payments/${inst.id}/mark-paid`;
-    let paymentsDebugGroup = false;
     try {
       setBulkSubmitting(true);
-      if (shouldLogMemberPaymentsDebug()) {
-        console.groupCollapsed(`${tag} PATCH mark-paid`);
-        paymentsDebugGroup = true;
-        console.log(`${tag} REQUEST`, {
-          method: 'PATCH',
-          path,
-          pathParam_paymentId: inst.id,
-          installment: { month: inst.month, status: inst.status, dueDate: inst.dueDate, amount: inst.amount },
-        });
-      }
-      const response = await api.patch(path);
-      if (shouldLogMemberPaymentsDebug()) {
-        console.log(`${tag} RESPONSE`, { httpStatus: response.status, body: response.data });
-        if (!response.data?.success) {
-          console.error(`${tag} mark-paid returned success:false`, response.data);
-        }
-        logMarkPaidCopyPastePrompt({
-          kind: 'PATCH /api/payments/:id/mark-paid',
-          path,
-          requestSummary: {
-            method: 'PATCH',
-            pathParam_paymentId: inst.id,
-            installment: { month: inst.month, status: inst.status, dueDate: inst.dueDate },
-          },
-          httpStatus: response.status,
-          responseBody: response.data,
-        });
-      }
+      const response = await api.patch(`/api/payments/${inst.id}/mark-paid`);
       if (!response.data?.success) {
         throw new Error(response.data?.error?.message || 'Mark paid failed');
       }
@@ -575,20 +214,8 @@ export default function MemberPaymentsDetailPage() {
       setSingleConfirm(null);
       await fetchDetail();
     } catch (e: unknown) {
-      if (shouldLogMemberPaymentsDebug()) {
-        const err = e as { response?: { status?: number; data?: unknown } };
-        console.error(`${tag} PATCH mark-paid ERROR (network or thrown)`, {
-          path,
-          message: getErrorMessage(e),
-          httpStatus: err.response?.status,
-          responseBody: err.response?.data,
-        });
-      }
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {
-      if (paymentsDebugGroup) {
-        console.groupEnd();
-      }
       setBulkSubmitting(false);
     }
   };
@@ -867,20 +494,35 @@ export default function MemberPaymentsDetailPage() {
           </div>
         ) : (
           <>
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-dark-gray">Overdue</h2>
-              {renderSection('overdue', grouped.overdue, true)}
-            </section>
-
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-dark-gray">Pending</h2>
-              {renderSection('pending', grouped.pending, true)}
-            </section>
-
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-dark-gray">Advance</h2>
-              {renderSection('advance', grouped.advance, true)}
-            </section>
+            {openBucketsAllEmpty ? (
+              <section className="space-y-3">
+                <h2 className="text-lg font-semibold text-dark-gray">Open installments</h2>
+                <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 p-6 text-center text-sm text-gray-500">
+                  No overdue, pending, or advance rows in the current response.
+                </div>
+              </section>
+            ) : (
+              <>
+                {grouped.overdue.length > 0 && (
+                  <section className="space-y-3">
+                    <h2 className="text-lg font-semibold text-dark-gray">Overdue</h2>
+                    {renderSection('overdue', grouped.overdue, true)}
+                  </section>
+                )}
+                {grouped.pending.length > 0 && (
+                  <section className="space-y-3">
+                    <h2 className="text-lg font-semibold text-dark-gray">Pending</h2>
+                    {renderSection('pending', grouped.pending, true)}
+                  </section>
+                )}
+                {grouped.advance.length > 0 && (
+                  <section className="space-y-3">
+                    <h2 className="text-lg font-semibold text-dark-gray">Advance</h2>
+                    {renderSection('advance', grouped.advance, true)}
+                  </section>
+                )}
+              </>
+            )}
 
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-dark-gray">Paid</h2>

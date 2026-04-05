@@ -5,8 +5,6 @@ import axios from 'axios';
 // The Next.js API routes will forward requests to the external API
 const API_URL = ''; // Empty baseURL means relative URLs (same origin)
 
-console.log('🔧 API Client initialized with relative URLs (using Next.js API routes as proxy)');
-
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -29,34 +27,17 @@ api.interceptors.request.use((config) => {
       if (user.gymId) {
         config.headers['X-Gym-Id'] = user.gymId;
       }
-    } catch (e) {
-      console.warn('Failed to parse user from localStorage:', e);
+    } catch {
+      /* ignore invalid stored user */
     }
   }
-  
-  // Log request details (except sensitive data)
-  console.log('📤 API Request:', {
-    method: config.method?.toUpperCase(),
-    url: config.url,
-    baseURL: config.baseURL,
-    fullURL: `${config.baseURL}${config.url}`,
-    hasToken: !!token,
-    hasGymId: !!config.headers['X-Gym-Id'],
-  });
-  
+
   return config;
 });
 
 // Handle auth errors
 api.interceptors.response.use(
-  (response) => {
-    console.log('📥 API Response:', {
-      status: response.status,
-      url: response.config.url,
-      data: response.data,
-    });
-    return response;
-  },
+  (response) => response,
   (error) => {
     console.error('❌ API Error Response:', {
       status: error.response?.status,
