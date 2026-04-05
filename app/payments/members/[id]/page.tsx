@@ -12,6 +12,8 @@ import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
+import { postMarkProjectedMonthPaid } from '@/lib/markProjectedMonthPaidApi';
+import { mergeWithProjectedAdvanceMonths } from '@/lib/projectedMonthlyInstallments';
 import {
   isInstallmentUnpaid,
   uiBucketForInstallment,
@@ -32,6 +34,8 @@ interface MonthlyInstallment {
   /** Server-computed using GYM_TIMEZONE; prefer over client inference. */
   displayBucket?: string | null;
   member?: { id: string; name: string; phone: string | null; email: string | null };
+  /** Filled only by mergeWithProjectedAdvanceMonths when API omits future months. */
+  isProjected?: boolean;
 }
 
 function normalizeInstallment(raw: Record<string, unknown>): MonthlyInstallment {
@@ -85,7 +89,8 @@ export default function MemberPaymentsDetailPage() {
       const data = response.data.data || {};
       const timeline = (data.monthlyInstallments || []) as Record<string, unknown>[];
       const normalized = timeline.map(normalizeInstallment).sort(sortByDueDate);
-      setMonthlyInstallments(normalized);
+      const withProjected = mergeWithProjectedAdvanceMonths(normalized, { horizonMonthsFromToday: 12 });
+      setMonthlyInstallments(withProjected);
 
       const nameFromPayload =
         data.member?.name ||
@@ -161,8 +166,13 @@ export default function MemberPaymentsDetailPage() {
     grouped.advance.length === 0;
 
   const selectableUnpaid = useMemo(() => {
-    return monthlyInstallments.filter(isInstallmentUnpaid);
+    return monthlyInstallments.filter((i) => isInstallmentUnpaid(i));
   }, [monthlyInstallments]);
+
+  const hasProjectedRows = useMemo(
+    () => monthlyInstallments.some((i) => i.isProjected),
+    [monthlyInstallments]
+  );
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -188,11 +198,33 @@ export default function MemberPaymentsDetailPage() {
     }
     try {
       setBulkSubmitting(true);
-      const paymentIds = ids.map((id) => Number(id)).filter((n) => !Number.isNaN(n));
-      const response = await api.post('/api/payments/bulk-mark-paid', { paymentIds });
-      if (!response.data?.success) {
-        throw new Error(response.data?.error?.message || 'Bulk mark paid failed');
+      const selected = ids
+        .map((id) => monthlyInstallments.find((i) => i.id === id))
+        .filter((i): i is MonthlyInstallment => Boolean(i));
+
+      const projected = selected.filter((i) => i.isProjected);
+      const real = selected.filter((i) => !i.isProjected);
+
+      for (const p of projected) {
+        await postMarkProjectedMonthPaid({
+          memberId,
+          billingMonth: p.month,
+          amount: p.amount,
+          dueDate: p.dueDate,
+        });
       }
+
+      if (real.length > 0) {
+        const paymentIds = real.map((i) => Number(i.id)).filter((n) => !Number.isNaN(n));
+        if (paymentIds.length !== real.length) {
+          throw new Error('Some selected rows have invalid payment IDs.');
+        }
+        const response = await api.post('/api/payments/bulk-mark-paid', { paymentIds });
+        if (!response.data?.success) {
+          throw new Error(response.data?.error?.message || 'Bulk mark paid failed');
+        }
+      }
+
       showAlert('success', 'Payments recorded', `${ids.length} installment(s) marked as paid.`);
       clearSelection();
       await fetchDetail();
@@ -206,9 +238,18 @@ export default function MemberPaymentsDetailPage() {
   const handleSingleMarkPaid = async (inst: MonthlyInstallment) => {
     try {
       setBulkSubmitting(true);
-      const response = await api.patch(`/api/payments/${inst.id}/mark-paid`);
-      if (!response.data?.success) {
-        throw new Error(response.data?.error?.message || 'Mark paid failed');
+      if (inst.isProjected) {
+        await postMarkProjectedMonthPaid({
+          memberId,
+          billingMonth: inst.month,
+          amount: inst.amount,
+          dueDate: inst.dueDate,
+        });
+      } else {
+        const response = await api.patch(`/api/payments/${inst.id}/mark-paid`);
+        if (!response.data?.success) {
+          throw new Error(response.data?.error?.message || 'Mark paid failed');
+        }
       }
       showAlert('success', 'Payment recorded', 'Installment marked as paid.');
       setSingleConfirm(null);
@@ -368,7 +409,12 @@ export default function MemberPaymentsDetailPage() {
                       )}
                     </td>
                   )}
-                  <td className="px-4 py-3 text-sm text-gray-900">{row.month}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {row.month}
+                    {row.isProjected && (
+                      <span className="ml-2 text-xs font-normal text-gray-400">(projected)</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-sm">Rs. {row.amount.toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{formatDate(row.dueDate)}</td>
                   <td className="px-4 py-3">
@@ -441,6 +487,16 @@ export default function MemberPaymentsDetailPage() {
               ← Back to payments
             </Link>
             <h1 className="mt-2 text-3xl font-bold text-dark-gray">{memberName || 'Member payments'}</h1>
+            {hasProjectedRows && (
+              <p className="mt-2 max-w-2xl text-sm text-gray-500">
+                <span className="font-medium">(projected)</span> is the next billing month when the API has not
+                returned that row yet.                 Mark paid tries{' '}
+                <code className="rounded bg-gray-100 px-1 text-xs">POST /api/payments/mark-month-paid</code> then{' '}
+                <code className="rounded bg-gray-100 px-1 text-xs">POST /api/members/…/payments/mark-month-paid</code>
+                . If both return 404, add one of these routes on the API (same JSON body with memberId,
+                billingMonth, amount, dueDate).
+              </p>
+            )}
           </div>
           {user?.role === 'GYM_ADMIN' && selectableUnpaid.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">

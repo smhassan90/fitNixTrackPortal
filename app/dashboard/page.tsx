@@ -287,7 +287,11 @@ export default function DashboardPage() {
 
           {/* Pending Payments Card */}
           <div 
-            onClick={() => handlePaymentsLink('?onlyWithOpenInstallments=true&sortBy=nextDueDate&sortOrder=asc')}
+            onClick={() =>
+              handlePaymentsLink(
+                '?onlyWithOpenInstallments=true&bucket=pending&sortBy=nextDueDate&sortOrder=asc'
+              )
+            }
             className="bg-orange p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200 cursor-pointer hover:shadow-xl"
           >
             <div className="flex items-center justify-between">
@@ -307,7 +311,11 @@ export default function DashboardPage() {
 
           {/* Overdue Payments Card */}
           <div 
-            onClick={() => handlePaymentsLink('?onlyWithOpenInstallments=true&sortBy=overdueCount&sortOrder=desc')}
+            onClick={() =>
+              handlePaymentsLink(
+                '?onlyWithOpenInstallments=true&bucket=overdue&sortBy=overdueCount&sortOrder=desc'
+              )
+            }
             className="bg-gradient-to-br from-error to-error-dark p-6 rounded-xl shadow-lg text-white transform hover:scale-105 transition-all duration-200 cursor-pointer hover:shadow-xl"
           >
             <div className="flex items-center justify-between">

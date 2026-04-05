@@ -113,14 +113,23 @@ export default function PaymentsPage() {
 
   const [onlyOpenInput, setOnlyOpenInput] = useState(false);
   const [onlyWithOpenInstallments, setOnlyWithOpenInstallments] = useState(false);
+  /** From URL ?bucket= — filter list to next-unpaid overdue vs not-yet-overdue (pending/advance). */
+  const [bucketFilter, setBucketFilter] = useState<'overdue' | 'pending' | null>(null);
 
   const syncFromUrl = useCallback(() => {
     const open = searchParams.get('onlyWithOpenInstallments');
     const sortByParam = searchParams.get('sortBy') as SortByKey | null;
     const sortOrderParam = searchParams.get('sortOrder') as 'asc' | 'desc' | null;
+    const bucketParam = searchParams.get('bucket');
 
     setOnlyOpenInput(open === 'true');
     setOnlyWithOpenInstallments(open === 'true');
+
+    if (bucketParam === 'overdue' || bucketParam === 'pending') {
+      setBucketFilter(bucketParam);
+    } else {
+      setBucketFilter(null);
+    }
 
     if (sortByParam === 'name' || sortByParam === 'nextDueDate' || sortByParam === 'overdueCount') {
       setSortBy(sortByParam);
@@ -134,6 +143,10 @@ export default function PaymentsPage() {
     syncFromUrl();
   }, [syncFromUrl]);
 
+  useEffect(() => {
+    setPagination((p) => ({ ...p, page: 1 }));
+  }, [bucketFilter]);
+
   const fetchSummaries = useCallback(async () => {
     try {
       setLoading(true);
@@ -141,10 +154,16 @@ export default function PaymentsPage() {
       const params = new URLSearchParams();
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
       if (onlyWithOpenInstallments) params.set('onlyWithOpenInstallments', 'true');
+      if (bucketFilter) {
+        params.set('nextUnpaidBucket', bucketFilter);
+        params.set('limit', '500');
+        params.set('page', '1');
+      } else {
+        params.set('page', String(pagination.page));
+        params.set('limit', String(pagination.limit));
+      }
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
-      params.set('page', String(pagination.page));
-      params.set('limit', String(pagination.limit));
 
       const response = await api.get(`/api/payments/member-summaries?${params.toString()}`);
 
@@ -190,6 +209,7 @@ export default function PaymentsPage() {
     sortOrder,
     pagination.page,
     pagination.limit,
+    bucketFilter,
     showAlert,
   ]);
 
@@ -238,11 +258,43 @@ export default function PaymentsPage() {
   };
 
   const emptyMessage = useMemo(() => {
+    if (bucketFilter === 'overdue') {
+      return 'No members whose next open installment is overdue.';
+    }
+    if (bucketFilter === 'pending') {
+      return 'No members whose next open installment is pending or advance (not yet overdue).';
+    }
     if (searchQuery || onlyWithOpenInstallments) {
       return 'No members match your search or filters.';
     }
     return 'No members found.';
-  }, [searchQuery, onlyWithOpenInstallments]);
+  }, [searchQuery, onlyWithOpenInstallments, bucketFilter]);
+
+  const filteredRows = useMemo(() => {
+    if (!bucketFilter) return rows;
+    return rows.filter((row) => {
+      if (!row.nextUnpaid) return false;
+      const b = uiBucketForNextUnpaid({
+        displayBucket: row.nextUnpaid.displayBucket,
+        dueDate: row.nextUnpaid.dueDate,
+        status: row.nextUnpaid.status,
+        isOverdue: row.nextUnpaid.isOverdue,
+      });
+      if (bucketFilter === 'overdue') return b === 'overdue';
+      return b === 'pending' || b === 'advance';
+    });
+  }, [rows, bucketFilter]);
+
+  const tableRows = useMemo(() => {
+    if (!bucketFilter) return rows;
+    const start = (pagination.page - 1) * pagination.limit;
+    return filteredRows.slice(start, start + pagination.limit);
+  }, [bucketFilter, rows, filteredRows, pagination.page, pagination.limit]);
+
+  const effectiveTotal = bucketFilter ? filteredRows.length : pagination.total;
+  const effectiveTotalPages = bucketFilter
+    ? Math.max(1, Math.ceil(filteredRows.length / pagination.limit))
+    : pagination.totalPages;
 
   const showInitialSpinner = loading && rows.length === 0 && !listError;
 
@@ -260,6 +312,16 @@ export default function PaymentsPage() {
               <p className="mt-1 text-sm text-gray-500">
                 One row per member — open a member to view history and mark multiple months paid.
               </p>
+              {bucketFilter === 'overdue' && (
+                <p className="mt-2 text-sm font-medium text-red-800">
+                  Showing members whose next open installment is overdue.
+                </p>
+              )}
+              {bucketFilter === 'pending' && (
+                <p className="mt-2 text-sm font-medium text-amber-900">
+                  Showing members whose next open installment is pending or advance (not overdue yet).
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {user?.role === 'GYM_ADMIN' && (
@@ -339,7 +401,7 @@ export default function PaymentsPage() {
                 >
                   Apply filter
                 </button>
-                {(searchQuery || onlyWithOpenInstallments) && (
+                {(searchQuery || onlyWithOpenInstallments || bucketFilter) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -347,6 +409,7 @@ export default function PaymentsPage() {
                       setSearchQuery('');
                       setOnlyOpenInput(false);
                       setOnlyWithOpenInstallments(false);
+                      setBucketFilter(null);
                       setSortBy('nextDueDate');
                       setSortOrder('asc');
                       setPagination((p) => ({ ...p, page: 1 }));
@@ -396,14 +459,14 @@ export default function PaymentsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
-                  {rows.length === 0 && !loading ? (
+                  {tableRows.length === 0 && !loading ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
                         {listError ? '—' : emptyMessage}
                       </td>
                     </tr>
                   ) : (
-                    rows.map((row) => {
+                    tableRows.map((row) => {
                       const nextBucket = row.nextUnpaid
                         ? uiBucketForNextUnpaid({
                             displayBucket: row.nextUnpaid.displayBucket,
@@ -471,10 +534,11 @@ export default function PaymentsPage() {
               </table>
             </div>
 
-            {pagination.totalPages > 1 && (
+            {effectiveTotalPages > 1 && (
               <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row">
                 <p className="text-sm text-gray-600">
-                  Page {pagination.page} of {pagination.totalPages} ({pagination.total} members)
+                  Page {pagination.page} of {effectiveTotalPages} ({effectiveTotal} members
+                  {bucketFilter ? ' after filter' : ''})
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -487,9 +551,12 @@ export default function PaymentsPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={pagination.page >= pagination.totalPages || loading}
+                    disabled={pagination.page >= effectiveTotalPages || loading}
                     onClick={() =>
-                      setPagination((p) => ({ ...p, page: Math.min(p.totalPages, p.page + 1) }))
+                      setPagination((p) => ({
+                        ...p,
+                        page: Math.min(effectiveTotalPages, p.page + 1),
+                      }))
                     }
                     className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm disabled:opacity-40"
                   >
