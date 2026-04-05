@@ -18,6 +18,9 @@ import {
 
 type SortByKey = 'name' | 'nextDueDate' | 'overdueCount';
 
+/** Next-unpaid bucket filter + PAID (no next unpaid on summary). */
+type PaymentStatusFilter = 'all' | 'overdue' | 'pending' | 'paid';
+
 interface MemberSummaryMember {
   id: string;
   name: string;
@@ -113,22 +116,29 @@ export default function PaymentsPage() {
 
   const [onlyOpenInput, setOnlyOpenInput] = useState(false);
   const [onlyWithOpenInstallments, setOnlyWithOpenInstallments] = useState(false);
-  /** From URL ?bucket= — filter list to next-unpaid overdue vs not-yet-overdue (pending/advance). */
-  const [bucketFilter, setBucketFilter] = useState<'overdue' | 'pending' | null>(null);
+  /** From URL ?bucket= (dashboard) or ?status=paid */
+  const [statusFilter, setStatusFilter] = useState<PaymentStatusFilter>('all');
 
   const syncFromUrl = useCallback(() => {
     const open = searchParams.get('onlyWithOpenInstallments');
     const sortByParam = searchParams.get('sortBy') as SortByKey | null;
     const sortOrderParam = searchParams.get('sortOrder') as 'asc' | 'desc' | null;
     const bucketParam = searchParams.get('bucket');
+    const statusParam = searchParams.get('status');
 
     setOnlyOpenInput(open === 'true');
     setOnlyWithOpenInstallments(open === 'true');
 
-    if (bucketParam === 'overdue' || bucketParam === 'pending') {
-      setBucketFilter(bucketParam);
+    if (statusParam === 'paid') {
+      setStatusFilter('paid');
+      setOnlyOpenInput(false);
+      setOnlyWithOpenInstallments(false);
+    } else if (bucketParam === 'overdue') {
+      setStatusFilter('overdue');
+    } else if (bucketParam === 'pending') {
+      setStatusFilter('pending');
     } else {
-      setBucketFilter(null);
+      setStatusFilter('all');
     }
 
     if (sortByParam === 'name' || sortByParam === 'nextDueDate' || sortByParam === 'overdueCount') {
@@ -145,7 +155,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     setPagination((p) => ({ ...p, page: 1 }));
-  }, [bucketFilter]);
+  }, [statusFilter]);
 
   const fetchSummaries = useCallback(async () => {
     try {
@@ -153,9 +163,16 @@ export default function PaymentsPage() {
       setListError(null);
       const params = new URLSearchParams();
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
-      if (onlyWithOpenInstallments) params.set('onlyWithOpenInstallments', 'true');
-      if (bucketFilter) {
-        params.set('nextUnpaidBucket', bucketFilter);
+
+      const openOnlyForFetch =
+        statusFilter === 'paid' ? false : onlyWithOpenInstallments;
+      if (openOnlyForFetch) params.set('onlyWithOpenInstallments', 'true');
+
+      if (statusFilter === 'overdue' || statusFilter === 'pending') {
+        params.set('nextUnpaidBucket', statusFilter);
+        params.set('limit', '500');
+        params.set('page', '1');
+      } else if (statusFilter === 'paid') {
         params.set('limit', '500');
         params.set('page', '1');
       } else {
@@ -209,7 +226,7 @@ export default function PaymentsPage() {
     sortOrder,
     pagination.page,
     pagination.limit,
-    bucketFilter,
+    statusFilter,
     showAlert,
   ]);
 
@@ -258,21 +275,25 @@ export default function PaymentsPage() {
   };
 
   const emptyMessage = useMemo(() => {
-    if (bucketFilter === 'overdue') {
+    if (statusFilter === 'overdue') {
       return 'No members whose next open installment is overdue.';
     }
-    if (bucketFilter === 'pending') {
+    if (statusFilter === 'pending') {
       return 'No members whose next open installment is pending or advance (not yet overdue).';
+    }
+    if (statusFilter === 'paid') {
+      return 'No PAID members (no next due on this list).';
     }
     if (searchQuery || onlyWithOpenInstallments) {
       return 'No members match your search or filters.';
     }
     return 'No members found.';
-  }, [searchQuery, onlyWithOpenInstallments, bucketFilter]);
+  }, [searchQuery, onlyWithOpenInstallments, statusFilter]);
 
   const filteredRows = useMemo(() => {
-    if (!bucketFilter) return rows;
+    if (statusFilter === 'all') return rows;
     return rows.filter((row) => {
+      if (statusFilter === 'paid') return !row.nextUnpaid;
       if (!row.nextUnpaid) return false;
       const b = uiBucketForNextUnpaid({
         displayBucket: row.nextUnpaid.displayBucket,
@@ -280,21 +301,44 @@ export default function PaymentsPage() {
         status: row.nextUnpaid.status,
         isOverdue: row.nextUnpaid.isOverdue,
       });
-      if (bucketFilter === 'overdue') return b === 'overdue';
+      if (statusFilter === 'overdue') return b === 'overdue';
       return b === 'pending' || b === 'advance';
     });
-  }, [rows, bucketFilter]);
+  }, [rows, statusFilter]);
 
   const tableRows = useMemo(() => {
-    if (!bucketFilter) return rows;
+    if (statusFilter === 'all') return rows;
     const start = (pagination.page - 1) * pagination.limit;
     return filteredRows.slice(start, start + pagination.limit);
-  }, [bucketFilter, rows, filteredRows, pagination.page, pagination.limit]);
+  }, [statusFilter, rows, filteredRows, pagination.page, pagination.limit]);
 
-  const effectiveTotal = bucketFilter ? filteredRows.length : pagination.total;
-  const effectiveTotalPages = bucketFilter
-    ? Math.max(1, Math.ceil(filteredRows.length / pagination.limit))
-    : pagination.totalPages;
+  const effectiveTotal = statusFilter !== 'all' ? filteredRows.length : pagination.total;
+  const effectiveTotalPages =
+    statusFilter !== 'all'
+      ? Math.max(1, Math.ceil(filteredRows.length / pagination.limit))
+      : pagination.totalPages;
+
+  const setStatusFilterAndUrl = useCallback(
+    (next: PaymentStatusFilter) => {
+      setStatusFilter(next);
+      setPagination((p) => ({ ...p, page: 1 }));
+      if (next === 'paid') {
+        setOnlyOpenInput(false);
+        setOnlyWithOpenInstallments(false);
+      }
+      const p = new URLSearchParams(searchParams.toString());
+      p.delete('bucket');
+      p.delete('status');
+      if (next === 'paid') {
+        p.delete('onlyWithOpenInstallments');
+        p.set('status', 'paid');
+      } else if (next === 'overdue') p.set('bucket', 'overdue');
+      else if (next === 'pending') p.set('bucket', 'pending');
+      const qs = p.toString();
+      router.replace(qs ? `/payments?${qs}` : '/payments');
+    },
+    [router, searchParams]
+  );
 
   const showInitialSpinner = loading && rows.length === 0 && !listError;
 
@@ -312,14 +356,20 @@ export default function PaymentsPage() {
               <p className="mt-1 text-sm text-gray-500">
                 One row per member — open a member to view history and mark multiple months paid.
               </p>
-              {bucketFilter === 'overdue' && (
+              {statusFilter === 'overdue' && (
                 <p className="mt-2 text-sm font-medium text-red-800">
                   Showing members whose next open installment is overdue.
                 </p>
               )}
-              {bucketFilter === 'pending' && (
+              {statusFilter === 'pending' && (
                 <p className="mt-2 text-sm font-medium text-amber-900">
                   Showing members whose next open installment is pending or advance (not overdue yet).
+                </p>
+              )}
+              {statusFilter === 'paid' && (
+                <p className="mt-2 text-sm font-medium text-emerald-900">
+                  Showing members with no next due on file (PAID for this list). Open-installments-only is off for this
+                  view.
                 </p>
               )}
             </div>
@@ -385,12 +435,26 @@ export default function PaymentsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-dark-gray">Status</label>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilterAndUrl(e.target.value as PaymentStatusFilter)}
+                    className="rounded-lg border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-dark-gray focus:border-transparent focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="paid">PAID</option>
+                  </select>
+                </div>
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-dark-gray">
                   <input
                     type="checkbox"
                     checked={onlyOpenInput}
+                    disabled={statusFilter === 'paid'}
                     onChange={(e) => setOnlyOpenInput(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary disabled:opacity-50"
                   />
                   Open installments only
                 </label>
@@ -401,7 +465,7 @@ export default function PaymentsPage() {
                 >
                   Apply filter
                 </button>
-                {(searchQuery || onlyWithOpenInstallments || bucketFilter) && (
+                {(searchQuery || onlyWithOpenInstallments || statusFilter !== 'all') && (
                   <button
                     type="button"
                     onClick={() => {
@@ -409,7 +473,7 @@ export default function PaymentsPage() {
                       setSearchQuery('');
                       setOnlyOpenInput(false);
                       setOnlyWithOpenInstallments(false);
-                      setBucketFilter(null);
+                      setStatusFilter('all');
                       setSortBy('nextDueDate');
                       setSortOrder('asc');
                       setPagination((p) => ({ ...p, page: 1 }));
@@ -500,7 +564,7 @@ export default function PaymentsPage() {
                                 <div className="text-xs text-gray-500">{row.nextUnpaid.month}</div>
                               </>
                             ) : (
-                              <span className="text-gray-500">Caught up</span>
+                              <span className="text-gray-500">PAID</span>
                             )}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-600">
@@ -538,7 +602,7 @@ export default function PaymentsPage() {
               <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row">
                 <p className="text-sm text-gray-600">
                   Page {pagination.page} of {effectiveTotalPages} ({effectiveTotal} members
-                  {bucketFilter ? ' after filter' : ''})
+                  {statusFilter !== 'all' ? ' after filter' : ''})
                 </p>
                 <div className="flex gap-2">
                   <button

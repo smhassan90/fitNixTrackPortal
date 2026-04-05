@@ -76,6 +76,7 @@ export default function MemberPaymentsDetailPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [singleConfirm, setSingleConfirm] = useState<MonthlyInstallment | null>(null);
+  const [unpaidConfirm, setUnpaidConfirm] = useState<MonthlyInstallment | null>(null);
 
   const fetchDetail = useCallback(async () => {
     if (!memberId) return;
@@ -174,6 +175,21 @@ export default function MemberPaymentsDetailPage() {
     [monthlyInstallments]
   );
 
+  /** LIFO undo: only the paid row with the latest due date (then id) may be reverted per API rules. */
+  const latestPaidForUndo = useMemo(() => {
+    const paid = monthlyInstallments.filter((i) => i.status === 'PAID' && !i.isProjected);
+    if (paid.length === 0) return null;
+    return [...paid].sort((a, b) => {
+      const da = new Date(a.dueDate).getTime();
+      const db = new Date(b.dueDate).getTime();
+      if (db !== da) return db - da;
+      const na = Number(a.id);
+      const nb = Number(b.id);
+      if (!Number.isNaN(na) && !Number.isNaN(nb) && na !== nb) return nb - na;
+      return String(b.id).localeCompare(String(a.id));
+    })[0];
+  }, [monthlyInstallments]);
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -253,6 +269,23 @@ export default function MemberPaymentsDetailPage() {
       }
       showAlert('success', 'Payment recorded', 'Installment marked as paid.');
       setSingleConfirm(null);
+      await fetchDetail();
+    } catch (e: unknown) {
+      showAlert('error', 'Error', getErrorMessage(e));
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  const handleMarkUnpaid = async (inst: MonthlyInstallment) => {
+    try {
+      setBulkSubmitting(true);
+      const response = await api.patch(`/api/payments/${inst.id}/mark-unpaid`);
+      if (!response.data?.success) {
+        throw new Error(response.data?.error?.message || 'Could not mark unpaid');
+      }
+      showAlert('success', 'Payment undone', 'Installment is unpaid again.');
+      setUnpaidConfirm(null);
       await fetchDetail();
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
@@ -364,7 +397,12 @@ export default function MemberPaymentsDetailPage() {
     };
   };
 
-  const renderSection = (title: string, items: MonthlyInstallment[], showSelect: boolean) => {
+  const renderSection = (
+    title: string,
+    items: MonthlyInstallment[],
+    showSelect: boolean,
+    undoPaidId: string | null = null
+  ) => {
     if (items.length === 0) {
       return (
         <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/80 p-6 text-center text-sm text-gray-500">
@@ -435,13 +473,25 @@ export default function MemberPaymentsDetailPage() {
                           Mark paid
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handlePrintReceipt(row)}
-                          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-gray-800 hover:bg-gray-50"
-                        >
-                          Receipt
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePrintReceipt(row)}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-gray-800 hover:bg-gray-50"
+                          >
+                            Receipt
+                          </button>
+                          {undoPaidId === row.id && (
+                            <button
+                              type="button"
+                              disabled={bulkSubmitting}
+                              onClick={() => setUnpaidConfirm(row)}
+                              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                              Undo payment
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   )}
@@ -479,6 +529,20 @@ export default function MemberPaymentsDetailPage() {
         cancelText="Cancel"
         type="warning"
       />
+      <ConfirmationDialog
+        isOpen={!!unpaidConfirm}
+        onClose={() => setUnpaidConfirm(null)}
+        onConfirm={() => unpaidConfirm && void handleMarkUnpaid(unpaidConfirm)}
+        title="Undo this payment?"
+        message={
+          unpaidConfirm
+            ? `Mark ${unpaidConfirm.month} as unpaid again? Only the most recently paid installment can be undone. If this fails, mark a newer payment unpaid first.`
+            : ''
+        }
+        confirmText="Mark unpaid"
+        cancelText="Cancel"
+        type="warning"
+      />
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -489,12 +553,8 @@ export default function MemberPaymentsDetailPage() {
             <h1 className="mt-2 text-3xl font-bold text-dark-gray">{memberName || 'Member payments'}</h1>
             {hasProjectedRows && (
               <p className="mt-2 max-w-2xl text-sm text-gray-500">
-                <span className="font-medium">(projected)</span> is the next billing month when the API has not
-                returned that row yet.                 Mark paid tries{' '}
-                <code className="rounded bg-gray-100 px-1 text-xs">POST /api/payments/mark-month-paid</code> then{' '}
-                <code className="rounded bg-gray-100 px-1 text-xs">POST /api/members/…/payments/mark-month-paid</code>
-                . If both return 404, add one of these routes on the API (same JSON body with memberId,
-                billingMonth, amount, dueDate).
+                <span className="font-medium">(projected)</span> is the next billing month when your system has not
+                returned that row yet. Mark paid records it using your gym API (member + billing month).
               </p>
             )}
           </div>
@@ -582,7 +642,7 @@ export default function MemberPaymentsDetailPage() {
 
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-dark-gray">Paid</h2>
-              {renderSection('paid', grouped.paid, false)}
+              {renderSection('paid', grouped.paid, false, latestPaidForUndo?.id ?? null)}
             </section>
           </>
         )}

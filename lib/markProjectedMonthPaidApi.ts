@@ -6,29 +6,28 @@ function isHttp404(e: unknown): boolean {
 }
 
 /**
- * Projected advance rows have no payment id. Tries payment-hub routes first (same prefix as
- * bulk-mark-paid), then member-nested route — whichever the backend implements.
+ * Marks a projected/advance billing month as paid via backend routes (same order as bulk-mark-paid).
+ * Body shapes per API: POST /api/payments/mark-month-paid { memberId, month } and
+ * POST /api/members/:id/payments/mark-month-paid { month }.
  */
 export async function postMarkProjectedMonthPaid(params: {
   memberId: string;
   billingMonth: string;
-  amount: number;
-  dueDate: string;
+  /** Kept for callers; not sent — server derives amount/dates from month + member. */
+  amount?: number;
+  dueDate?: string;
 }): Promise<void> {
-  const body = {
-    memberId: params.memberId,
-    billingMonth: params.billingMonth,
-    amount: params.amount,
-    dueDate: params.dueDate,
-  };
+  const month = params.billingMonth;
+  const bodyGlobal = { memberId: params.memberId, month };
+  const bodyMember = { month };
 
   const paths = [
-    '/api/payments/mark-month-paid',
-    `/api/members/${params.memberId}/payments/mark-month-paid`,
+    { path: '/api/payments/mark-month-paid', body: bodyGlobal },
+    { path: `/api/members/${params.memberId}/payments/mark-month-paid`, body: bodyMember },
   ];
 
   let lastError: unknown;
-  for (const path of paths) {
+  for (const { path, body } of paths) {
     try {
       const response = await api.post(path, body);
       if (response.data?.success) return;
@@ -45,11 +44,11 @@ export async function postMarkProjectedMonthPaid(params: {
   }
 
   const hint =
-    'Add one of: POST /api/payments/mark-month-paid OR POST /api/members/:memberId/payments/mark-month-paid ' +
-    `with JSON body ${JSON.stringify(body)}`;
+    'Add one of: POST /api/payments/mark-month-paid { memberId, month } OR ' +
+    `POST /api/members/:memberId/payments/mark-month-paid { month } (YYYY-MM). Example month: ${JSON.stringify(month)}`;
   throw new Error(
     lastError
-      ? `Route not found (404) for advance payment. ${hint}`
-      : `Could not record advance payment. ${hint}`
+      ? `Route not found (404) for mark-month-paid. ${hint}`
+      : `Could not record payment. ${hint}`
   );
 }
