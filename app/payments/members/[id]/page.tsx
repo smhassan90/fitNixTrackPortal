@@ -59,6 +59,134 @@ function sortByDueDate(a: MonthlyInstallment, b: MonthlyInstallment) {
   return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
 }
 
+/** Enable via: dev build, NEXT_PUBLIC_DEBUG_MEMBER_PAYMENTS=true, or localStorage DEBUG_MEMBER_PAYMENTS=1 */
+function shouldLogMemberPaymentsDebug(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    process.env.NODE_ENV === 'development' ||
+    process.env.NEXT_PUBLIC_DEBUG_MEMBER_PAYMENTS === 'true' ||
+    window.localStorage?.getItem('DEBUG_MEMBER_PAYMENTS') === '1'
+  );
+}
+
+function ymFromMonthLabel(month: string): { y: number; m: number } | null {
+  const m = month.trim().match(/^(\d{4})-(\d{2})/);
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]) };
+}
+
+function calendarMonthIndex(y: number, month1to12: number): number {
+  return y * 12 + (month1to12 - 1);
+}
+
+/**
+ * Console output for backend handoff: request, raw response, normalized rows, and a plain-English diagnosis.
+ */
+function logMemberPaymentsTimelineDebug(opts: {
+  memberId: string;
+  requestPath: string;
+  httpStatus: number;
+  responseBody: unknown;
+  normalized: MonthlyInstallment[];
+}) {
+  if (!shouldLogMemberPaymentsDebug()) return;
+
+  const tag = '[FitNix Payments → BACKEND DEBUG]';
+  const { memberId, requestPath, httpStatus, responseBody, normalized } = opts;
+
+  const data = (responseBody as { data?: Record<string, unknown> })?.data ?? responseBody;
+  const dataObj = typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {};
+
+  console.groupCollapsed(`${tag} GET member monthly payments`);
+  console.log(`${tag} WHAT WE SENT (client → proxy → your API)`);
+  console.log({
+    method: 'GET',
+    path: requestPath,
+    pathParam_memberId: memberId,
+    queryParams: { type: 'monthly' },
+    note: 'Browser calls same-origin /api/...; Next.js proxy forwards to NEXT_PUBLIC_API_URL',
+  });
+
+  console.log(`${tag} HTTP STATUS`, httpStatus);
+
+  console.log(`${tag} FULL JSON RESPONSE BODY (paste this for backend)`);
+  console.log(JSON.stringify(responseBody, null, 2));
+
+  const rowsSummary = normalized.map((r) => ({
+    id: r.id,
+    idIsNumeric: !Number.isNaN(Number(r.id)) && String(Number(r.id)) === String(r.id).trim(),
+    month: r.month,
+    amount: r.amount,
+    status: r.status,
+    dueDate: r.dueDate,
+    paidDate: r.paidDate,
+    displayBucket: r.displayBucket ?? '(missing — UI falls back to browser-local date rules)',
+  }));
+
+  console.log(`${tag} NORMALIZED TIMELINE ROWS (${normalized.length})`, rowsSummary);
+
+  const unpaid = normalized.filter((r) => r.status !== 'PAID');
+  const paid = normalized.filter((r) => r.status === 'PAID');
+  const paidWithMonth = paid
+    .map((r) => ({ row: r, ym: ymFromMonthLabel(r.month) }))
+    .filter((x): x is { row: MonthlyInstallment; ym: { y: number; m: number } } => x.ym !== null);
+  let lastPaidYm: { y: number; m: number } | null = null;
+  for (const { ym } of paidWithMonth) {
+    if (!lastPaidYm || calendarMonthIndex(ym.y, ym.m) > calendarMonthIndex(lastPaidYm.y, lastPaidYm.m)) {
+      lastPaidYm = ym;
+    }
+  }
+
+  const today = new Date();
+  const todayYm = { y: today.getFullYear(), m: today.getMonth() + 1 };
+  const todayIdx = calendarMonthIndex(todayYm.y, todayYm.m);
+  const lastPaidIdx = lastPaidYm ? calendarMonthIndex(lastPaidYm.y, lastPaidYm.m) : null;
+
+  console.log(`${tag} COUNTS`, {
+    totalRows: normalized.length,
+    paidCount: paid.length,
+    unpaidCount: unpaid.length,
+    memberNameFromPayload:
+      (dataObj.member as { name?: string } | undefined)?.name ??
+      dataObj.memberName ??
+      normalized[0]?.member?.name ??
+      '(not in payload)',
+  });
+
+  console.log(`${tag} CLIENT "TODAY" (browser clock — your API should use GYM_TIMEZONE for truth)`, {
+    iso: today.toISOString(),
+    localDate: `${todayYm.y}-${String(todayYm.m).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`,
+  });
+
+  if (lastPaidYm) {
+    console.log(`${tag} LATEST PAID MONTH (from row.month labels)`, `${lastPaidYm.y}-${String(lastPaidYm.m).padStart(2, '0')}`);
+  } else {
+    console.log(`${tag} LATEST PAID MONTH`, '(could not parse YYYY-MM from paid rows’ month field)');
+  }
+
+  let diagnosis: string;
+  if (normalized.length === 0) {
+    diagnosis =
+      'ISSUE: Empty timeline. Backend returned no monthlyInstallments. UI cannot show Overdue/Pending.';
+  } else if (unpaid.length === 0 && lastPaidIdx !== null && lastPaidIdx < todayIdx) {
+    diagnosis =
+      `LIKELY BACKEND ISSUE: All ${normalized.length} row(s) are PAID through ${lastPaidYm!.y}-${String(lastPaidYm!.m).padStart(2, '0')}, but client calendar month is now ${todayYm.y}-${String(todayYm.m).padStart(2, '0')}. ` +
+      'There are ZERO unpaid/PENDING/OVERDUE rows for later months, so the portal correctly shows empty Overdue/Pending. ' +
+      'Fix: when building GET /api/members/:id/payments?type=monthly, materialize or return open installments for each billing month after the last paid month (through active membership / package rules), using gym timezone.';
+  } else if (unpaid.length === 0 && lastPaidIdx !== null && lastPaidIdx >= todayIdx) {
+    diagnosis =
+      'All rows are paid and the latest paid month is still current or future vs browser today — empty unpaid sections may be expected.';
+  } else if (unpaid.length > 0) {
+    diagnosis =
+      `OK: ${unpaid.length} unpaid row(s) present; UI should show them under Overdue/Pending/Advance per status/displayBucket.`;
+  } else {
+    diagnosis = 'Unpaid count is 0; verify paid-month parsing and business rules.';
+  }
+
+  console.warn(`${tag} DIAGNOSIS (for ticket)`, diagnosis);
+  console.groupEnd();
+}
+
 export default function MemberPaymentsDetailPage() {
   const params = useParams();
   const memberId = String(params.id ?? '');
@@ -78,13 +206,31 @@ export default function MemberPaymentsDetailPage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get(`/api/members/${memberId}/payments?type=monthly`);
+      const requestPath = `/api/members/${memberId}/payments?type=monthly`;
+      const response = await api.get(requestPath);
       if (!response.data?.success) {
+        if (shouldLogMemberPaymentsDebug()) {
+          const tag = '[FitNix Payments → BACKEND DEBUG]';
+          console.error(`${tag} GET FAILED`, {
+            requestPath,
+            pathParam_memberId: memberId,
+            queryParams: { type: 'monthly' },
+            httpStatus: response.status,
+            responseBody: response.data,
+          });
+        }
         throw new Error(response.data?.error?.message || 'Failed to load payments');
       }
       const data = response.data.data || {};
       const timeline = (data.monthlyInstallments || []) as Record<string, unknown>[];
       const normalized = timeline.map(normalizeInstallment).sort(sortByDueDate);
+      logMemberPaymentsTimelineDebug({
+        memberId,
+        requestPath,
+        httpStatus: response.status,
+        responseBody: response.data,
+        normalized,
+      });
       setMonthlyInstallments(normalized);
 
       const nameFromPayload =
@@ -105,6 +251,16 @@ export default function MemberPaymentsDetailPage() {
       }
     } catch (e: unknown) {
       const msg = getErrorMessage(e);
+      if (shouldLogMemberPaymentsDebug()) {
+        const tag = '[FitNix Payments → BACKEND DEBUG]';
+        const err = e as { response?: { status?: number; data?: unknown }; config?: { url?: string } };
+        console.error(`${tag} GET NETWORK/AXIOS ERROR`, {
+          message: msg,
+          requestUrl: err.config?.url,
+          httpStatus: err.response?.status,
+          responseBody: err.response?.data,
+        });
+      }
       setError(msg);
       showAlert('error', 'Error', msg);
     } finally {
@@ -181,10 +337,34 @@ export default function MemberPaymentsDetailPage() {
       showAlert('warning', 'Nothing selected', 'Select at least one unpaid installment.');
       return;
     }
+    const tag = '[FitNix Payments → BACKEND DEBUG]';
+    let paymentsDebugGroup = false;
     try {
       setBulkSubmitting(true);
       const paymentIds = ids.map((id) => Number(id)).filter((n) => !Number.isNaN(n));
+      if (shouldLogMemberPaymentsDebug()) {
+        console.groupCollapsed(`${tag} POST /api/payments/bulk-mark-paid`);
+        paymentsDebugGroup = true;
+        console.log(`${tag} REQUEST`, {
+          method: 'POST',
+          path: '/api/payments/bulk-mark-paid',
+          body: { paymentIds },
+          selectedCheckboxIds_asStrings: ids,
+          numericIdsSent_count: paymentIds.length,
+          droppedBecauseNotNumeric_count: ids.length - paymentIds.length,
+          issueIfDropped:
+            ids.length !== paymentIds.length
+              ? 'BACKEND: IDs are not all numeric — portal strips non-numeric; bulk payload may be wrong. Use numeric payment PKs or accept string IDs in API.'
+              : undefined,
+        });
+      }
       const response = await api.post('/api/payments/bulk-mark-paid', { paymentIds });
+      if (shouldLogMemberPaymentsDebug()) {
+        console.log(`${tag} RESPONSE`, { httpStatus: response.status, body: response.data });
+        if (!response.data?.success) {
+          console.error(`${tag} bulk-mark-paid returned success:false`, response.data);
+        }
+      }
       if (!response.data?.success) {
         throw new Error(response.data?.error?.message || 'Bulk mark paid failed');
       }
@@ -192,16 +372,46 @@ export default function MemberPaymentsDetailPage() {
       clearSelection();
       await fetchDetail();
     } catch (e: unknown) {
+      if (shouldLogMemberPaymentsDebug()) {
+        const err = e as { response?: { status?: number; data?: unknown } };
+        console.error(`${tag} POST bulk-mark-paid ERROR (network or thrown)`, {
+          message: getErrorMessage(e),
+          httpStatus: err.response?.status,
+          responseBody: err.response?.data,
+        });
+      }
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {
+      if (paymentsDebugGroup) {
+        console.groupEnd();
+      }
       setBulkSubmitting(false);
     }
   };
 
   const handleSingleMarkPaid = async (inst: MonthlyInstallment) => {
+    const tag = '[FitNix Payments → BACKEND DEBUG]';
+    const path = `/api/payments/${inst.id}/mark-paid`;
+    let paymentsDebugGroup = false;
     try {
       setBulkSubmitting(true);
-      const response = await api.patch(`/api/payments/${inst.id}/mark-paid`);
+      if (shouldLogMemberPaymentsDebug()) {
+        console.groupCollapsed(`${tag} PATCH mark-paid`);
+        paymentsDebugGroup = true;
+        console.log(`${tag} REQUEST`, {
+          method: 'PATCH',
+          path,
+          pathParam_paymentId: inst.id,
+          installment: { month: inst.month, status: inst.status, dueDate: inst.dueDate, amount: inst.amount },
+        });
+      }
+      const response = await api.patch(path);
+      if (shouldLogMemberPaymentsDebug()) {
+        console.log(`${tag} RESPONSE`, { httpStatus: response.status, body: response.data });
+        if (!response.data?.success) {
+          console.error(`${tag} mark-paid returned success:false`, response.data);
+        }
+      }
       if (!response.data?.success) {
         throw new Error(response.data?.error?.message || 'Mark paid failed');
       }
@@ -209,8 +419,20 @@ export default function MemberPaymentsDetailPage() {
       setSingleConfirm(null);
       await fetchDetail();
     } catch (e: unknown) {
+      if (shouldLogMemberPaymentsDebug()) {
+        const err = e as { response?: { status?: number; data?: unknown } };
+        console.error(`${tag} PATCH mark-paid ERROR (network or thrown)`, {
+          path,
+          message: getErrorMessage(e),
+          httpStatus: err.response?.status,
+          responseBody: err.response?.data,
+        });
+      }
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {
+      if (paymentsDebugGroup) {
+        console.groupEnd();
+      }
       setBulkSubmitting(false);
     }
   };
