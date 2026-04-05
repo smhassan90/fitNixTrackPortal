@@ -436,11 +436,6 @@ export default function MemberPaymentsDetailPage() {
               ← Back to payments
             </Link>
             <h1 className="mt-2 text-3xl font-bold text-dark-gray">{memberName || 'Member payments'}</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Overdue / pending / advance labels come from the API (<span className="font-medium">displayBucket</span>,
-              gym calendar via server <span className="font-medium">GYM_TIMEZONE</span>). You can mark any unpaid row
-              returned as paid; the list refreshes after pay so the next installment can appear.
-            </p>
           </div>
           {user?.role === 'GYM_ADMIN' && selectableUnpaid.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
@@ -494,10 +489,6 @@ export default function MemberPaymentsDetailPage() {
           </div>
         ) : (
           <>
-            <p className="text-sm text-gray-500">
-              Installments are listed by due date within each group. Full timeline: {monthlyInstallments.length} month(s).
-            </p>
-
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-dark-gray">Overdue</h2>
               {renderSection('overdue', grouped.overdue, true)}
@@ -510,18 +501,7 @@ export default function MemberPaymentsDetailPage() {
 
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-dark-gray">Advance</h2>
-              <p className="text-xs text-gray-500">
-                Future billing months (advance). If this is empty, the API has not returned a next open row yet—this GET
-                and mark-paid both trigger server sync on the backend.
-              </p>
-              {grouped.advance.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/80 p-6 text-sm text-amber-900">
-                  No advance installments in the response. When the package schedule continues, the server should add the
-                  next row after you pay or when you open this page.
-                </div>
-              ) : (
-                renderSection('advance', grouped.advance, true)
-              )}
+              {renderSection('advance', grouped.advance, true)}
             </section>
 
             <section className="space-y-3">
