@@ -38,6 +38,17 @@ interface MonthlyInstallment {
   isProjected?: boolean;
 }
 
+interface MemberStatusLite {
+  id: string;
+  name: string;
+  isActive?: boolean;
+  inactiveFrom?: string | null;
+  billingResumeFrom?: string | null;
+}
+
+type MemberStatusActionKind = 'deactivate' | 'reactivate';
+type DateMode = 'today' | 'custom';
+
 function normalizeInstallment(raw: Record<string, unknown>): MonthlyInstallment {
   const m = raw.member as MonthlyInstallment['member'] | undefined;
   return {
@@ -72,11 +83,16 @@ export default function MemberPaymentsDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [memberName, setMemberName] = useState<string>('');
+  const [memberStatus, setMemberStatus] = useState<MemberStatusLite | null>(null);
   const [monthlyInstallments, setMonthlyInstallments] = useState<MonthlyInstallment[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [singleConfirm, setSingleConfirm] = useState<MonthlyInstallment | null>(null);
   const [unpaidConfirm, setUnpaidConfirm] = useState<MonthlyInstallment | null>(null);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusDateMode, setStatusDateMode] = useState<DateMode>('today');
+  const [statusCustomDate, setStatusCustomDate] = useState('');
+  const [statusSubmitting, setStatusSubmitting] = useState(false);
 
   const fetchDetail = useCallback(async () => {
     if (!memberId) return;
@@ -104,10 +120,28 @@ export default function MemberPaymentsDetailPage() {
           const mRes = await api.get(`/api/members/${memberId}`);
           if (mRes.data?.success && mRes.data.data?.member?.name) {
             setMemberName(mRes.data.data.member.name);
+            const m = mRes.data.data.member as Record<string, unknown>;
+            setMemberStatus({
+              id: String(m.id ?? memberId),
+              name: String(m.name ?? ''),
+              isActive: m.isActive !== false,
+              inactiveFrom: m.inactiveFrom != null ? String(m.inactiveFrom) : null,
+              billingResumeFrom: m.billingResumeFrom != null ? String(m.billingResumeFrom) : null,
+            });
           }
         } catch {
           /* optional */
         }
+      }
+      if (data.member) {
+        const m = data.member as Record<string, unknown>;
+        setMemberStatus({
+          id: String(m.id ?? memberId),
+          name: String(m.name ?? nameFromPayload ?? ''),
+          isActive: m.isActive !== false,
+          inactiveFrom: m.inactiveFrom != null ? String(m.inactiveFrom) : null,
+          billingResumeFrom: m.billingResumeFrom != null ? String(m.billingResumeFrom) : null,
+        });
       }
     } catch (e: unknown) {
       const msg = getErrorMessage(e);
@@ -397,6 +431,48 @@ export default function MemberPaymentsDetailPage() {
     };
   };
 
+  const currentStatusAction: MemberStatusActionKind =
+    memberStatus?.isActive === false ? 'reactivate' : 'deactivate';
+
+  const submitMemberStatusAction = async () => {
+    if (!memberStatus || statusSubmitting) return;
+    const isCustom = statusDateMode === 'custom';
+    if (isCustom) {
+      const valid = /^\d{4}-\d{2}-\d{2}$/.test(statusCustomDate) && !Number.isNaN(new Date(`${statusCustomDate}T00:00:00`).getTime());
+      if (!valid) {
+        showAlert('warning', 'Invalid date', 'Enter date in YYYY-MM-DD format.');
+        return;
+      }
+    }
+    try {
+      setStatusSubmitting(true);
+      const endpoint = currentStatusAction === 'deactivate' ? 'deactivate' : 'reactivate';
+      const body = isCustom ? { effectiveDate: statusCustomDate } : {};
+      const response = await api.patch(`/api/members/${memberId}/${endpoint}`, body);
+      if (!response.data?.success) {
+        throw new Error(response.data?.error?.message || `Could not ${currentStatusAction} member`);
+      }
+      showAlert(
+        'success',
+        currentStatusAction === 'deactivate' ? 'Member deactivated' : 'Member reactivated',
+        `${memberStatus.name || 'Member'} status updated successfully.`
+      );
+      setStatusDialogOpen(false);
+      setStatusDateMode('today');
+      setStatusCustomDate('');
+      await fetchDetail();
+      try {
+        await api.get('/api/payments/member-summaries?onlyWithOpenInstallments=true&limit=1&page=1');
+      } catch {
+        /* best-effort */
+      }
+    } catch (e: unknown) {
+      showAlert('error', 'Error', getErrorMessage(e));
+    } finally {
+      setStatusSubmitting(false);
+    }
+  };
+
   const renderSection = (
     title: string,
     items: MonthlyInstallment[],
@@ -543,6 +619,52 @@ export default function MemberPaymentsDetailPage() {
         cancelText="Cancel"
         type="warning"
       />
+      {statusDialogOpen && memberStatus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/35" onClick={() => !statusSubmitting && setStatusDialogOpen(false)} />
+          <div className="relative z-10 w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-2xl">
+            <h3 className="text-lg font-bold text-dark-gray">
+              {currentStatusAction === 'deactivate' ? 'Deactivate member' : 'Reactivate member'}
+            </h3>
+            <p className="mt-1 text-sm text-gray-600">{memberStatus.name}</p>
+            <div className="mt-4 space-y-3 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="radio" name="memberStatusDateMode" checked={statusDateMode === 'today'} onChange={() => setStatusDateMode('today')} />
+                Effective from today
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="memberStatusDateMode" checked={statusDateMode === 'custom'} onChange={() => setStatusDateMode('custom')} />
+                Custom effective date
+              </label>
+              <input
+                type="date"
+                disabled={statusDateMode !== 'custom' || statusSubmitting}
+                value={statusCustomDate}
+                onChange={(e) => setStatusCustomDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:opacity-50"
+              />
+            </div>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setStatusDialogOpen(false)}
+                disabled={statusSubmitting}
+                className="flex-1 rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-800 hover:bg-gray-300 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitMemberStatusAction}
+                disabled={statusSubmitting}
+                className="flex-1 rounded-lg bg-primary px-4 py-2 font-medium text-white hover:bg-primary-dark disabled:opacity-50"
+              >
+                {statusSubmitting ? 'Saving…' : currentStatusAction === 'deactivate' ? 'Deactivate' : 'Reactivate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -551,6 +673,27 @@ export default function MemberPaymentsDetailPage() {
               ← Back to payments
             </Link>
             <h1 className="mt-2 text-3xl font-bold text-dark-gray">{memberName || 'Member payments'}</h1>
+            {memberStatus && (
+              <div className="mt-2 space-y-1 text-sm">
+                <div>
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      memberStatus.isActive === false
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}
+                  >
+                    {memberStatus.isActive === false ? 'Inactive' : 'Active'}
+                  </span>
+                </div>
+                {memberStatus.inactiveFrom && (
+                  <p className="text-gray-600">Inactive from: {formatDate(memberStatus.inactiveFrom)}</p>
+                )}
+                {memberStatus.billingResumeFrom && (
+                  <p className="text-gray-600">Resumed billing: {formatDate(memberStatus.billingResumeFrom)}</p>
+                )}
+              </div>
+            )}
             {hasProjectedRows && (
               <p className="mt-2 max-w-2xl text-sm text-gray-500">
                 <span className="font-medium">(projected)</span> is the next billing month when your system has not
@@ -560,6 +703,18 @@ export default function MemberPaymentsDetailPage() {
           </div>
           {user?.role === 'GYM_ADMIN' && selectableUnpaid.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={statusSubmitting || !memberStatus}
+                onClick={() => {
+                  setStatusDateMode('today');
+                  setStatusCustomDate('');
+                  setStatusDialogOpen(true);
+                }}
+                className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+              >
+                {memberStatus?.isActive === false ? 'Reactivate Member' : 'Deactivate Member'}
+              </button>
               <button
                 type="button"
                 onClick={selectAllUnpaid}

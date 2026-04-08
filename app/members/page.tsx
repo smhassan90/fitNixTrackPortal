@@ -45,6 +45,19 @@ interface Member {
   discount?: number;
   admissionAmount?: number | null;
   trainers: Trainer[];
+  isActive?: boolean;
+  inactiveFrom?: string | null;
+  billingResumeFrom?: string | null;
+}
+
+type MemberStatusActionKind = 'deactivate' | 'reactivate';
+type DateMode = 'today' | 'custom';
+
+function statusBadge(member: Member) {
+  if (member.isActive === false) {
+    return <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Inactive</span>;
+  }
+  return <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">Active</span>;
 }
 
 export default function MembersPage() {
@@ -81,6 +94,18 @@ export default function MembersPage() {
   });
   
   const [globalAdmissionAmount, setGlobalAdmissionAmount] = useState<number>(0);
+  const [statusDialog, setStatusDialog] = useState<{
+    isOpen: boolean;
+    member: Member | null;
+    action: MemberStatusActionKind;
+  }>({
+    isOpen: false,
+    member: null,
+    action: 'deactivate',
+  });
+  const [statusDateMode, setStatusDateMode] = useState<DateMode>('today');
+  const [statusCustomDate, setStatusCustomDate] = useState('');
+  const [statusSubmitting, setStatusSubmitting] = useState(false);
 
   // Fetch admission fee from API
   useEffect(() => {
@@ -128,6 +153,9 @@ export default function MembersPage() {
           discount: m.discount,
           admissionAmount: m.admissionAmount,
           trainers: m.trainers || [],
+          isActive: m.isActive !== false,
+          inactiveFrom: m.inactiveFrom ?? null,
+          billingResumeFrom: m.billingResumeFrom ?? null,
         }));
         setMembers(transformedMembers);
         console.log('✅ Members loaded:', transformedMembers.length);
@@ -478,6 +506,56 @@ export default function MembersPage() {
 
   const handleDeleteCancel = () => {
     setDeleteDialog({ isOpen: false, memberId: null, memberName: '' });
+  };
+
+  const openStatusDialog = (member: Member, action: MemberStatusActionKind) => {
+    setStatusDialog({ isOpen: true, member, action });
+    setStatusDateMode('today');
+    setStatusCustomDate('');
+  };
+
+  const closeStatusDialog = () => {
+    if (statusSubmitting) return;
+    setStatusDialog({ isOpen: false, member: null, action: 'deactivate' });
+    setStatusDateMode('today');
+    setStatusCustomDate('');
+  };
+
+  const submitStatusAction = async () => {
+    if (!statusDialog.member || statusSubmitting) return;
+    const isCustom = statusDateMode === 'custom';
+    if (isCustom) {
+      const valid = /^\d{4}-\d{2}-\d{2}$/.test(statusCustomDate) && !Number.isNaN(new Date(`${statusCustomDate}T00:00:00`).getTime());
+      if (!valid) {
+        showAlert('warning', 'Invalid date', 'Enter date in YYYY-MM-DD format.');
+        return;
+      }
+    }
+    try {
+      setStatusSubmitting(true);
+      const endpoint = statusDialog.action === 'deactivate' ? 'deactivate' : 'reactivate';
+      const body = isCustom ? { effectiveDate: statusCustomDate } : {};
+      const response = await api.patch(`/api/members/${statusDialog.member.id}/${endpoint}`, body);
+      if (!response.data?.success) {
+        throw new Error(response.data?.error?.message || `Could not ${statusDialog.action} member`);
+      }
+      showAlert(
+        'success',
+        statusDialog.action === 'deactivate' ? 'Member deactivated' : 'Member reactivated',
+        `${statusDialog.member.name} has been marked ${statusDialog.action === 'deactivate' ? 'inactive' : 'active'}.`
+      );
+      closeStatusDialog();
+      await fetchMembers(searchQuery || undefined, sortConfig ? { key: sortConfig.key, direction: sortConfig.direction } : undefined);
+      try {
+        await api.get('/api/payments/member-summaries?onlyWithOpenInstallments=true&limit=1&page=1');
+      } catch {
+        /* best-effort warm refresh */
+      }
+    } catch (error: unknown) {
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setStatusSubmitting(false);
+    }
   };
 
   const resetForm = () => {
@@ -866,6 +944,64 @@ export default function MembersPage() {
         cancelText="Cancel"
         type="danger"
       />
+      {statusDialog.isOpen && statusDialog.member && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/35" onClick={closeStatusDialog} />
+          <div className="relative z-10 w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-2xl">
+            <h3 className="text-lg font-bold text-dark-gray">
+              {statusDialog.action === 'deactivate' ? 'Deactivate member' : 'Reactivate member'}
+            </h3>
+            <p className="mt-1 text-sm text-gray-600">
+              {statusDialog.member.name}
+            </p>
+            <div className="mt-4 space-y-3 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="statusDateMode"
+                  checked={statusDateMode === 'today'}
+                  onChange={() => setStatusDateMode('today')}
+                />
+                Effective from today
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="statusDateMode"
+                  checked={statusDateMode === 'custom'}
+                  onChange={() => setStatusDateMode('custom')}
+                />
+                Custom effective date
+              </label>
+              <input
+                type="date"
+                disabled={statusDateMode !== 'custom' || statusSubmitting}
+                value={statusCustomDate}
+                onChange={(e) => setStatusCustomDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:opacity-50"
+              />
+            </div>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={closeStatusDialog}
+                disabled={statusSubmitting}
+                className="flex-1 rounded-lg bg-gray-200 px-4 py-2 font-medium text-gray-800 hover:bg-gray-300 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitStatusAction}
+                disabled={statusSubmitting}
+                className="flex-1 rounded-lg bg-primary px-4 py-2 font-medium text-white hover:bg-opacity-90 disabled:opacity-50"
+              >
+                {statusSubmitting ? 'Saving…' : statusDialog.action === 'deactivate' ? 'Deactivate' : 'Reactivate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="space-y-6 overflow-x-hidden">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-dark-gray">Members</h1>
@@ -1456,6 +1592,9 @@ export default function MembersPage() {
                       )}
                     </div>
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
+                    Status
+                  </th>
                   {user?.role === 'GYM_ADMIN' && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
                       Actions
@@ -1466,7 +1605,7 @@ export default function MembersPage() {
               <tbody className="bg-white divide-y divide-gray-200">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={user?.role === 'GYM_ADMIN' ? 10 : 9} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={user?.role === 'GYM_ADMIN' ? 12 : 11} className="px-6 py-8 text-center text-gray-500">
                     {searchQuery ? 'No members found matching your search.' : 'No members found.'}
                   </td>
                 </tr>
@@ -1561,6 +1700,17 @@ export default function MembersPage() {
                           )}
                         </div>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="space-y-1">
+                          {statusBadge(member)}
+                          {member.inactiveFrom && (
+                            <div className="text-xs text-gray-500">Inactive from: {formatDate(member.inactiveFrom)}</div>
+                          )}
+                          {member.billingResumeFrom && (
+                            <div className="text-xs text-gray-500">Resumed billing: {formatDate(member.billingResumeFrom)}</div>
+                          )}
+                        </div>
+                      </td>
                       {user?.role === 'GYM_ADMIN' && (
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
@@ -1574,6 +1724,13 @@ export default function MembersPage() {
                             className="text-red-600 hover:text-red-900"
                           >
                             Delete
+                          </button>
+                          <button
+                            onClick={() => openStatusDialog(member, member.isActive === false ? 'reactivate' : 'deactivate')}
+                            disabled={statusSubmitting}
+                            className="ml-4 text-primary hover:text-primary-dark disabled:opacity-50"
+                          >
+                            {member.isActive === false ? 'Reactivate Member' : 'Deactivate Member'}
                           </button>
                         </td>
                       )}
