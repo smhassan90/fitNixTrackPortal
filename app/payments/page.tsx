@@ -564,20 +564,34 @@ export default function PaymentsPage() {
                                 <div className="text-xs text-gray-500">{row.nextUnpaid.month}</div>
                               </>
                             ) : (
-                              <span className="text-gray-500">PAID</span>
+                              <span className="text-gray-500">—</span>
                             )}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-600">
                             {row.nextUnpaid ? formatDate(row.nextUnpaid.dueDate) : '—'}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4">
-                            {row.nextUnpaid && nextBucket ? (
+                            {!row.nextUnpaid ? (
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${tailwindBadgeForUiBucket(
+                                  'paid'
+                                )}`}
+                              >
+                                PAID
+                              </span>
+                            ) : nextBucket ? (
                               <span
                                 className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${tailwindBadgeForUiBucket(
                                   nextBucket
                                 )}`}
                               >
-                                {uiLabelForBucket(nextBucket)}
+                                {nextBucket === 'overdue'
+                                  ? 'OVERDUE'
+                                  : nextBucket === 'pending'
+                                    ? 'PENDING'
+                                    : nextBucket === 'advance'
+                                      ? 'ADVANCE'
+                                      : uiLabelForBucket(nextBucket).toUpperCase()}
                               </span>
                             ) : (
                               <span className="text-sm text-gray-500">—</span>
