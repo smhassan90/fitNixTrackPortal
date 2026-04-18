@@ -44,3 +44,7 @@ next-env.d.ts
 # OS
 .DS_Store
 Thumbs.db
+
+# Uploaded gym logos (dev); keep folder via public/gym-logos/.gitkeep
+/public/gym-logos/*
+!/public/gym-logos/.gitkeep

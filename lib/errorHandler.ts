@@ -14,6 +14,7 @@ export const getErrorMessage = (error: any): string => {
     FORBIDDEN: 'You don\'t have permission to perform this action',
     NOT_FOUND: message || 'The requested item was not found',
     INTERNAL_ERROR: 'Something went wrong. Please try again later',
+    RATE_LIMITED: message || 'Too many requests. Please wait and try again.',
   };
 
   return errorMessages[code] || message || 'An unexpected error occurred';
