@@ -117,10 +117,10 @@ export default function PlatformGymsPage() {
     try {
       if (confirm.action === 'suspend') {
         await suspendPlatformGym(confirm.id);
-        showAlert('success', 'Updated', 'Gym suspended. Staff cannot use gym APIs until activated.');
+        showAlert('success', 'Updated', 'This gym is now paused. Their team cannot use the gym apps until you activate them again.');
       } else {
         await activatePlatformGym(confirm.id);
-        showAlert('success', 'Updated', 'Gym activated.');
+        showAlert('success', 'Updated', 'This gym is active again. Their team can use the gym apps.');
       }
       setConfirm(null);
       setRefreshNonce((n) => n + 1);
@@ -145,8 +145,8 @@ export default function PlatformGymsPage() {
         title={confirm?.action === 'suspend' ? 'Suspend gym?' : 'Activate gym?'}
         message={
           confirm?.action === 'suspend'
-            ? 'Suspended gyms cannot use normal gym APIs until you activate them again.'
-            : 'Restore access for this tenant.'
+            ? 'Their staff will be locked out of the gym apps until you turn access back on.'
+            : 'Their staff will be able to use the gym apps again.'
         }
         confirmText={confirm?.action === 'suspend' ? 'Suspend' : 'Activate'}
         type={confirm?.action === 'suspend' ? 'danger' : 'info'}
@@ -156,7 +156,7 @@ export default function PlatformGymsPage() {
         <div>
           <h1 className="text-2xl font-bold text-dark-gray">Gyms</h1>
           <p className="text-sm text-dark-gray-light mt-1">
-            GET /api/platform/gyms — tenant directory and health signals
+            Search and manage every gym on the platform — size, billing health, and account status.
           </p>
         </div>
         {isSuper && (
@@ -172,7 +172,7 @@ export default function PlatformGymsPage() {
       <div className="mt-6 rounded-xl bg-white p-4 shadow border border-light-gray-dark space-y-4">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           <input
-            placeholder="Search"
+            placeholder="Search by gym name"
             value={draft.search}
             onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))}
             className="rounded-lg border border-light-gray-dark px-3 py-2 text-sm"
@@ -182,12 +182,12 @@ export default function PlatformGymsPage() {
             onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value as StatusFilter }))}
             className="rounded-lg border border-light-gray-dark px-3 py-2 text-sm"
           >
-            <option value="">All statuses</option>
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="SUSPENDED">SUSPENDED</option>
+            <option value="">Any status</option>
+            <option value="ACTIVE">Active</option>
+            <option value="SUSPENDED">Paused</option>
           </select>
           <input
-            placeholder="planId"
+            placeholder="Billing plan ID"
             value={draft.planId}
             onChange={(e) => setDraft((d) => ({ ...d, planId: e.target.value }))}
             className="rounded-lg border border-light-gray-dark px-3 py-2 text-sm"
@@ -215,9 +215,9 @@ export default function PlatformGymsPage() {
               onChange={(e) => setSortBy(e.target.value as SortBy)}
               className="rounded-lg border border-light-gray-dark px-3 py-2 text-sm"
             >
-              <option value="name">name</option>
-              <option value="createdAt">createdAt</option>
-              <option value="dueDate">dueDate</option>
+              <option value="name">Gym name</option>
+              <option value="createdAt">Date added</option>
+              <option value="dueDate">Next payment</option>
             </select>
           </div>
           <div>
@@ -227,8 +227,8 @@ export default function PlatformGymsPage() {
               onChange={(e) => setSortOrder(e.target.value as SortOrder)}
               className="rounded-lg border border-light-gray-dark px-3 py-2 text-sm"
             >
-              <option value="asc">asc</option>
-              <option value="desc">desc</option>
+              <option value="asc">A → Z / oldest first</option>
+              <option value="desc">Z → A / newest first</option>
             </select>
           </div>
           <div>
@@ -293,11 +293,11 @@ export default function PlatformGymsPage() {
                     <td className="px-4 py-3">
                       {suspended ? (
                         <span className="rounded-full bg-error-light px-2 py-0.5 text-xs text-error-dark">
-                          SUSPENDED
+                          Paused
                         </span>
                       ) : (
                         <span className="rounded-full bg-success-light px-2 py-0.5 text-xs text-success-dark">
-                          ACTIVE
+                          Active
                         </span>
                       )}
                     </td>

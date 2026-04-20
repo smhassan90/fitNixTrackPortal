@@ -91,3 +91,40 @@ export interface PlatformAuditLogsData {
   pagination?: PlatformPagination;
   [key: string]: unknown;
 }
+
+/** Platform operator account (distinct from JWT `PlatformUser` in auth responses) */
+export interface PlatformOperatorUser {
+  id: string | number;
+  email: string;
+  name: string;
+  role: PlatformRole | string;
+  isActive?: boolean;
+  /** Explicit rights; union with role defaults is server-defined */
+  permissionKeys?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+  lastLoginAt?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PlatformUsersListData {
+  users: PlatformOperatorUser[];
+  pagination: PlatformPagination;
+}
+
+export interface PlatformPermissionDefinition {
+  key: string;
+  label?: string;
+  description?: string;
+  group?: string;
+}
+
+export interface PlatformPermissionsCatalogData {
+  permissions: PlatformPermissionDefinition[];
+}
+
+export interface CreatePlatformUserResponse {
+  user: PlatformOperatorUser;
+  generatedPassword?: string;
+  [key: string]: unknown;
+}

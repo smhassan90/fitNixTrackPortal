@@ -195,8 +195,8 @@ export default function CreateGymWizardPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-bold text-dark-gray">Create gym</h1>
         <p className="text-sm text-dark-gray-light mt-1">
-          Wizard aligned with POST /api/platform/gyms. Use a real <code className="text-xs">planId</code> from your
-          billing database (no list endpoint yet).
+          Add a new tenant step by step. You will need the billing <strong>plan ID</strong> from your finance team if
+          you do not have a plan picker yet.
         </p>
 
         <div className="mt-4 flex gap-1 flex-wrap">
@@ -226,14 +226,16 @@ export default function CreateGymWizardPage() {
           )}
           {step === 1 && (
             <>
-              <label className="block text-sm font-medium">Slug</label>
-              <p className="text-xs text-dark-gray-light">Lowercase letters, numbers, hyphens only.</p>
+              <label className="block text-sm font-medium">Web address key</label>
+              <p className="text-xs text-dark-gray-light">
+                Short code used in links (lowercase letters, numbers, and hyphens only).
+              </p>
               <input
                 value={w.slug}
                 onChange={(e) =>
                   setW((p) => ({ ...p, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))
                 }
-                className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
+                className="w-full rounded-lg border px-3 py-2 text-sm"
                 placeholder="fitnix-karachi"
               />
               <button
@@ -277,13 +279,13 @@ export default function CreateGymWizardPage() {
           )}
           {step === 4 && (
             <>
-              <label className="block text-sm font-medium">Plan ID</label>
+              <label className="block text-sm font-medium">Billing plan ID</label>
               <input
                 value={w.planId}
                 onChange={(e) => setW((p) => ({ ...p, planId: e.target.value.replace(/\D/g, '') }))}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
               />
-              <label className="block text-sm font-medium">Due date (YYYY-MM-DD)</label>
+              <label className="block text-sm font-medium">Next payment date</label>
               <input
                 type="date"
                 value={w.dueDate}
@@ -296,14 +298,15 @@ export default function CreateGymWizardPage() {
                   checked={w.isActive}
                   onChange={(e) => setW((p) => ({ ...p, isActive: e.target.checked }))}
                 />
-                Active (if unchecked, gym is created suspended)
+                Start as active (uncheck to create the gym paused)
               </label>
             </>
           )}
           {step === 5 && (
             <>
               <p className="text-xs text-dark-gray-light">
-                First gym admin. Optional password — if omitted, backend generates one (shown once in a modal).
+                This person becomes the first gym admin. Leave the password blank to let the system create one — you
+                will be asked to copy it once.
               </p>
               <label className="block text-sm font-medium">Owner name</label>
               <input
@@ -341,8 +344,8 @@ export default function CreateGymWizardPage() {
                 <dd>{w.name}</dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-dark-gray-light">Slug</dt>
-                <dd className="font-mono">{w.slug}</dd>
+                <dt className="text-dark-gray-light">Web address key</dt>
+                <dd>{w.slug}</dd>
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-dark-gray-light">Location</dt>
@@ -357,7 +360,7 @@ export default function CreateGymWizardPage() {
                     <span className="inline-flex flex-col items-end gap-1">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={w.logoUrl} alt="" className="h-12 w-12 object-contain border rounded bg-white" />
-                      <span className="text-xs font-mono break-all">{w.logoUrl}</span>
+                      <span className="text-xs text-dark-gray-light break-all">{w.logoUrl}</span>
                     </span>
                   ) : (
                     '—'
@@ -365,9 +368,9 @@ export default function CreateGymWizardPage() {
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-dark-gray-light">Plan / due</dt>
+                <dt className="text-dark-gray-light">Billing</dt>
                 <dd>
-                  {w.planId} / {w.dueDate} ({w.isActive ? 'active' : 'suspended'})
+                  Plan #{w.planId} · next payment {w.dueDate} ({w.isActive ? 'starts active' : 'starts paused'})
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
@@ -409,8 +412,8 @@ export default function CreateGymWizardPage() {
         </div>
 
         <p className="mt-6 text-xs text-dark-gray-light max-w-xl">
-          There is no platform API yet to list all gym admins or reset the owner password after creation; use this
-          wizard or a support/DB process until those endpoints exist.
+          Need to add more managers later or reset the owner password? Use your internal support process until those
+          self-service tools ship.
         </p>
       </div>
     </>

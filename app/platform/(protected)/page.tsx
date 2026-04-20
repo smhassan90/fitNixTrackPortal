@@ -11,6 +11,11 @@ import {
 import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
 import Loading from '@/components/Loading';
 import { useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
+import {
+  describeBillingRow,
+  formatMetricValue,
+  friendlyMetricLabel,
+} from '@/lib/platform/presentation';
 
 export default function PlatformOverviewPage() {
   const isSuper = useIsPlatformSuperAdmin();
@@ -55,10 +60,9 @@ export default function PlatformOverviewPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-dark-gray">Platform overview</h1>
+      <h1 className="text-2xl font-bold text-dark-gray">Home</h1>
       <p className="mt-1 text-sm text-dark-gray-light">
-        Same API host as the gym app; platform JWT is stored in sessionStorage and is not valid on
-        gym routes.
+        A quick snapshot of how tenants are doing. Figures below cover roughly the last 30 days unless noted.
       </p>
 
       {err && (
@@ -69,46 +73,41 @@ export default function PlatformOverviewPage() {
 
       <div className="mt-8 grid gap-6 md:grid-cols-2">
         <section className="rounded-xl bg-white p-6 shadow border border-light-gray-dark">
-          <h2 className="text-lg font-semibold">Reports (last 30 days)</h2>
-          <p className="text-xs text-dark-gray-light mt-1">
-            GET /api/platform/reports/summary — aggregates from backend
-          </p>
+          <h2 className="text-lg font-semibold">Money & activity</h2>
+          <p className="text-xs text-dark-gray-light mt-1">High-level totals for the last 30 days.</p>
           <dl className="mt-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-dark-gray-light">totalCollectedInRange</dt>
-              <dd className="font-mono">
-                {summary?.totalCollectedInRange != null
-                  ? String(summary.totalCollectedInRange)
-                  : '—'}
-              </dd>
-            </div>
-            {summary &&
+            {summary && Object.keys(summary).length > 0 ? (
               Object.entries(summary)
-                .filter(([k]) => k !== 'totalCollectedInRange')
-                .slice(0, 6)
+                .slice(0, 8)
                 .map(([k, v]) => (
                   <div key={k} className="flex justify-between gap-2">
-                    <dt className="text-dark-gray-light truncate">{k}</dt>
-                    <dd className="font-mono text-right truncate max-w-[50%]">{String(v)}</dd>
+                    <dt className="text-dark-gray-light truncate">{friendlyMetricLabel(k)}</dt>
+                    <dd className="text-right font-medium text-dark-gray truncate max-w-[55%]">
+                      {formatMetricValue(v)}
+                    </dd>
                   </div>
-                ))}
+                ))
+            ) : (
+              <p className="text-dark-gray-light text-sm">No summary data for this period yet.</p>
+            )}
           </dl>
           <Link href="/platform/reports" className="mt-4 inline-block text-sm text-primary font-medium">
-            Full reports →
+            Open reports →
           </Link>
         </section>
 
         <section className="rounded-xl bg-white p-6 shadow border border-light-gray-dark">
-          <h2 className="text-lg font-semibold">Top gyms by members</h2>
+          <h2 className="text-lg font-semibold">Largest gyms</h2>
+          <p className="text-xs text-dark-gray-light mt-1">By active member count.</p>
           <ul className="mt-4 space-y-2 text-sm">
-            {top.length === 0 && <li className="text-dark-gray-light">No data</li>}
+            {top.length === 0 && <li className="text-dark-gray-light">No data yet.</li>}
             {top.slice(0, 5).map((row, i) => (
               <li key={i} className="flex justify-between border-b border-light-gray pb-2">
-                <span className="truncate pr-2">
-                  {(row as { name?: string })?.name ?? JSON.stringify(row).slice(0, 40)}
+                <span className="truncate pr-2 font-medium text-dark-gray">
+                  {(row as { name?: string })?.name ?? 'Gym'}
                 </span>
-                <span className="font-mono shrink-0">
-                  {(row as { membersCount?: number })?.membersCount ?? '—'}
+                <span className="shrink-0 text-dark-gray-light tabular-nums">
+                  {(row as { membersCount?: number })?.membersCount ?? '—'} members
                 </span>
               </li>
             ))}
@@ -117,34 +116,37 @@ export default function PlatformOverviewPage() {
 
         <section className="rounded-xl bg-white p-6 shadow border border-light-gray-dark md:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">Overdue sample</h2>
+            <h2 className="text-lg font-semibold">Accounts needing attention</h2>
             <Link href="/platform/billing" className="text-sm text-primary font-medium">
-              Billing dues →
+              Open billing →
             </Link>
           </div>
-          <p className="text-xs text-dark-gray-light mt-1">
-            GET /api/platform/billing/dues?overdue=true (first 5 rows)
-          </p>
+          <p className="text-xs text-dark-gray-light mt-1">A short list of overdue balances (up to five).</p>
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="text-left text-dark-gray-light border-b">
-                  <th className="pb-2 pr-4">Row</th>
+                  <th className="pb-2 pr-4">Gym</th>
+                  <th className="pb-2">Summary</th>
                 </tr>
               </thead>
               <tbody>
                 {duesPreview.length === 0 && (
                   <tr>
-                    <td className="py-3 text-dark-gray-light">No rows</td>
-                  </tr>
-                )}
-                {duesPreview.map((row, i) => (
-                  <tr key={i} className="border-b border-light-gray">
-                    <td className="py-2 font-mono text-xs max-w-prose truncate">
-                      {typeof row === 'object' ? JSON.stringify(row) : String(row)}
+                    <td colSpan={2} className="py-3 text-dark-gray-light">
+                      Nothing overdue right now, or billing data is still loading.
                     </td>
                   </tr>
-                ))}
+                )}
+                {duesPreview.map((row, i) => {
+                  const { title, subtitle } = describeBillingRow(row);
+                  return (
+                    <tr key={i} className="border-b border-light-gray">
+                      <td className="py-2 pr-4 font-medium text-dark-gray align-top">{title}</td>
+                      <td className="py-2 text-dark-gray-light align-top">{subtitle}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -153,8 +155,8 @@ export default function PlatformOverviewPage() {
 
       {isSuper && (
         <p className="mt-8 text-xs text-dark-gray-light max-w-2xl">
-          <strong>Super admin:</strong> you can create gyms, suspend tenants, edit subscriptions, and
-          view audit logs. Support role is read-only for mutating controls.
+          <strong>Super admin:</strong> you can add gyms, pause or resume tenants, change billing, review audit history,
+          and manage who has platform access. Support teammates mostly have read-only access.
         </p>
       )}
     </div>

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { usePlatformAuth, useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
 
 const links = [
-  { href: '/platform', label: 'Overview' },
+  { href: '/platform', label: 'Home' },
   { href: '/platform/gyms', label: 'Gyms' },
   { href: '/platform/billing', label: 'Billing' },
   { href: '/platform/reports', label: 'Reports' },
@@ -39,16 +39,28 @@ export default function PlatformSidebar() {
           );
         })}
         {isSuper && (
-          <Link
-            href="/platform/audit"
-            className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
-              pathname.startsWith('/platform/audit')
-                ? 'bg-primary text-white'
-                : 'text-white/80 hover:bg-white/10'
-            }`}
-          >
-            Audit log
-          </Link>
+          <>
+            <Link
+              href="/platform/users"
+              className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
+                pathname.startsWith('/platform/users')
+                  ? 'bg-primary text-white'
+                  : 'text-white/80 hover:bg-white/10'
+              }`}
+            >
+              Platform team
+            </Link>
+            <Link
+              href="/platform/audit"
+              className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
+                pathname.startsWith('/platform/audit')
+                  ? 'bg-primary text-white'
+                  : 'text-white/80 hover:bg-white/10'
+              }`}
+            >
+              Audit log
+            </Link>
+          </>
         )}
       </nav>
       <div className="p-4 border-t border-white/10 text-sm">

@@ -18,8 +18,25 @@ import PlatformLogoUpload from '@/components/platform/PlatformLogoUpload';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
+import { gymProfileSummary } from '@/lib/platform/presentation';
 
 type Tab = 'overview' | 'subscription' | 'activity';
+
+const TAB_LABELS: Record<Tab, string> = {
+  overview: 'Profile',
+  subscription: 'Billing',
+  activity: 'History',
+};
+
+const PROFILE_FIELDS: { key: 'name' | 'slug' | 'address' | 'city' | 'country' | 'phone' | 'email'; label: string }[] = [
+  { key: 'name', label: 'Gym name' },
+  { key: 'slug', label: 'Web address key' },
+  { key: 'address', label: 'Street address' },
+  { key: 'city', label: 'City' },
+  { key: 'country', label: 'Country' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'email', label: 'Email' },
+];
 
 export default function PlatformGymDetailPage() {
   const params = useParams();
@@ -172,8 +189,8 @@ export default function PlatformGymDetailPage() {
         title={confirm === 'suspend' ? 'Suspend gym?' : 'Activate gym?'}
         message={
           confirm === 'suspend'
-            ? 'Suspended gyms cannot use normal gym APIs until activated.'
-            : 'Restore API access for this tenant.'
+            ? 'While paused, this gym’s staff cannot sign in or use the gym apps until you turn access back on.'
+            : 'Turn access back on so this gym’s staff can use the gym apps again.'
         }
         confirmText={confirm === 'suspend' ? 'Suspend' : 'Activate'}
         type={confirm === 'suspend' ? 'danger' : 'info'}
@@ -188,16 +205,18 @@ export default function PlatformGymDetailPage() {
             {String(gym.name ?? 'Gym')}
             {suspended ? (
               <span className="rounded-full bg-error-light px-2 py-0.5 text-xs text-error-dark">
-                SUSPENDED
+                Paused
               </span>
             ) : (
               <span className="rounded-full bg-success-light px-2 py-0.5 text-xs text-success-dark">
-                ACTIVE
+                Active
               </span>
             )}
           </h1>
           <p className="text-sm text-dark-gray-light mt-1">
-            GET /api/platform/gyms/{id} — suspended tenants cannot use gym staff APIs.
+            {suspended
+              ? 'This gym is paused — their team cannot use the gym portal until you activate it again.'
+              : 'View profile, billing, and history for this gym.'}
           </p>
         </div>
         {isSuper && (
@@ -233,7 +252,7 @@ export default function PlatformGymDetailPage() {
               tab === t ? 'border-purple text-purple font-medium' : 'border-transparent text-dark-gray-light'
             }`}
           >
-            {t}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
@@ -242,16 +261,28 @@ export default function PlatformGymDetailPage() {
         {tab === 'overview' && (
           <div className="grid gap-6 lg:grid-cols-2">
             <section className="rounded-xl bg-white p-4 shadow border border-light-gray-dark">
-              <h2 className="font-semibold">Profile snapshot</h2>
-              <pre className="mt-3 text-xs overflow-auto max-h-96 bg-light-gray p-3 rounded-lg">
-                {JSON.stringify(gym, null, 2)}
-              </pre>
+              <h2 className="font-semibold">Gym details</h2>
+              <p className="text-xs text-dark-gray-light mt-1">Key facts from the tenant record.</p>
+              <dl className="mt-4 space-y-2 text-sm">
+                {gymProfileSummary(gym).map((row) => (
+                  <div key={row.label} className="flex justify-between gap-4 border-b border-light-gray/80 pb-2">
+                    <dt className="text-dark-gray-light shrink-0">{row.label}</dt>
+                    <dd className="text-right font-medium text-dark-gray break-words">{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <details className="mt-4 text-xs">
+                <summary className="cursor-pointer text-primary font-medium">Technical details (raw)</summary>
+                <pre className="mt-2 overflow-auto max-h-64 bg-light-gray p-3 rounded-lg text-[11px] leading-relaxed">
+                  {JSON.stringify(gym, null, 2)}
+                </pre>
+              </details>
             </section>
             <section className="rounded-xl bg-white p-4 shadow border border-light-gray-dark">
               <h2 className="font-semibold">Edit profile</h2>
               {!isSuper && (
                 <p className="mt-2 text-sm text-dark-gray-light">
-                  Read-only for your role. Super admins can PATCH /api/platform/gyms/{'{id}'}.
+                  You can view this gym. Only a super admin can change profile details.
                 </p>
               )}
               <div className={`mt-4 space-y-3 text-sm ${!isSuper ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -261,12 +292,12 @@ export default function PlatformGymDetailPage() {
                   disabled={!isSuper}
                   showUrlFallback
                 />
-                {(['name', 'slug', 'address', 'city', 'country', 'phone', 'email'] as const).map((field) => (
-                  <div key={field}>
-                    <label className="text-xs text-dark-gray-light capitalize">{field}</label>
+                {PROFILE_FIELDS.map(({ key, label }) => (
+                  <div key={key}>
+                    <label className="text-xs text-dark-gray-light">{label}</label>
                     <input
-                      value={profileDraft[field]}
-                      onChange={(e) => setProfileDraft((d) => ({ ...d, [field]: e.target.value }))}
+                      value={profileDraft[key]}
+                      onChange={(e) => setProfileDraft((d) => ({ ...d, [key]: e.target.value }))}
                       className="w-full rounded border px-2 py-1.5"
                     />
                   </div>
@@ -289,12 +320,12 @@ export default function PlatformGymDetailPage() {
             <h2 className="font-semibold">Subscription / billing</h2>
             {!isSuper && (
               <p className="mt-2 text-sm text-dark-gray-light">
-                Read-only. Super admins can PATCH /api/platform/gyms/{'{id}'}/subscription.
+                You can view billing here. Only a super admin can change plan or payment fields.
               </p>
             )}
             <div className={`mt-4 space-y-3 text-sm ${!isSuper ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
-                <label className="text-xs text-dark-gray-light">planId</label>
+                <label className="text-xs text-dark-gray-light">Billing plan ID</label>
                 <input
                   value={subDraft.planId}
                   onChange={(e) => setSubDraft((d) => ({ ...d, planId: e.target.value.replace(/\D/g, '') }))}
@@ -302,7 +333,7 @@ export default function PlatformGymDetailPage() {
                 />
               </div>
               <div>
-                <label className="text-xs text-dark-gray-light">dueDate (YYYY-MM-DD)</label>
+                <label className="text-xs text-dark-gray-light">Next payment date</label>
                 <input
                   type="date"
                   value={subDraft.dueDate}
@@ -311,7 +342,7 @@ export default function PlatformGymDetailPage() {
                 />
               </div>
               <div>
-                <label className="text-xs text-dark-gray-light">markPaidAt (YYYY-MM-DD)</label>
+                <label className="text-xs text-dark-gray-light">Marked paid on</label>
                 <input
                   type="date"
                   value={subDraft.markPaidAt}
@@ -320,7 +351,7 @@ export default function PlatformGymDetailPage() {
                 />
               </div>
               <div>
-                <label className="text-xs text-dark-gray-light">notes</label>
+                <label className="text-xs text-dark-gray-light">Internal notes</label>
                 <textarea
                   value={subDraft.notes}
                   onChange={(e) => setSubDraft((d) => ({ ...d, notes: e.target.value }))}
@@ -341,24 +372,24 @@ export default function PlatformGymDetailPage() {
 
         {tab === 'activity' && (
           <section className="rounded-xl bg-white p-4 shadow border border-light-gray-dark">
-            <h2 className="font-semibold">Activity & audit</h2>
+            <h2 className="font-semibold">History</h2>
             {isSuper ? (
               <p className="mt-2 text-sm">
                 <Link
                   href={`/platform/audit?targetGymId=${encodeURIComponent(id)}`}
                   className="text-primary font-medium hover:underline"
                 >
-                  Open audit log filtered for this gym →
+                  View audit trail for this gym →
                 </Link>
               </p>
             ) : (
               <p className="mt-2 text-sm text-dark-gray-light">
-                Audit logs are only available to Super Admins (403 on API for support role).
+                The full audit trail is limited to super admins. Ask a super admin if you need a copy of events.
               </p>
             )}
             <p className="mt-4 text-xs text-dark-gray-light max-w-xl">
-              There is no platform endpoint yet to list gym admins or reset owner passwords after provisioning; extend
-              the backend or use a controlled support process.
+              To add more gym managers or reset an owner password after setup, use your support process until those
+              tools exist in the product.
             </p>
           </section>
         )}

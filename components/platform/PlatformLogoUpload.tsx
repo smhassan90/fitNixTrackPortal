@@ -47,11 +47,10 @@ export default function PlatformLogoUpload({
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-sm font-medium text-dark-gray">Logo image</label>
+        <label className="block text-sm font-medium text-dark-gray">Logo</label>
         <p className="text-xs text-dark-gray-light mt-0.5">
-          PNG, JPEG, WebP, or GIF — max 2 MB. Stored on this app under{' '}
-          <code className="text-[11px]">/gym-logos/</code> and sent to the API as{' '}
-          <code className="text-[11px]">logoUrl</code>.
+          Upload a square-ish image (PNG, JPEG, WebP, or GIF, up to 2&nbsp;MB). We host it for you and attach it to
+          the gym profile automatically.
         </p>
         <input
           type="file"
@@ -84,7 +83,7 @@ export default function PlatformLogoUpload({
 
       {showUrlFallback ? (
         <div>
-          <label className="block text-xs font-medium text-dark-gray-light">Or paste image URL</label>
+          <label className="block text-xs font-medium text-dark-gray-light">Or paste a link to an image</label>
           <input
             type="url"
             value={value}

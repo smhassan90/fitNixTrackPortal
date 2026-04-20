@@ -8,6 +8,7 @@ import { useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
 import Loading from '@/components/Loading';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
+import { describeAuditRow } from '@/lib/platform/presentation';
 
 function AuditContent() {
   const isSuper = useIsPlatformSuperAdmin();
@@ -60,8 +61,7 @@ function AuditContent() {
       <div className="rounded-xl border border-warning bg-warning-light/20 p-6 text-sm">
         <h1 className="text-lg font-semibold text-dark-gray">Audit log</h1>
         <p className="mt-2 text-dark-gray-light">
-          This area is restricted to SUPER_ADMIN. Support accounts receive 403 from GET
-          /api/platform/audit-logs.
+          This sensitive history is limited to super admins. Ask a super admin if you need a specific export.
         </p>
       </div>
     );
@@ -77,16 +77,18 @@ function AuditContent() {
         message={alert.message}
       />
       <h1 className="text-2xl font-bold">Audit log</h1>
-      <p className="text-sm text-dark-gray-light mt-1">GET /api/platform/audit-logs</p>
+      <p className="text-sm text-dark-gray-light mt-1">
+        See who changed what across the platform — useful for security reviews and billing disputes.
+      </p>
       {targetGymId && (
-        <p className="mt-2 text-sm">
-          Filter: <span className="font-mono">targetGymId={targetGymId}</span>
+        <p className="mt-2 text-sm text-dark-gray">
+          Showing events linked to gym ID <span className="font-medium">{targetGymId}</span>.
         </p>
       )}
 
       <div className="mt-6 flex flex-wrap gap-3 rounded-xl bg-white p-4 border shadow">
         <input
-          placeholder="actionType"
+          placeholder="Filter by action type"
           value={actionType}
           onChange={(e) => {
             setActionType(e.target.value);
@@ -103,7 +105,7 @@ function AuditContent() {
         >
           {[10, 25, 50, 100].map((n) => (
             <option key={n} value={n}>
-              {n}/page
+              {n} per page
             </option>
           ))}
         </select>
@@ -118,22 +120,29 @@ function AuditContent() {
           <table className="min-w-full text-sm">
             <thead className="bg-light-gray text-left text-dark-gray-light">
               <tr>
-                <th className="px-3 py-2">Entry</th>
+                <th className="px-3 py-2">When</th>
+                <th className="px-3 py-2">Action</th>
+                <th className="px-3 py-2">Details</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td className="px-3 py-6 text-center text-dark-gray-light">No rows</td>
-                </tr>
-              )}
-              {rows.map((row, i) => (
-                <tr key={i} className="border-t">
-                  <td className="px-3 py-2 font-mono text-xs whitespace-pre-wrap break-all">
-                    {typeof row === 'object' ? JSON.stringify(row, null, 2) : String(row)}
+                  <td colSpan={3} className="px-3 py-6 text-center text-dark-gray-light">
+                    No events match these filters.
                   </td>
                 </tr>
-              ))}
+              )}
+              {rows.map((row, i) => {
+                const { when, action, detail } = describeAuditRow(row);
+                return (
+                  <tr key={i} className="border-t">
+                    <td className="px-3 py-2 text-dark-gray whitespace-nowrap">{when}</td>
+                    <td className="px-3 py-2 font-medium text-dark-gray">{action}</td>
+                    <td className="px-3 py-2 text-dark-gray-light text-sm">{detail}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

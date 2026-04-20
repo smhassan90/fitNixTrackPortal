@@ -7,6 +7,7 @@ import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
 import Loading from '@/components/Loading';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
+import { formatMetricValue, friendlyMetricLabel } from '@/lib/platform/presentation';
 
 export default function PlatformReportsPage() {
   const { alert, showAlert, closeAlert } = useAlert();
@@ -44,12 +45,12 @@ export default function PlatformReportsPage() {
       />
       <h1 className="text-2xl font-bold">Reports</h1>
       <p className="text-sm text-dark-gray-light mt-1">
-        GET /api/platform/reports/summary and /api/platform/reports/gyms/top-by-members
+        Explore collections and member growth across gyms for any date range you pick.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-3 items-end rounded-xl bg-white p-4 border shadow">
         <div>
-          <label className="text-xs text-dark-gray-light block">startDate</label>
+          <label className="text-xs text-dark-gray-light block">From</label>
           <input
             type="date"
             value={startDate}
@@ -58,7 +59,7 @@ export default function PlatformReportsPage() {
           />
         </div>
         <div>
-          <label className="text-xs text-dark-gray-light block">endDate</label>
+          <label className="text-xs text-dark-gray-light block">To</label>
           <input
             type="date"
             value={endDate}
@@ -67,7 +68,7 @@ export default function PlatformReportsPage() {
           />
         </div>
         <div>
-          <label className="text-xs text-dark-gray-light block">Top gyms limit</label>
+          <label className="text-xs text-dark-gray-light block">How many top gyms</label>
           <input
             type="number"
             min={1}
@@ -83,7 +84,7 @@ export default function PlatformReportsPage() {
           disabled={loading}
           className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-50"
         >
-          {loading ? 'Loading…' : 'Load'}
+          {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
 
@@ -95,15 +96,39 @@ export default function PlatformReportsPage() {
         <div className="mt-8 grid gap-6 md:grid-cols-2">
           <section className="rounded-xl bg-white p-4 border shadow">
             <h2 className="font-semibold">Summary</h2>
-            <pre className="mt-3 text-xs overflow-auto max-h-[28rem] bg-light-gray p-3 rounded-lg">
-              {summary ? JSON.stringify(summary, null, 2) : 'Click Load'}
-            </pre>
+            <p className="text-xs text-dark-gray-light mt-1">Key numbers for the range you selected.</p>
+            {summary ? (
+              <dl className="mt-4 space-y-2 text-sm">
+                {Object.entries(summary).map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-2 border-b border-light-gray/80 pb-2">
+                    <dt className="text-dark-gray-light">{friendlyMetricLabel(k)}</dt>
+                    <dd className="font-medium text-dark-gray text-right">{formatMetricValue(v)}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="mt-4 text-sm text-dark-gray-light">Choose dates and tap Refresh.</p>
+            )}
           </section>
           <section className="rounded-xl bg-white p-4 border shadow">
-            <h2 className="font-semibold">Top gyms by members</h2>
-            <pre className="mt-3 text-xs overflow-auto max-h-[28rem] bg-light-gray p-3 rounded-lg">
-              {top.length ? JSON.stringify(top, null, 2) : 'Click Load'}
-            </pre>
+            <h2 className="font-semibold">Busiest gyms</h2>
+            <p className="text-xs text-dark-gray-light mt-1">Ranked by members on file.</p>
+            {top.length ? (
+              <ul className="mt-4 space-y-2 text-sm">
+                {top.map((row, i) => (
+                  <li key={i} className="flex justify-between border-b border-light-gray pb-2">
+                    <span className="font-medium text-dark-gray truncate pr-2">
+                      {(row as { name?: string })?.name ?? 'Gym'}
+                    </span>
+                    <span className="shrink-0 text-dark-gray-light tabular-nums">
+                      {(row as { membersCount?: number })?.membersCount ?? '—'} members
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 text-sm text-dark-gray-light">Choose dates and tap Refresh.</p>
+            )}
           </section>
         </div>
       )}

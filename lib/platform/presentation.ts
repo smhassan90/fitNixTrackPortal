@@ -1,0 +1,116 @@
+/** User-facing labels and light formatting for platform UI (avoid exposing raw API jargon). */
+
+const METRIC_LABELS: Record<string, string> = {
+  totalCollectedInRange: 'Money collected (period)',
+  totalMembers: 'Total members',
+  totalTrainers: 'Total trainers',
+  totalGyms: 'Total gyms',
+  newGyms: 'New gyms',
+  activeGyms: 'Active gyms',
+  suspendedGyms: 'Paused gyms',
+};
+
+export function friendlyMetricLabel(key: string): string {
+  if (METRIC_LABELS[key]) return METRIC_LABELS[key];
+  const spaced = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1');
+  const t = spaced.trim();
+  if (!t) return key;
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+export function formatMetricValue(value: unknown): string {
+  if (value == null || value === '') return '—';
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+  return String(value);
+}
+
+export function humanizePlatformRole(role: string): string {
+  if (role === 'SUPER_ADMIN') return 'Super admin';
+  if (role === 'PLATFORM_SUPPORT') return 'Support';
+  return role.replace(/_/g, ' ');
+}
+
+/** One-line summary for generic billing / dues list rows */
+export function describeBillingRow(row: unknown): { title: string; subtitle: string } {
+  if (!row || typeof row !== 'object') {
+    return { title: 'Entry', subtitle: String(row) };
+  }
+  const o = row as Record<string, unknown>;
+  const title = String(
+    o.gymName ?? o.tenantName ?? o.name ?? o.slug ?? o.organizationName ?? 'Subscription'
+  );
+  const bits: string[] = [];
+  if (o.planName) bits.push(String(o.planName));
+  if (o.subscriptionStatus ?? o.status) bits.push(String(o.subscriptionStatus ?? o.status));
+  if (o.dueDate) bits.push(`Due ${String(o.dueDate).slice(0, 10)}`);
+  if (o.overdueAmount != null && o.overdueAmount !== '') bits.push(`Overdue: ${String(o.overdueAmount)}`);
+  if (o.pendingAmount != null && o.pendingAmount !== '') bits.push(`Outstanding: ${String(o.pendingAmount)}`);
+  if (bits.length === 0) bits.push('Details will appear here once your billing feed includes them.');
+  return { title, subtitle: bits.join(' · ') };
+}
+
+/** Table-oriented audit row (backend field names may vary) */
+export function describeAuditRow(row: unknown): { when: string; action: string; detail: string } {
+  if (!row || typeof row !== 'object') {
+    return { when: '—', action: '—', detail: String(row) };
+  }
+  const o = row as Record<string, unknown>;
+  const rawWhen = o.createdAt ?? o.timestamp ?? o.at ?? o.occurredAt;
+  const when = rawWhen != null ? String(rawWhen).slice(0, 19).replace('T', ' ') : '—';
+  const action = String(o.actionType ?? o.action ?? o.type ?? '—');
+  const who = o.actorName ?? o.actorEmail ?? o.userEmail ?? o.performedBy;
+  const target = o.targetGymName ?? o.gymName ?? o.targetName ?? o.targetGymId ?? o.targetId;
+  const msg = o.message ?? o.description ?? o.summary;
+  const parts = [
+    who ? `By ${String(who)}` : '',
+    target ? `Target: ${String(target)}` : '',
+    msg ? String(msg) : '',
+  ].filter(Boolean);
+  return { when, action, detail: parts.join(' · ') || '—' };
+}
+
+/** Ordered “gym profile” fields for the overview tab */
+export function gymProfileSummary(gym: Record<string, unknown>): Array<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = [];
+  const add = (label: string, key: string) => {
+    const v = gym[key];
+    if (v != null && String(v).trim() !== '') rows.push({ label, value: String(v) });
+  };
+
+  add('Gym name', 'name');
+  add('Address line', 'address');
+  add('City', 'city');
+  add('Country', 'country');
+  add('Phone', 'phone');
+  add('Email', 'email');
+  add('Web address key', 'slug');
+
+  const status = gym.tenantStatus ?? gym.status;
+  if (status != null && String(status).trim() !== '') {
+    rows.push({ label: 'Account status', value: String(status) });
+  }
+
+  const sub = gym.subscription;
+  if (sub && typeof sub === 'object') {
+    const s = sub as Record<string, unknown>;
+    if (s.planName) rows.push({ label: 'Current plan', value: String(s.planName) });
+    if (s.dueDate) rows.push({ label: 'Next payment', value: String(s.dueDate).slice(0, 10) });
+    if (s.subscriptionStatus) rows.push({ label: 'Subscription status', value: String(s.subscriptionStatus) });
+  }
+
+  const counts: string[] = [];
+  if (gym.membersCount != null) counts.push(`${String(gym.membersCount)} members`);
+  if (gym.trainersCount != null) counts.push(`${String(gym.trainersCount)} trainers`);
+  if (counts.length) rows.push({ label: 'Size', value: counts.join(' · ') });
+
+  if (gym.pendingAmount != null && String(gym.pendingAmount) !== '') {
+    rows.push({ label: 'Outstanding balance', value: String(gym.pendingAmount) });
+  }
+  if (gym.overdueAmount != null && String(gym.overdueAmount) !== '') {
+    rows.push({ label: 'Overdue balance', value: String(gym.overdueAmount) });
+  }
+
+  return rows;
+}

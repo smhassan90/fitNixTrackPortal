@@ -47,6 +47,14 @@ export default function PlatformLoginPage() {
           'Too many attempts',
           `${msg} Please wait about a minute before trying again — do not spam retries.`
         );
+      } else if (status === 401 || code === 'UNAUTHORIZED') {
+        showAlert('error', 'Invalid credentials', msg || 'Email or password is incorrect.');
+      } else if (status && status >= 500) {
+        showAlert(
+          'error',
+          'Server error',
+          msg || 'Platform login failed due to a server issue. Please try again shortly.'
+        );
       } else {
         showAlert('error', 'Sign-in failed', msg);
       }

@@ -6,6 +6,7 @@ import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
 import Loading from '@/components/Loading';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
+import { describeBillingRow } from '@/lib/platform/presentation';
 
 export default function PlatformBillingPage() {
   const { alert, showAlert, closeAlert } = useAlert();
@@ -66,8 +67,10 @@ export default function PlatformBillingPage() {
         title={alert.title}
         message={alert.message}
       />
-      <h1 className="text-2xl font-bold">Billing — dues</h1>
-      <p className="text-sm text-dark-gray-light mt-1">GET /api/platform/billing/dues</p>
+      <h1 className="text-2xl font-bold">Billing</h1>
+      <p className="text-sm text-dark-gray-light mt-1">
+        Review who is behind on payments and which subscriptions need a follow-up.
+      </p>
 
       <div className="mt-6 flex flex-wrap gap-3 rounded-xl bg-white p-4 border border-light-gray-dark shadow">
         <select
@@ -78,12 +81,12 @@ export default function PlatformBillingPage() {
           }}
           className="rounded-lg border px-3 py-2 text-sm"
         >
-          <option value="">overdue (any)</option>
-          <option value="true">overdue = true</option>
-          <option value="false">overdue = false</option>
+          <option value="">Any balance state</option>
+          <option value="true">Overdue only</option>
+          <option value="false">Not overdue</option>
         </select>
         <input
-          placeholder="dueInDays"
+          placeholder="Due within (days)"
           value={dueInDays}
           onChange={(e) => {
             setDueInDays(e.target.value);
@@ -92,7 +95,7 @@ export default function PlatformBillingPage() {
           className="rounded-lg border px-3 py-2 text-sm w-28"
         />
         <input
-          placeholder="planId"
+          placeholder="Billing plan ID"
           value={planId}
           onChange={(e) => {
             setPlanId(e.target.value);
@@ -101,7 +104,7 @@ export default function PlatformBillingPage() {
           className="rounded-lg border px-3 py-2 text-sm w-28"
         />
         <input
-          placeholder="subscription status"
+          placeholder="Subscription status"
           value={status}
           onChange={(e) => {
             setStatus(e.target.value);
@@ -118,7 +121,7 @@ export default function PlatformBillingPage() {
         >
           {[10, 20, 50, 100].map((n) => (
             <option key={n} value={n}>
-              {n}/page
+              {n} per page
             </option>
           ))}
         </select>
@@ -133,22 +136,27 @@ export default function PlatformBillingPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-light-gray text-left text-dark-gray-light">
               <tr>
-                <th className="px-3 py-2">Payload</th>
+                <th className="px-3 py-2">Gym</th>
+                <th className="px-3 py-2">What we know</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td className="px-3 py-6 text-center text-dark-gray-light">No rows</td>
-                </tr>
-              )}
-              {rows.map((row, i) => (
-                <tr key={i} className="border-t">
-                  <td className="px-3 py-2 font-mono text-xs whitespace-pre-wrap break-all">
-                    {typeof row === 'object' ? JSON.stringify(row, null, 2) : String(row)}
+                  <td colSpan={2} className="px-3 py-6 text-center text-dark-gray-light">
+                    No billing rows match these filters.
                   </td>
                 </tr>
-              ))}
+              )}
+              {rows.map((row, i) => {
+                const { title, subtitle } = describeBillingRow(row);
+                return (
+                  <tr key={i} className="border-t">
+                    <td className="px-3 py-2 font-medium text-dark-gray align-top">{title}</td>
+                    <td className="px-3 py-2 text-dark-gray-light align-top">{subtitle}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

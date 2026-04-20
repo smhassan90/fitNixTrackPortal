@@ -48,6 +48,7 @@ async function handleRequest(
     
     // Reconstruct the path
     const path = pathSegments.join('/');
+    const isPlatformLogin = method === 'POST' && path === 'platform/auth/login';
     const externalUrl = `${apiUrl}/api/${path}`;
     
     // Get query parameters
@@ -63,6 +64,13 @@ async function handleRequest(
       } catch {
         // No body or invalid JSON
       }
+    }
+
+    if (isPlatformLogin) {
+      console.info('[api-proxy] platform login request', {
+        targetUrl: fullUrl,
+        email: typeof body?.email === 'string' ? body.email : undefined,
+      });
     }
     
     // Get headers from request
@@ -88,8 +96,31 @@ async function handleRequest(
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
-    
-    const data = await response.json().catch(() => ({}));
+
+    const contentType = response.headers.get('content-type') || '';
+    const isJsonResponse = contentType.includes('application/json');
+    let data: unknown = {};
+    if (isJsonResponse) {
+      data = await response.json().catch(() => ({}));
+    } else {
+      const text = await response.text().catch(() => '');
+      data = response.ok
+        ? { success: true, data: text }
+        : {
+            success: false,
+            error: {
+              message: text || `Upstream API responded with ${response.status}`,
+            },
+          };
+    }
+
+    if (isPlatformLogin) {
+      console.info('[api-proxy] platform login response', {
+        targetUrl: fullUrl,
+        status: response.status,
+        body: data,
+      });
+    }
     
     // Forward the response
     return NextResponse.json(data, { status: response.status });

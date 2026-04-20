@@ -1,27 +1,76 @@
+import type { AxiosError } from 'axios';
 import platformClient, { assertPlatformSuccess } from './platformClient';
 import type {
   CreateGymResponse,
+  CreatePlatformUserResponse,
   PlatformApiEnvelope,
   PlatformAuditLogsData,
   PlatformBillingDuesData,
   PlatformGymsListData,
   PlatformLoginData,
+  PlatformOperatorUser,
+  PlatformPermissionsCatalogData,
   PlatformReportsSummary,
   PlatformTopGymsData,
   PlatformUser,
+  PlatformUsersListData,
 } from './types';
 import { PlatformApiError } from './errors';
 
+type ApiErrorBody = {
+  error?: {
+    code?: string;
+    message?: string;
+    details?: unknown;
+  };
+};
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return '***';
+  if (!local) return `***@${domain}`;
+  if (local.length <= 2) return `${local[0]}***@${domain}`;
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
 export async function platformAuthLogin(email: string, password: string): Promise<PlatformLoginData> {
-  const res = await platformClient.post<PlatformApiEnvelope<PlatformLoginData>>(
-    '/api/platform/auth/login',
-    { email, password }
-  );
-  if (!res.data.success) {
-    const e = res.data.error;
-    throw new PlatformApiError(res.status, e?.code, e?.message, e?.details);
+  const endpoint = '/api/platform/auth/login';
+  console.info('[platformAuthLogin] request', {
+    endpoint,
+    email: maskEmail(email),
+  });
+  try {
+    const res = await platformClient.post<PlatformApiEnvelope<PlatformLoginData>>(
+      endpoint,
+      { email, password }
+    );
+    console.info('[platformAuthLogin] response', {
+      endpoint,
+      status: res.status,
+      body: res.data,
+    });
+    if (!res.data.success) {
+      const e = res.data.error;
+      throw new PlatformApiError(res.status, e?.code, e?.message, e?.details);
+    }
+    return res.data.data;
+  } catch (error) {
+    const ax = error as AxiosError<ApiErrorBody>;
+    const status = ax.response?.status ?? 0;
+    const backendError = ax.response?.data?.error;
+    console.error('[platformAuthLogin] failure', {
+      endpoint,
+      status,
+      body: ax.response?.data,
+      message: ax.message,
+    });
+    throw new PlatformApiError(
+      status,
+      backendError?.code,
+      backendError?.message || ax.message || 'Platform login failed',
+      backendError?.details
+    );
   }
-  return res.data.data;
 }
 
 export async function platformAuthLogout(): Promise<void> {
@@ -118,6 +167,49 @@ export async function listPlatformAuditLogs(params: Record<string, string | numb
   const res = await platformClient.get<PlatformApiEnvelope<PlatformAuditLogsData>>(
     '/api/platform/audit-logs',
     { params }
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function listPlatformUsers(params: Record<string, string | number | undefined>) {
+  const res = await platformClient.get<PlatformApiEnvelope<PlatformUsersListData>>(
+    '/api/platform/users',
+    { params }
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function getPlatformOperatorUser(id: string | number) {
+  const res = await platformClient.get<PlatformApiEnvelope<{ user: PlatformOperatorUser }>>(
+    `/api/platform/users/${id}`
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function createPlatformUser(body: unknown) {
+  const res = await platformClient.post<PlatformApiEnvelope<CreatePlatformUserResponse>>(
+    '/api/platform/users',
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function updatePlatformUser(id: string | number, body: unknown) {
+  const res = await platformClient.patch<PlatformApiEnvelope<{ user: PlatformOperatorUser }>>(
+    `/api/platform/users/${id}`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function deletePlatformUser(id: string | number) {
+  const res = await platformClient.delete<PlatformApiEnvelope<unknown>>(`/api/platform/users/${id}`);
+  return assertPlatformSuccess(res);
+}
+
+export async function listPlatformPermissionsCatalog() {
+  const res = await platformClient.get<PlatformApiEnvelope<PlatformPermissionsCatalogData>>(
+    '/api/platform/permissions'
   );
   return assertPlatformSuccess(res);
 }
