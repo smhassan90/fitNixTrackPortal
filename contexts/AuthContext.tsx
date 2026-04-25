@@ -1,7 +1,6 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { isJwtExpired } from '@/lib/jwtClient';
 
@@ -25,12 +24,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Proactive sign-out when the access JWT expires, so data requests don't fail with raw "Invalid token" errors.
+  // Use window.location (not useRouter) so this module stays a plain client module — useRouter in the root provider
+  // can confuse Next's App Router / webpack client chunk graph and trigger "__webpack_modules__[id] is not a function".
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setToken(null);
       if (window.location.pathname !== '/login') {
-        router.replace('/login?session=expired');
+        window.location.replace('/login?session=expired');
       }
     };
 
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [router]);
+  }, []);
 
   // Check for existing session on mount
   useEffect(() => {

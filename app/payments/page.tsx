@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
@@ -92,7 +92,7 @@ function normalizeMemberSummary(raw: Record<string, unknown>): MemberPaymentSumm
   };
 }
 
-export default function PaymentsPage() {
+function PaymentsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -647,5 +647,21 @@ export default function PaymentsPage() {
         </div>
       )}
     </Layout>
+  );
+}
+
+export default function PaymentsPage() {
+  return (
+    <Suspense
+      fallback={
+        <Layout>
+          <div className="p-6">
+            <Loading message="Loading payments…" size="lg" />
+          </div>
+        </Layout>
+      }
+    >
+      <PaymentsPageContent />
+    </Suspense>
   );
 }
