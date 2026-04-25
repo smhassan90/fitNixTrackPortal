@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Loading from '@/components/Loading';
@@ -9,9 +9,21 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const q = new URLSearchParams(window.location.search);
+    const s = q.get('session');
+    if (s === 'expired') {
+      setSessionNotice('Your session has expired. Please sign in again.');
+    } else if (s === 'invalid') {
+      setSessionNotice('Your session is no longer valid. Please sign in again.');
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +57,11 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {sessionNotice && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded text-sm">
+              {sessionNotice}
+            </div>
+          )}
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
               {error}

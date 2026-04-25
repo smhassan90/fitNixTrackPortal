@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isJwtExpired } from './jwtClient';
 
 // Use relative URLs to go through Next.js API routes (which act as a proxy)
 // This avoids CORS issues since Next.js API routes run server-side
@@ -46,19 +47,30 @@ api.interceptors.response.use(
       responseData: error.response?.data,
     });
     
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
       const requestUrl = String(error.config?.url || '');
+      const path = window.location.pathname;
+      const token = localStorage.getItem('token');
+
+      // Expired access JWT: sign out and land on login with a clear reason (avoids "Invalid token" on data APIs).
+      if (token && token.startsWith('eyJ') && isJwtExpired(token) && !path.startsWith('/login')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.assign('/login?session=expired');
+        return Promise.reject(error);
+      }
+
       const shouldForceLogout =
         requestUrl.includes('/api/auth/me') ||
         requestUrl.includes('/api/auth/logout') ||
         requestUrl.includes('/api/auth/login');
 
-      // Avoid aggressive auto-logout loops; only auth endpoints force sign-out.
+      // Only explicit auth checks force a redirect; other 401s are surfaced in-page (e.g. permission).
       if (shouldForceLogout) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
+        if (path !== '/login') {
+          window.location.href = '/login?session=expired';
         }
       }
     }

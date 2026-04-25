@@ -7,6 +7,7 @@ import {
   readPlatformToken,
   writePlatformSession,
 } from '@/lib/platform/platformClient';
+import { isJwtExpired } from '@/lib/jwtClient';
 import { platformAuthLogin, platformAuthLogout, platformAuthMe } from '@/lib/platform/platformApi';
 import type { PlatformUser } from '@/lib/platform/types';
 
@@ -58,6 +59,31 @@ export function PlatformAuthProvider({ children }: { children: React.ReactNode }
       cancelled = true;
     };
   }, [refreshUser]);
+
+  // Proactive sign-out when platform JWT expires; avoids random 401s and confusing errors while the UI still looks "logged in".
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sync = () => {
+      const t = readPlatformToken();
+      if (!t || !t.startsWith('eyJ') || !isJwtExpired(t)) return;
+      clearPlatformSession();
+      setUser(null);
+      const p = window.location.pathname;
+      if (p.startsWith('/platform') && !p.startsWith('/platform/login')) {
+        window.location.replace('/platform/login?session=expired');
+      }
+    };
+    sync();
+    const id = window.setInterval(sync, 45_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') sync();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await platformAuthLogin(email, password);

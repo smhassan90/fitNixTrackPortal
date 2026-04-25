@@ -1,8 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { getErrorMessage } from '@/lib/errorHandler';
+import { isJwtExpired } from '@/lib/jwtClient';
 
 interface User {
   id: string;
@@ -24,9 +25,38 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Proactive sign-out when the access JWT expires, so data requests don't fail with raw "Invalid token" errors.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncExpiredSession = () => {
+      const t = localStorage.getItem('token');
+      if (!t || !t.startsWith('eyJ') || !isJwtExpired(t)) return;
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setUser(null);
+      setToken(null);
+      if (window.location.pathname !== '/login') {
+        router.replace('/login?session=expired');
+      }
+    };
+
+    syncExpiredSession();
+    const interval = window.setInterval(syncExpiredSession, 45_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') syncExpiredSession();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [router]);
 
   // Check for existing session on mount
   useEffect(() => {

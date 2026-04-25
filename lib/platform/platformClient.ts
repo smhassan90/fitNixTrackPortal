@@ -7,6 +7,7 @@
  * Do not persist gym passwords; platform login password is only held in form state until submit.
  */
 import axios, { type AxiosResponse } from 'axios';
+import { isJwtExpired } from '@/lib/jwtClient';
 import { PLATFORM_TOKEN_KEY, PLATFORM_USER_KEY } from './constants';
 import type { PlatformApiEnvelope } from './types';
 import { PlatformApiError } from './errors';
@@ -47,8 +48,12 @@ platformClient.interceptors.response.use(
     if (status === 401) {
       const path = window.location.pathname;
       if (path.startsWith('/platform') && !path.startsWith('/platform/login')) {
+        const tok = readPlatformToken();
+        const likelyExpiry = !tok || (tok.startsWith('eyJ') && isJwtExpired(tok));
         clearPlatformSession();
-        window.location.href = '/platform/login';
+        window.location.href = likelyExpiry
+          ? '/platform/login?session=expired'
+          : '/platform/login?session=invalid';
       }
     }
     return Promise.reject(error);

@@ -18,6 +18,18 @@ export default function PlatformLoginPage() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const q = new URLSearchParams(window.location.search);
+    const s = q.get('session');
+    if (s === 'expired') {
+      setSessionNotice('Your platform session has expired. Please sign in again.');
+    } else if (s === 'invalid') {
+      setSessionNotice('Your platform session is no longer valid. Please sign in again.');
+    }
+  }, []);
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -88,6 +100,11 @@ export default function PlatformLoginPage() {
           <p className="mt-2 text-sm text-dark-gray-light">
             This login is separate from gym staff accounts. Use platform credentials only.
           </p>
+          {sessionNotice && (
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              {sessionNotice}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
               <label className="block text-sm font-medium text-dark-gray mb-1">Email</label>
