@@ -211,12 +211,14 @@ export default function PlatformGymDetailPage() {
         const note = String(row.note ?? row.notes ?? row.description ?? '').trim();
         const receiptNo = String(row.receiptNo ?? row.receiptNumber ?? row.receipt_id ?? '').trim();
         const method = String(row.method ?? row.paymentMethod ?? '—');
+        const rowPlan = row.plan && typeof row.plan === 'object' ? (row.plan as Record<string, unknown>) : undefined;
+        const rowPackage = row.package && typeof row.package === 'object' ? (row.package as Record<string, unknown>) : undefined;
         const packageName = String(
           row.planName ??
             row.packageName ??
             row.subscriptionPlanName ??
-            row.plan?.name ??
-            row.package?.name ??
+            rowPlan?.name ??
+            rowPackage?.name ??
             sub.planName ??
             sub.packageName ??
             currentPlanName

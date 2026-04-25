@@ -165,6 +165,81 @@ export async function listPlatformBillingPlans(params: Record<string, string | n
   return assertPlatformSuccess(res);
 }
 
+export async function createPlatformBillingPlan(body: unknown) {
+  const res = await platformClient.post<PlatformApiEnvelope<unknown>>('/api/platform/admin/billing/plans', body);
+  return assertPlatformSuccess(res);
+}
+
+export async function patchPlatformBillingPlan(id: string | number, body: unknown) {
+  const res = await platformClient.patch<PlatformApiEnvelope<unknown>>(
+    `/api/platform/admin/billing/plans/${id}`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function deletePlatformBillingPlan(id: string | number) {
+  const res = await platformClient.delete<PlatformApiEnvelope<unknown>>(
+    `/api/platform/admin/billing/plans/${id}`
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function listPlatformCountries() {
+  const res = await platformClient.get<PlatformApiEnvelope<unknown>>('/api/platform/locations/countries');
+  return assertPlatformSuccess(res);
+}
+
+export async function listPlatformCountryCities(countryId: string | number) {
+  const res = await platformClient.get<PlatformApiEnvelope<unknown>>(
+    `/api/platform/locations/countries/${countryId}/cities`
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function createPlatformCountry(body: unknown) {
+  const res = await platformClient.post<PlatformApiEnvelope<unknown>>(
+    '/api/platform/admin/locations/countries',
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function patchPlatformCountry(id: string | number, body: unknown) {
+  const res = await platformClient.patch<PlatformApiEnvelope<unknown>>(
+    `/api/platform/admin/locations/countries/${id}`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function deletePlatformCountry(id: string | number) {
+  const res = await platformClient.delete<PlatformApiEnvelope<unknown>>(
+    `/api/platform/admin/locations/countries/${id}`
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function createPlatformCity(body: unknown) {
+  const res = await platformClient.post<PlatformApiEnvelope<unknown>>('/api/platform/admin/locations/cities', body);
+  return assertPlatformSuccess(res);
+}
+
+export async function patchPlatformCity(id: string | number, body: unknown) {
+  const res = await platformClient.patch<PlatformApiEnvelope<unknown>>(
+    `/api/platform/admin/locations/cities/${id}`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function deletePlatformCity(id: string | number) {
+  const res = await platformClient.delete<PlatformApiEnvelope<unknown>>(
+    `/api/platform/admin/locations/cities/${id}`
+  );
+  return assertPlatformSuccess(res);
+}
+
 export async function getPlatformReportsSummary(startDate: string, endDate: string) {
   const res = await platformClient.get<PlatformApiEnvelope<PlatformReportsSummary>>(
     '/api/platform/reports/summary',

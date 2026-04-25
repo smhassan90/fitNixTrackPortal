@@ -41,6 +41,16 @@ export default function PlatformSidebar() {
         {isSuper && (
           <>
             <Link
+              href="/platform/catalog"
+              className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
+                pathname.startsWith('/platform/catalog')
+                  ? 'bg-primary text-white'
+                  : 'text-white/80 hover:bg-white/10'
+              }`}
+            >
+              Catalog
+            </Link>
+            <Link
               href="/platform/users"
               className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                 pathname.startsWith('/platform/users')
