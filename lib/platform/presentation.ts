@@ -44,7 +44,8 @@ export function describeBillingRow(row: unknown): { title: string; subtitle: str
   const bits: string[] = [];
   if (o.planName) bits.push(String(o.planName));
   if (o.subscriptionStatus ?? o.status) bits.push(String(o.subscriptionStatus ?? o.status));
-  if (o.dueDate) bits.push(`Due ${String(o.dueDate).slice(0, 10)}`);
+  const dueDate = normalizeDateLike(o.dueDate);
+  if (dueDate) bits.push(`Due ${dueDate}`);
   if (o.overdueAmount != null && o.overdueAmount !== '') bits.push(`Overdue: ${String(o.overdueAmount)}`);
   if (o.pendingAmount != null && o.pendingAmount !== '') bits.push(`Outstanding: ${String(o.pendingAmount)}`);
   if (bits.length === 0) bits.push('Details will appear here once your billing feed includes them.');
@@ -73,6 +74,27 @@ export function billingCollectedAmount(row: unknown): string {
   return String(value);
 }
 
+function normalizeDateLike(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value.slice(0, 10);
+  if (typeof value === 'number') return new Date(value).toISOString().slice(0, 10);
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    const nested =
+      o.iso ??
+      o.value ??
+      o.date ??
+      o.paidAt ??
+      o.lastPaidAt ??
+      o.dueDate ??
+      o.$date ??
+      o.toString;
+    if (typeof nested === 'string') return nested.slice(0, 10);
+  }
+  return '';
+}
+
 export function billingHistorySummary(row: unknown): string {
   if (!row || typeof row !== 'object') return '—';
   const obj = row as Record<string, unknown>;
@@ -82,7 +104,8 @@ export function billingHistorySummary(row: unknown): string {
   const historyList = firstDefinedValue(obj, ['history', 'paymentHistory', 'payments']);
 
   const parts: string[] = [];
-  if (lastPaidAt != null) parts.push(`Last paid: ${String(lastPaidAt).slice(0, 10)}`);
+  const paidDate = normalizeDateLike(lastPaidAt);
+  if (paidDate) parts.push(`Last paid: ${paidDate}`);
   if (cycle != null) parts.push(`Cycle: ${String(cycle)}`);
   if (Array.isArray(historyList)) parts.push(`${historyList.length} payment entries`);
   if (notes != null) parts.push(String(notes));
