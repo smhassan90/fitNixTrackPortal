@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+function normalizeBigInt(value: unknown): unknown {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map((item) => normalizeBigInt(item));
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([k, v]) => {
+      out[k] = normalizeBigInt(v);
+    });
+    return out;
+  }
+  return value;
+}
+
 // Catch-all API route that proxies all requests to the external API
 // This avoids CORS issues by making requests server-side
 export async function GET(
@@ -122,8 +135,8 @@ async function handleRequest(
       });
     }
     
-    // Forward the response
-    return NextResponse.json(data, { status: response.status });
+    // NextResponse.json cannot serialize BigInt values.
+    return NextResponse.json(normalizeBigInt(data), { status: response.status });
   } catch (error: any) {
     console.error('Error proxying request to external API:', error);
     return NextResponse.json(

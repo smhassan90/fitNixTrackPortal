@@ -24,7 +24,11 @@ export function mapPlatformErrorToUserMessage(err: unknown): string {
   if (status === 429) {
     return mapCodeToMessage('RATE_LIMITED', e?.message, e?.details);
   }
-  return mapCodeToMessage(e?.code, e?.message, e?.details) || ax.message || 'Something went wrong';
+  const fallback = mapCodeToMessage(e?.code, e?.message, e?.details) || ax.message || 'Something went wrong';
+  if (fallback.toLowerCase().includes('serialize a bigint')) {
+    return 'Billing is temporarily unavailable due to a backend data-format issue (BigInt serialization). Please ask backend to convert BigInt values to string in JSON responses.';
+  }
+  return fallback;
 }
 
 export function mapCodeToMessage(

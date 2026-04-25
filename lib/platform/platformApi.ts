@@ -107,6 +107,11 @@ export async function createPlatformGym(body: unknown) {
   return assertPlatformSuccess(res);
 }
 
+export async function getPlatformLocationsCatalog() {
+  const res = await platformClient.get<PlatformApiEnvelope<unknown>>('/api/platform/locations/catalog');
+  return assertPlatformSuccess(res);
+}
+
 export async function patchPlatformGym(id: string | number, body: unknown) {
   const res = await platformClient.patch<PlatformApiEnvelope<unknown>>(
     `/api/platform/gyms/${id}`,
@@ -139,11 +144,24 @@ export async function patchPlatformGymSubscription(id: string | number, body: un
   return assertPlatformSuccess(res);
 }
 
+export async function recordPlatformGymPayment(id: string | number, body: unknown) {
+  const res = await platformClient.post<PlatformApiEnvelope<unknown>>(
+    `/api/platform/gyms/${id}/billing/payments`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
 export async function listPlatformBillingDues(params: Record<string, string | number | undefined>) {
   const res = await platformClient.get<PlatformApiEnvelope<PlatformBillingDuesData>>(
     '/api/platform/billing/dues',
     { params }
   );
+  return assertPlatformSuccess(res);
+}
+
+export async function listPlatformBillingPlans(params: Record<string, string | number | undefined> = {}) {
+  const res = await platformClient.get<PlatformApiEnvelope<unknown>>('/api/platform/billing/plans', { params });
   return assertPlatformSuccess(res);
 }
 

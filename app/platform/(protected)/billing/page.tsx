@@ -6,7 +6,7 @@ import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
 import Loading from '@/components/Loading';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
-import { describeBillingRow } from '@/lib/platform/presentation';
+import { billingCollectedAmount, billingHistorySummary, describeBillingRow } from '@/lib/platform/presentation';
 
 export default function PlatformBillingPage() {
   const { alert, showAlert, closeAlert } = useAlert();
@@ -137,23 +137,29 @@ export default function PlatformBillingPage() {
             <thead className="bg-light-gray text-left text-dark-gray-light">
               <tr>
                 <th className="px-3 py-2">Gym</th>
-                <th className="px-3 py-2">What we know</th>
+                <th className="px-3 py-2">Subscription</th>
+                <th className="px-3 py-2">Amount collected</th>
+                <th className="px-3 py-2">Billing history</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="px-3 py-6 text-center text-dark-gray-light">
+                  <td colSpan={4} className="px-3 py-6 text-center text-dark-gray-light">
                     No billing rows match these filters.
                   </td>
                 </tr>
               )}
               {rows.map((row, i) => {
                 const { title, subtitle } = describeBillingRow(row);
+                const collected = billingCollectedAmount(row);
+                const history = billingHistorySummary(row);
                 return (
                   <tr key={i} className="border-t">
                     <td className="px-3 py-2 font-medium text-dark-gray align-top">{title}</td>
                     <td className="px-3 py-2 text-dark-gray-light align-top">{subtitle}</td>
+                    <td className="px-3 py-2 text-dark-gray-light align-top">{collected}</td>
+                    <td className="px-3 py-2 text-dark-gray-light align-top">{history}</td>
                   </tr>
                 );
               })}

@@ -51,6 +51,44 @@ export function describeBillingRow(row: unknown): { title: string; subtitle: str
   return { title, subtitle: bits.join(' · ') };
 }
 
+function firstDefinedValue(obj: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    const value = obj[key];
+    if (value != null && String(value).trim() !== '') return value;
+  }
+  return null;
+}
+
+export function billingCollectedAmount(row: unknown): string {
+  if (!row || typeof row !== 'object') return '—';
+  const obj = row as Record<string, unknown>;
+  const value = firstDefinedValue(obj, [
+    'amountCollected',
+    'collectedAmount',
+    'totalCollected',
+    'paidAmount',
+    'receivedAmount',
+  ]);
+  if (value == null) return '—';
+  return String(value);
+}
+
+export function billingHistorySummary(row: unknown): string {
+  if (!row || typeof row !== 'object') return '—';
+  const obj = row as Record<string, unknown>;
+  const lastPaidAt = firstDefinedValue(obj, ['lastPaidAt', 'paidAt', 'markPaidAt', 'lastPaymentDate']);
+  const cycle = firstDefinedValue(obj, ['billingCycle', 'cycle']);
+  const notes = firstDefinedValue(obj, ['notes', 'billingNotes']);
+  const historyList = firstDefinedValue(obj, ['history', 'paymentHistory', 'payments']);
+
+  const parts: string[] = [];
+  if (lastPaidAt != null) parts.push(`Last paid: ${String(lastPaidAt).slice(0, 10)}`);
+  if (cycle != null) parts.push(`Cycle: ${String(cycle)}`);
+  if (Array.isArray(historyList)) parts.push(`${historyList.length} payment entries`);
+  if (notes != null) parts.push(String(notes));
+  return parts.length > 0 ? parts.join(' · ') : '—';
+}
+
 /** Table-oriented audit row (backend field names may vary) */
 export function describeAuditRow(row: unknown): { when: string; action: string; detail: string } {
   if (!row || typeof row !== 'object') {

@@ -1,13 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
   activatePlatformGym,
+  getPlatformLocationsCatalog,
   getPlatformGym,
   patchPlatformGym,
   patchPlatformGymSubscription,
+  listPlatformBillingPlans,
+  recordPlatformGymPayment,
   suspendPlatformGym,
 } from '@/lib/platform/platformApi';
 import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
@@ -19,6 +22,16 @@ import ConfirmationDialog from '@/components/ConfirmationDialog';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
 import { gymProfileSummary } from '@/lib/platform/presentation';
+import { normalizeBillingPlans, type BillingPlanOption } from '@/lib/platform/billingPlans';
+import {
+  DEFAULT_COUNTRY,
+  LOCATION_CATALOG,
+  getCitiesForCountry,
+  getSupportedCountries,
+  normalizeLocationCatalog,
+  withFallbackCatalog,
+  type LocationCatalog,
+} from '@/lib/platform/locationCatalog';
 
 type Tab = 'overview' | 'subscription' | 'activity';
 
@@ -28,12 +41,10 @@ const TAB_LABELS: Record<Tab, string> = {
   activity: 'History',
 };
 
-const PROFILE_FIELDS: { key: 'name' | 'slug' | 'address' | 'city' | 'country' | 'phone' | 'email'; label: string }[] = [
+const PROFILE_FIELDS: { key: 'name' | 'slug' | 'address' | 'phone' | 'email'; label: string }[] = [
   { key: 'name', label: 'Gym name' },
   { key: 'slug', label: 'Web address key' },
   { key: 'address', label: 'Street address' },
-  { key: 'city', label: 'City' },
-  { key: 'country', label: 'Country' },
   { key: 'phone', label: 'Phone' },
   { key: 'email', label: 'Email' },
 ];
@@ -64,6 +75,29 @@ export default function PlatformGymDetailPage() {
     markPaidAt: '',
     notes: '',
   });
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentDraft, setPaymentDraft] = useState({
+    amount: '',
+    currency: 'PKR',
+    paidAt: '',
+    method: 'CASH',
+    notes: '',
+  });
+  const [lastReceipt, setLastReceipt] = useState<{
+    receiptNo: string;
+    gymName: string;
+    packageName: string;
+    amount: string;
+    currency: string;
+    paidAt: string;
+    method: string;
+    notes: string;
+  } | null>(null);
+  const [plans, setPlans] = useState<BillingPlanOption[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [locationCatalog, setLocationCatalog] = useState<LocationCatalog>(LOCATION_CATALOG);
+  const countryOptions = getSupportedCountries(locationCatalog);
+  const cityOptions = getCitiesForCountry(profileDraft.country || DEFAULT_COUNTRY, locationCatalog);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,7 +110,7 @@ export default function PlatformGymDetailPage() {
         logoUrl: String(data.logoUrl ?? ''),
         address: String(data.address ?? ''),
         city: String(data.city ?? ''),
-        country: String(data.country ?? ''),
+        country: String(data.country ?? DEFAULT_COUNTRY),
         phone: String(data.phone ?? ''),
         email: String(data.email ?? ''),
       });
@@ -98,8 +132,113 @@ export default function PlatformGymDetailPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    let active = true;
+    const loadLocations = async () => {
+      try {
+        const remotePayload = await getPlatformLocationsCatalog();
+        const remoteCatalog = normalizeLocationCatalog(remotePayload);
+        if (!active) return;
+        const merged = withFallbackCatalog(remoteCatalog);
+        setLocationCatalog(merged);
+        const supportedCountries = getSupportedCountries(merged);
+        const fallbackCountry = supportedCountries.includes(DEFAULT_COUNTRY)
+          ? DEFAULT_COUNTRY
+          : (supportedCountries[0] ?? DEFAULT_COUNTRY);
+        setProfileDraft((prev) => {
+          const nextCountry = supportedCountries.includes(prev.country) ? prev.country : fallbackCountry;
+          const nextCities = getCitiesForCountry(nextCountry, merged);
+          const nextCity = nextCities.includes(prev.city) ? prev.city : '';
+          return { ...prev, country: nextCountry, city: nextCity };
+        });
+      } catch {
+        if (!active) return;
+        setLocationCatalog(LOCATION_CATALOG);
+      }
+    };
+    loadLocations();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadPlans = async () => {
+      setPlansLoading(true);
+      try {
+        const data = await listPlatformBillingPlans({ active: 'true' });
+        if (!active) return;
+        const nextPlans = normalizeBillingPlans(data);
+        setPlans(nextPlans);
+      } catch {
+        if (!active) return;
+        setPlans([]);
+      } finally {
+        if (active) setPlansLoading(false);
+      }
+    };
+    loadPlans();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const tenantStatus = String(gym?.tenantStatus ?? gym?.status ?? '').toUpperCase();
   const suspended = tenantStatus === 'SUSPENDED';
+  const billingHistoryRows = useMemo(() => {
+    const sub = (gym?.subscription as Record<string, unknown> | undefined) ?? {};
+    const rawHistory = gym?.billingHistory ?? sub.paymentHistory ?? sub.history ?? [];
+    if (!Array.isArray(rawHistory)) return [];
+    return rawHistory
+      .map((entry, index) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const row = entry as Record<string, unknown>;
+        const date = String(row.paidAt ?? row.markPaidAt ?? row.date ?? row.createdAt ?? '').slice(0, 10) || '—';
+        const amount = String(
+          row.amountPaid ?? row.amount ?? row.amountCollected ?? row.collectedAmount ?? row.paidAmount ?? row.receivedAmount ?? '—'
+        );
+        const currency = String(row.currency ?? 'PKR');
+        const status = String(row.status ?? row.paymentStatus ?? '—');
+        const note = String(row.note ?? row.notes ?? row.description ?? '').trim();
+        const receiptNo = String(row.receiptNo ?? row.receiptNumber ?? row.receipt_id ?? '').trim();
+        const method = String(row.method ?? row.paymentMethod ?? '—');
+        const packageName = String(row.planName ?? row.packageName ?? sub.planName ?? '—');
+        return {
+          key: String(row.id ?? `${date}-${amount}-${index}`),
+          date,
+          amount,
+          currency,
+          status,
+          receiptNo: receiptNo || '—',
+          method,
+          packageName,
+          note: note || '—',
+        };
+      })
+      .filter(
+        (
+          v
+        ): v is {
+          key: string;
+          date: string;
+          amount: string;
+          currency: string;
+          status: string;
+          receiptNo: string;
+          method: string;
+          packageName: string;
+          note: string;
+        } => Boolean(v)
+      );
+  }, [gym]);
+  const totalPaidAmount = useMemo(() => {
+    const parseAmount = (value: string): number => {
+      const n = Number(String(value).replace(/[^0-9.-]/g, ''));
+      return Number.isFinite(n) ? n : 0;
+    };
+    return billingHistoryRows.reduce((sum, row) => sum + parseAmount(row.amount), 0);
+  }, [billingHistoryRows]);
 
   const saveProfile = async () => {
     const body: Record<string, unknown> = {};
@@ -142,6 +281,131 @@ export default function PlatformGymDetailPage() {
       load();
     } catch (e) {
       showAlert('error', 'Update failed', mapPlatformErrorToUserMessage(e));
+    }
+  };
+
+  const printReceipt = () => {
+    if (!lastReceipt) {
+      showAlert('error', 'No receipt', 'Please record a payment first to print receipt.');
+      return;
+    }
+    if (typeof window === 'undefined') return;
+    const win = window.open('', '_blank', 'width=800,height=900');
+    if (!win) {
+      showAlert('error', 'Popup blocked', 'Please allow popups to print the receipt.');
+      return;
+    }
+    const html = `
+      <html>
+        <head>
+          <title>Receipt ${lastReceipt.receiptNo}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
+            h1 { margin: 0 0 4px; }
+            .muted { color: #6b7280; margin-bottom: 20px; }
+            .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin-top: 12px; }
+            .row { display: flex; justify-content: space-between; margin: 8px 0; }
+            .label { color: #6b7280; }
+            .amount { font-size: 24px; font-weight: 700; }
+          </style>
+        </head>
+        <body>
+          <h1>FitNix Gym Payment Receipt</h1>
+          <div class="muted">Receipt #${lastReceipt.receiptNo}</div>
+          <div class="card">
+            <div class="row"><span class="label">Gym</span><span>${lastReceipt.gymName}</span></div>
+            <div class="row"><span class="label">Package</span><span>${lastReceipt.packageName || '—'}</span></div>
+            <div class="row"><span class="label">Paid date</span><span>${lastReceipt.paidAt}</span></div>
+            <div class="row"><span class="label">Method</span><span>${lastReceipt.method}</span></div>
+            <div class="row"><span class="label">Currency</span><span>${lastReceipt.currency}</span></div>
+            <div class="row"><span class="label">Amount</span><span class="amount">${lastReceipt.currency} ${lastReceipt.amount}</span></div>
+            <div class="row"><span class="label">Notes</span><span>${lastReceipt.notes || '—'}</span></div>
+          </div>
+          <p class="muted">Generated on ${new Date().toISOString().slice(0, 19).replace('T', ' ')}</p>
+          <script>
+            window.onload = function () { window.print(); };
+          </script>
+        </body>
+      </html>
+    `;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  };
+
+  const printHistoryReceipt = (row: {
+    receiptNo: string;
+    date: string;
+    amount: string;
+    currency: string;
+    method: string;
+    packageName: string;
+    note: string;
+  }) => {
+    setLastReceipt({
+      receiptNo: row.receiptNo !== '—' ? row.receiptNo : `RCP-${Date.now()}`,
+      gymName: String(gym?.name ?? 'Gym'),
+      packageName: row.packageName || '—',
+      amount: row.amount,
+      currency: row.currency,
+      paidAt: row.date,
+      method: row.method,
+      notes: row.note === '—' ? '' : row.note,
+    });
+    setTimeout(() => {
+      printReceipt();
+    }, 0);
+  };
+
+  const submitPayment = async () => {
+    const amount = Number(paymentDraft.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showAlert('error', 'Amount required', 'Please enter a valid payment amount greater than zero.');
+      return;
+    }
+    if (!paymentDraft.paidAt) {
+      showAlert('error', 'Payment date required', 'Please select a paid date.');
+      return;
+    }
+    setSavingPayment(true);
+    try {
+      const payload = {
+        amountPaid: amount,
+        currency: paymentDraft.currency,
+        paidAt: paymentDraft.paidAt,
+        method: paymentDraft.method,
+        notes: paymentDraft.notes.trim() || undefined,
+      };
+      const payment = (await recordPlatformGymPayment(id, payload)) as Record<string, unknown>;
+      const receiptNo = String(payment.receiptNo ?? payment.receiptNumber ?? `RCPT-${Date.now()}`);
+      const paidAt = String(payment.paidAt ?? payment.date ?? paymentDraft.paidAt).slice(0, 10);
+      const currency = String(payment.currency ?? paymentDraft.currency);
+      const amountPaid = Number(payment.amountPaid ?? payment.amount ?? amount);
+      setLastReceipt({
+        receiptNo,
+        gymName: String(gym?.name ?? 'Gym'),
+        packageName: String(
+          payment.planName ?? payment.packageName ?? (gym?.subscription as Record<string, unknown> | undefined)?.planName ?? '—'
+        ),
+        amount: amountPaid.toFixed(2),
+        currency,
+        paidAt,
+        method: String(payment.method ?? paymentDraft.method),
+        notes: String(payment.notes ?? paymentDraft.notes).trim(),
+      });
+      showAlert('success', 'Payment recorded', 'Gym bill payment has been recorded successfully.');
+      setPaymentDraft({
+        amount: '',
+        currency: paymentDraft.currency,
+        paidAt: '',
+        method: paymentDraft.method,
+        notes: '',
+      });
+      load();
+    } catch (e) {
+      showAlert('error', 'Payment failed', mapPlatformErrorToUserMessage(e));
+    } finally {
+      setSavingPayment(false);
     }
   };
 
@@ -292,6 +556,48 @@ export default function PlatformGymDetailPage() {
                   disabled={!isSuper}
                   showUrlFallback
                 />
+                <div>
+                  <label className="text-xs text-dark-gray-light">Country</label>
+                  <select
+                    value={profileDraft.country}
+                    onChange={(e) =>
+                      setProfileDraft((d) => {
+                        const nextCountry = e.target.value;
+                        const nextCities = getCitiesForCountry(nextCountry, locationCatalog);
+                        const nextCity = nextCities.includes(d.city) ? d.city : '';
+                        return { ...d, country: nextCountry, city: nextCity };
+                      })
+                    }
+                    className="w-full rounded border px-2 py-1.5 bg-white"
+                  >
+                    <option value="" disabled>
+                      Select country
+                    </option>
+                    {countryOptions.map((country) => (
+                      <option key={country} value={country}>
+                        {country}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-dark-gray-light">City</label>
+                  <select
+                    value={profileDraft.city}
+                    onChange={(e) => setProfileDraft((d) => ({ ...d, city: e.target.value }))}
+                    className="w-full rounded border px-2 py-1.5 bg-white"
+                    disabled={!profileDraft.country}
+                  >
+                    <option value="" disabled>
+                      {profileDraft.country ? 'Select city' : 'Select country first'}
+                    </option>
+                    {cityOptions.map((city) => (
+                      <option key={city} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 {PROFILE_FIELDS.map(({ key, label }) => (
                   <div key={key}>
                     <label className="text-xs text-dark-gray-light">{label}</label>
@@ -326,11 +632,21 @@ export default function PlatformGymDetailPage() {
             <div className={`mt-4 space-y-3 text-sm ${!isSuper ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
                 <label className="text-xs text-dark-gray-light">Billing plan ID</label>
-                <input
+                <select
                   value={subDraft.planId}
-                  onChange={(e) => setSubDraft((d) => ({ ...d, planId: e.target.value.replace(/\D/g, '') }))}
-                  className="w-full rounded border px-2 py-1.5"
-                />
+                  onChange={(e) => setSubDraft((d) => ({ ...d, planId: e.target.value }))}
+                  className="w-full rounded border px-2 py-1.5 bg-white"
+                  disabled={plansLoading || plans.length === 0}
+                >
+                  <option value="" disabled>
+                    {plansLoading ? 'Loading plans…' : plans.length === 0 ? 'No active plan available' : 'Select billing plan'}
+                  </option>
+                  {plans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-xs text-dark-gray-light">Next payment date</label>
@@ -391,6 +707,150 @@ export default function PlatformGymDetailPage() {
               To add more gym managers or reset an owner password after setup, use your support process until those
               tools exist in the product.
             </p>
+            <div className="mt-6">
+              <h3 className="font-medium text-sm">Billing history</h3>
+              <p className="mt-1 text-xs text-dark-gray-light">Total paid: {totalPaidAmount.toLocaleString()}</p>
+              {billingHistoryRows.length === 0 ? (
+                <p className="mt-2 text-sm text-dark-gray-light">
+                  No billing history records found for this gym yet.
+                </p>
+              ) : (
+                <div className="mt-3 overflow-x-auto rounded-lg border border-light-gray-dark">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-light-gray text-left text-dark-gray-light">
+                      <tr>
+                        <th className="px-3 py-2">Date</th>
+                        <th className="px-3 py-2">Amount</th>
+                        <th className="px-3 py-2">Receipt</th>
+                        <th className="px-3 py-2">Package</th>
+                        <th className="px-3 py-2">Method</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Notes</th>
+                        <th className="px-3 py-2">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {billingHistoryRows.map((row) => (
+                        <tr key={row.key} className="border-t">
+                          <td className="px-3 py-2">{row.date}</td>
+                          <td className="px-3 py-2">
+                            {row.currency} {row.amount}
+                          </td>
+                          <td className="px-3 py-2">{row.receiptNo}</td>
+                          <td className="px-3 py-2">{row.packageName}</td>
+                          <td className="px-3 py-2">{row.method}</td>
+                          <td className="px-3 py-2">{row.status}</td>
+                          <td className="px-3 py-2">{row.note}</td>
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => printHistoryReceipt(row)}
+                              className="rounded border px-2 py-1 text-xs"
+                            >
+                              Print receipt
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+        {tab === 'subscription' && (
+          <section className="rounded-xl bg-white p-4 shadow border border-light-gray-dark max-w-lg mt-6">
+            <h2 className="font-semibold">Pay gym bill</h2>
+            <p className="mt-1 text-xs text-dark-gray-light">
+              Record payment and print a receipt for the gym owner.
+            </p>
+            <p className="mt-1 text-xs text-dark-gray-light">
+              Package:{' '}
+              <span className="font-medium text-dark-gray">
+                {String(((gym?.subscription as Record<string, unknown> | undefined)?.planName as string) ?? '—')}
+              </span>
+            </p>
+            <div className={`mt-4 space-y-3 text-sm ${!isSuper ? 'opacity-50 pointer-events-none' : ''}`}>
+              <div>
+                <label className="text-xs text-dark-gray-light">Amount</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={paymentDraft.amount}
+                  onChange={(e) => setPaymentDraft((d) => ({ ...d, amount: e.target.value }))}
+                  className="w-full rounded border px-2 py-1.5"
+                  placeholder="2500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-dark-gray-light">Currency</label>
+                  <input
+                    value={paymentDraft.currency}
+                    onChange={(e) => setPaymentDraft((d) => ({ ...d, currency: e.target.value.toUpperCase() }))}
+                    className="w-full rounded border px-2 py-1.5"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-dark-gray-light">Paid date</label>
+                  <input
+                    type="date"
+                    value={paymentDraft.paidAt}
+                    onChange={(e) => setPaymentDraft((d) => ({ ...d, paidAt: e.target.value }))}
+                    className="w-full rounded border px-2 py-1.5"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-dark-gray-light">Payment method</label>
+                <select
+                  value={paymentDraft.method}
+                  onChange={(e) => setPaymentDraft((d) => ({ ...d, method: e.target.value }))}
+                  className="w-full rounded border px-2 py-1.5 bg-white"
+                >
+                  <option value="CASH">Cash</option>
+                  <option value="BANK_TRANSFER">Bank transfer</option>
+                  <option value="CARD">Card</option>
+                  <option value="JAZZCASH">JazzCash</option>
+                  <option value="EASYPAISA">EasyPaisa</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-dark-gray-light">Notes</label>
+                <textarea
+                  value={paymentDraft.notes}
+                  onChange={(e) => setPaymentDraft((d) => ({ ...d, notes: e.target.value }))}
+                  className="w-full rounded border px-2 py-1.5 min-h-[80px]"
+                  placeholder="Optional payment reference"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={submitPayment}
+                  disabled={!isSuper || savingPayment}
+                  className="rounded-lg bg-success px-4 py-2 text-white text-sm disabled:opacity-40"
+                >
+                  {savingPayment ? 'Saving…' : 'Pay bill / record payment'}
+                </button>
+                <button
+                  type="button"
+                  onClick={printReceipt}
+                  disabled={!lastReceipt}
+                  className="rounded-lg border px-4 py-2 text-sm disabled:opacity-40"
+                >
+                  Print last receipt
+                </button>
+              </div>
+              {lastReceipt && (
+                <p className="text-xs text-dark-gray-light">
+                  Last receipt: {lastReceipt.receiptNo} · {lastReceipt.packageName} · {lastReceipt.currency}{' '}
+                  {lastReceipt.amount} · {lastReceipt.paidAt}
+                </p>
+              )}
+            </div>
           </section>
         )}
       </div>

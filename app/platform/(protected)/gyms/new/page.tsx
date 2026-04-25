@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { format, addDays } from 'date-fns';
 import { createPlatformGym } from '@/lib/platform/platformApi';
+import { getPlatformLocationsCatalog } from '@/lib/platform/platformApi';
+import { listPlatformBillingPlans } from '@/lib/platform/platformApi';
 import { createGymBodySchema } from '@/lib/platform/validation';
 import { suggestSlugFromName } from '@/lib/platform/slug';
 import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
@@ -14,6 +16,16 @@ import PlatformLogoUpload from '@/components/platform/PlatformLogoUpload';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
 import Loading from '@/components/Loading';
+import { normalizeBillingPlans, type BillingPlanOption } from '@/lib/platform/billingPlans';
+import {
+  DEFAULT_COUNTRY,
+  LOCATION_CATALOG,
+  getCitiesForCountry,
+  getSupportedCountries,
+  normalizeLocationCatalog,
+  withFallbackCatalog,
+  type LocationCatalog,
+} from '@/lib/platform/locationCatalog';
 
 const STEPS = ['Name', 'Slug', 'Location', 'Logo', 'Plan & dates', 'Owner', 'Review'] as const;
 
@@ -38,9 +50,9 @@ const initialWizard = (): Wizard => ({
   slug: '',
   address: '',
   city: '',
-  country: '',
+  country: DEFAULT_COUNTRY,
   logoUrl: '',
-  planId: '1',
+  planId: '',
   dueDate: format(addDays(new Date(), 30), 'yyyy-MM-dd'),
   isActive: true,
   ownerName: '',
@@ -58,12 +70,75 @@ export default function CreateGymWizardPage() {
   const [submitting, setSubmitting] = useState(false);
   const [genPw, setGenPw] = useState<string | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
+  const [plans, setPlans] = useState<BillingPlanOption[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [locationCatalog, setLocationCatalog] = useState<LocationCatalog>(LOCATION_CATALOG);
+  const countryOptions = useMemo(() => getSupportedCountries(locationCatalog), [locationCatalog]);
+  const cityOptions = useMemo(() => getCitiesForCountry(w.country, locationCatalog), [w.country, locationCatalog]);
 
   useEffect(() => {
     if (!isSuper) {
       router.replace('/platform/gyms');
     }
   }, [isSuper, router]);
+
+  useEffect(() => {
+    let active = true;
+    const loadLocations = async () => {
+      try {
+        const remotePayload = await getPlatformLocationsCatalog();
+        const remoteCatalog = normalizeLocationCatalog(remotePayload);
+        if (!active) return;
+        const merged = withFallbackCatalog(remoteCatalog);
+        setLocationCatalog(merged);
+        const supportedCountries = getSupportedCountries(merged);
+        const fallbackCountry = supportedCountries.includes(DEFAULT_COUNTRY)
+          ? DEFAULT_COUNTRY
+          : (supportedCountries[0] ?? DEFAULT_COUNTRY);
+        setW((prev) => {
+          const nextCountry = supportedCountries.includes(prev.country) ? prev.country : fallbackCountry;
+          const nextCities = getCitiesForCountry(nextCountry, merged);
+          const nextCity = nextCities.includes(prev.city) ? prev.city : '';
+          return { ...prev, country: nextCountry, city: nextCity };
+        });
+      } catch {
+        if (!active) return;
+        setLocationCatalog(LOCATION_CATALOG);
+      }
+    };
+    loadLocations();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadPlans = async () => {
+      setPlansLoading(true);
+      try {
+        const data = await listPlatformBillingPlans({ active: 'true' });
+        if (!active) return;
+        const nextPlans = normalizeBillingPlans(data);
+        setPlans(nextPlans);
+        setW((prev) => {
+          if (nextPlans.length === 0) return { ...prev, planId: '' };
+          if (nextPlans.some((p) => p.id === prev.planId)) return prev;
+          return { ...prev, planId: nextPlans[0].id };
+        });
+      } catch {
+        if (!active) return;
+        setPlans([]);
+        setW((prev) => ({ ...prev, planId: '' }));
+      } finally {
+        if (active) setPlansLoading(false);
+      }
+    };
+    loadPlans();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const canNext = useMemo(() => {
     switch (step) {
@@ -72,7 +147,7 @@ export default function CreateGymWizardPage() {
       case 1:
         return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(w.slug.trim());
       case 2:
-        return true;
+        return w.country.trim().length > 0 && w.city.trim().length > 0;
       case 3:
         if (logoBusy) return false;
         if (!w.logoUrl.trim()) return true;
@@ -83,7 +158,7 @@ export default function CreateGymWizardPage() {
           return false;
         }
       case 4:
-        return /^\d+$/.test(w.planId) && Number(w.planId) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(w.dueDate);
+        return !plansLoading && /^\d+$/.test(w.planId) && Number(w.planId) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(w.dueDate);
       case 5:
         return w.ownerName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(w.ownerEmail.trim());
       default:
@@ -255,18 +330,44 @@ export default function CreateGymWizardPage() {
                 onChange={(e) => setW((p) => ({ ...p, address: e.target.value }))}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
               />
+              <label className="block text-sm font-medium">Country</label>
+              <select
+                value={w.country}
+                onChange={(e) =>
+                  setW((p) => {
+                    const nextCountry = e.target.value;
+                    const nextCities = getCitiesForCountry(nextCountry, locationCatalog);
+                    const nextCity = nextCities.includes(p.city) ? p.city : '';
+                    return { ...p, country: nextCountry, city: nextCity };
+                  })
+                }
+                className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+              >
+                <option value="" disabled>
+                  Select country
+                </option>
+                {countryOptions.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
               <label className="block text-sm font-medium">City</label>
-              <input
+              <select
                 value={w.city}
                 onChange={(e) => setW((p) => ({ ...p, city: e.target.value }))}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-              />
-              <label className="block text-sm font-medium">Country</label>
-              <input
-                value={w.country}
-                onChange={(e) => setW((p) => ({ ...p, country: e.target.value }))}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-              />
+                className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                disabled={!w.country}
+              >
+                <option value="" disabled>
+                  {w.country ? 'Select city' : 'Select country first'}
+                </option>
+                {cityOptions.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
             </>
           )}
           {step === 3 && (
@@ -280,11 +381,21 @@ export default function CreateGymWizardPage() {
           {step === 4 && (
             <>
               <label className="block text-sm font-medium">Billing plan ID</label>
-              <input
+              <select
                 value={w.planId}
-                onChange={(e) => setW((p) => ({ ...p, planId: e.target.value.replace(/\D/g, '') }))}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-              />
+                onChange={(e) => setW((p) => ({ ...p, planId: e.target.value }))}
+                className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
+                disabled={plansLoading || plans.length === 0}
+              >
+                <option value="" disabled>
+                  {plansLoading ? 'Loading plans…' : plans.length === 0 ? 'No active plan available' : 'Select billing plan'}
+                </option>
+                {plans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.label}
+                  </option>
+                ))}
+              </select>
               <label className="block text-sm font-medium">Next payment date</label>
               <input
                 type="date"
