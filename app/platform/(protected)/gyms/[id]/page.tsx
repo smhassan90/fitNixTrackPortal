@@ -98,6 +98,14 @@ export default function PlatformGymDetailPage() {
   const [locationCatalog, setLocationCatalog] = useState<LocationCatalog>(LOCATION_CATALOG);
   const countryOptions = getSupportedCountries(locationCatalog);
   const cityOptions = getCitiesForCountry(profileDraft.country || DEFAULT_COUNTRY, locationCatalog);
+  const currentPlanName =
+    String(
+      (gym?.subscription as Record<string, unknown> | undefined)?.planName ??
+        (gym?.subscription as Record<string, unknown> | undefined)?.packageName ??
+        (gym as Record<string, unknown> | null)?.planName ??
+        (gym as Record<string, unknown> | null)?.packageName ??
+        ''
+    ).trim() || '—';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -203,7 +211,16 @@ export default function PlatformGymDetailPage() {
         const note = String(row.note ?? row.notes ?? row.description ?? '').trim();
         const receiptNo = String(row.receiptNo ?? row.receiptNumber ?? row.receipt_id ?? '').trim();
         const method = String(row.method ?? row.paymentMethod ?? '—');
-        const packageName = String(row.planName ?? row.packageName ?? sub.planName ?? '—');
+        const packageName = String(
+          row.planName ??
+            row.packageName ??
+            row.subscriptionPlanName ??
+            row.plan?.name ??
+            row.package?.name ??
+            sub.planName ??
+            sub.packageName ??
+            currentPlanName
+        );
         return {
           key: String(row.id ?? `${date}-${amount}-${index}`),
           date,
@@ -231,7 +248,7 @@ export default function PlatformGymDetailPage() {
           note: string;
         } => Boolean(v)
       );
-  }, [gym]);
+  }, [gym, currentPlanName]);
   const totalPaidAmount = useMemo(() => {
     const parseAmount = (value: string): number => {
       const n = Number(String(value).replace(/[^0-9.-]/g, ''));
@@ -385,7 +402,12 @@ export default function PlatformGymDetailPage() {
         receiptNo,
         gymName: String(gym?.name ?? 'Gym'),
         packageName: String(
-          payment.planName ?? payment.packageName ?? (gym?.subscription as Record<string, unknown> | undefined)?.planName ?? '—'
+          payment.planName ??
+            payment.packageName ??
+            payment.subscriptionPlanName ??
+            (payment.plan as Record<string, unknown> | undefined)?.name ??
+            (payment.package as Record<string, unknown> | undefined)?.name ??
+            currentPlanName
         ),
         amount: amountPaid.toFixed(2),
         currency,
@@ -768,7 +790,7 @@ export default function PlatformGymDetailPage() {
             <p className="mt-1 text-xs text-dark-gray-light">
               Package:{' '}
               <span className="font-medium text-dark-gray">
-                {String(((gym?.subscription as Record<string, unknown> | undefined)?.planName as string) ?? '—')}
+                {currentPlanName}
               </span>
             </p>
             <div className={`mt-4 space-y-3 text-sm ${!isSuper ? 'opacity-50 pointer-events-none' : ''}`}>
