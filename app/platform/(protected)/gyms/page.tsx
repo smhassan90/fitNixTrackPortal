@@ -27,6 +27,19 @@ type FilterDraft = {
   dueTo: string;
 };
 
+function normalizeDateLike(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value.slice(0, 10);
+  if (typeof value === 'number') return new Date(value).toISOString().slice(0, 10);
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    const nested = o.iso ?? o.value ?? o.date ?? o.dueDate ?? o.$date;
+    if (typeof nested === 'string') return nested.slice(0, 10);
+  }
+  return '';
+}
+
 const emptyFilters: FilterDraft = {
   search: '',
   status: '',
@@ -280,6 +293,10 @@ export default function PlatformGymsPage() {
                 const suspended =
                   g.tenantStatus === 'SUSPENDED' ||
                   String(g.tenantStatus).toUpperCase() === 'SUSPENDED';
+                const row = g as Record<string, unknown>;
+                const sub = (g.subscription as Record<string, unknown> | undefined) ?? {};
+                const planName = String(row.planName ?? sub.planName ?? row.packageName ?? '—');
+                const dueDate = normalizeDateLike(row.dueDate ?? sub.dueDate);
                 return (
                   <tr key={String(g.id)} className="border-t border-light-gray">
                     <td className="px-4 py-3 font-medium">
@@ -305,8 +322,8 @@ export default function PlatformGymsPage() {
                     <td className="px-4 py-3">{g.trainersCount ?? '—'}</td>
                     <td className="px-4 py-3">{g.overdueAmount ?? '—'}</td>
                     <td className="px-4 py-3 text-xs">
-                      <div>{g.subscription?.planName ?? '—'}</div>
-                      <div className="text-dark-gray-light">Due {g.subscription?.dueDate ?? '—'}</div>
+                      <div>{planName}</div>
+                      <div className="text-dark-gray-light">Due {dueDate || '—'}</div>
                     </td>
                     <td className="px-4 py-3 text-right space-x-2 whitespace-nowrap">
                       <Link
