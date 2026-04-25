@@ -47,6 +47,30 @@ export default function TeamPage() {
 
   const canManage = isGymAdmin;
 
+  const showTeamError = useCallback(
+    (err: unknown, fallbackTitle = 'Request failed') => {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403) {
+        showAlert(
+          'error',
+          'Not allowed',
+          'This action is blocked by server rules (admin only, self-change guard, or last active admin guard).'
+        );
+        return;
+      }
+      if (status === 409) {
+        showAlert(
+          'error',
+          'Email already exists',
+          'A user with this email already exists in this gym. Use a different email.'
+        );
+        return;
+      }
+      showAlert('error', fallbackTitle, getErrorMessage(err as object));
+    },
+    [showAlert]
+  );
+
   const load = useCallback(async () => {
     if (!isGymAdmin) {
       setLoading(false);
@@ -142,7 +166,7 @@ export default function TeamPage() {
         await load();
       }
     } catch (err) {
-      showAlert('error', 'Request failed', getErrorMessage(err as object));
+      showTeamError(err);
     } finally {
       setSaving(false);
     }
@@ -160,7 +184,7 @@ export default function TeamPage() {
       showAlert('success', 'Updated', !r.isActive ? 'User can sign in again.' : 'Access paused for this user.');
       await load();
     } catch (err) {
-      showAlert('error', 'Error', getErrorMessage(err as object));
+      showTeamError(err, 'Error');
     } finally {
       setSaving(false);
     }
@@ -177,11 +201,11 @@ export default function TeamPage() {
     try {
       setSaving(true);
       await removeGymTeamUser(r.id);
-      showAlert('success', 'Removed', 'This user can no longer sign in.');
+      showAlert('success', 'Access removed', 'This account is now inactive and cannot sign in.');
       setRemoveDialog({ open: false, u: null });
       await load();
     } catch (err) {
-      showAlert('error', 'Error', getErrorMessage(err as object));
+      showTeamError(err, 'Error');
     } finally {
       setSaving(false);
     }
@@ -233,14 +257,14 @@ export default function TeamPage() {
         isOpen={removeDialog.open}
         onClose={() => setRemoveDialog({ open: false, u: null })}
         onConfirm={onConfirmRemove}
-        title="Remove team member"
+        title="Deactivate team member"
         message={
           removeDialog.u
-            ? `Remove sign-in access for ${removeDialog.u.name}? This cannot be undone.`
+            ? `Deactivate sign-in access for ${removeDialog.u.name}? You can re-activate later from the list.`
             : ''
         }
         type="danger"
-        confirmText="Remove access"
+        confirmText="Deactivate"
       />
 
       <div className="max-w-5xl">
@@ -432,7 +456,7 @@ export default function TeamPage() {
                               onClick={() => setRemoveDialog({ open: true, u: r })}
                               disabled={saving || isYou}
                             >
-                              Remove
+                              Soft remove
                             </button>
                           </div>
                         </td>
