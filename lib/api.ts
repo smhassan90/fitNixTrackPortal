@@ -48,15 +48,13 @@ api.interceptors.response.use(
     
     if (error.response?.status === 401) {
       const requestUrl = String(error.config?.url || '');
-      const isPlatformPage = typeof window !== 'undefined' && window.location.pathname.startsWith('/platform');
       const shouldForceLogout =
         requestUrl.includes('/api/auth/me') ||
         requestUrl.includes('/api/auth/logout') ||
         requestUrl.includes('/api/auth/login');
 
-      // Gym portal: on any 401, force re-login.
-      // Platform pages: avoid aggressive logout except explicit auth endpoint failures.
-      if (!isPlatformPage || shouldForceLogout) {
+      // Avoid aggressive auto-logout loops; only auth endpoints force sign-out.
+      if (shouldForceLogout) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         if (window.location.pathname !== '/login') {
