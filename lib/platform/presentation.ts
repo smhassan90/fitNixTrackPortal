@@ -99,14 +99,14 @@ export function billingHistorySummary(row: unknown): string {
   if (!row || typeof row !== 'object') return '—';
   const obj = row as Record<string, unknown>;
   const lastPaidAt = firstDefinedValue(obj, ['lastPaidAt', 'paidAt', 'markPaidAt', 'lastPaymentDate']);
-  const cycle = firstDefinedValue(obj, ['billingCycle', 'cycle']);
+  const packageName = firstDefinedValue(obj, ['planName', 'packageName', 'subscriptionPlanName']);
   const notes = firstDefinedValue(obj, ['notes', 'billingNotes']);
   const historyList = firstDefinedValue(obj, ['history', 'paymentHistory', 'payments']);
 
   const parts: string[] = [];
   const paidDate = normalizeDateLike(lastPaidAt);
   if (paidDate) parts.push(`Last paid: ${paidDate}`);
-  if (cycle != null) parts.push(`Cycle: ${String(cycle)}`);
+  if (packageName != null) parts.push(`Package: ${String(packageName)}`);
   if (Array.isArray(historyList)) parts.push(`${historyList.length} payment entries`);
   if (notes != null) parts.push(String(notes));
   return parts.length > 0 ? parts.join(' · ') : '—';

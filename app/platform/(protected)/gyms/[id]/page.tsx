@@ -98,14 +98,28 @@ export default function PlatformGymDetailPage() {
   const [locationCatalog, setLocationCatalog] = useState<LocationCatalog>(LOCATION_CATALOG);
   const countryOptions = getSupportedCountries(locationCatalog);
   const cityOptions = getCitiesForCountry(profileDraft.country || DEFAULT_COUNTRY, locationCatalog);
-  const currentPlanName =
-    String(
-      (gym?.subscription as Record<string, unknown> | undefined)?.planName ??
-        (gym?.subscription as Record<string, unknown> | undefined)?.packageName ??
-        (gym as Record<string, unknown> | null)?.planName ??
-        (gym as Record<string, unknown> | null)?.packageName ??
-        ''
-    ).trim() || '—';
+  const planNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    plans.forEach((p) => {
+      const nameOnly = p.label.split(' - ')[0]?.trim() || p.label;
+      if (p.id) map.set(String(p.id), nameOnly);
+    });
+    return map;
+  }, [plans]);
+  const currentPlanName = useMemo(() => {
+    const gymObj = gym as Record<string, unknown> | null;
+    const sub = (gymObj?.subscription as Record<string, unknown> | undefined) ?? {};
+    const fromName = String(
+      sub.planName ?? sub.packageName ?? gymObj?.planName ?? gymObj?.packageName ?? ''
+    ).trim();
+    if (fromName && fromName.toLowerCase() !== 'null' && fromName.toLowerCase() !== 'undefined') return fromName;
+    const subPlanId = sub.planId ?? gymObj?.planId;
+    if (subPlanId != null) {
+      const mapped = planNameById.get(String(subPlanId));
+      if (mapped) return mapped;
+    }
+    return '—';
+  }, [gym, planNameById]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -213,16 +227,22 @@ export default function PlatformGymDetailPage() {
         const method = String(row.method ?? row.paymentMethod ?? '—');
         const rowPlan = row.plan && typeof row.plan === 'object' ? (row.plan as Record<string, unknown>) : undefined;
         const rowPackage = row.package && typeof row.package === 'object' ? (row.package as Record<string, unknown>) : undefined;
-        const packageName = String(
+        const rowPlanId = row.planId ?? row.subscriptionPlanId ?? rowPackage?.id ?? rowPlan?.id;
+        const packageCandidate =
           row.planName ??
-            row.packageName ??
-            row.subscriptionPlanName ??
-            rowPlan?.name ??
-            rowPackage?.name ??
-            sub.planName ??
-            sub.packageName ??
-            currentPlanName
-        );
+          row.packageName ??
+          row.subscriptionPlanName ??
+          rowPlan?.name ??
+          rowPackage?.name ??
+          (rowPlanId != null ? planNameById.get(String(rowPlanId)) : undefined) ??
+          sub.planName ??
+          sub.packageName ??
+          currentPlanName;
+        const packageText = packageCandidate == null ? '' : String(packageCandidate).trim();
+        const packageName =
+          packageText && packageText.toLowerCase() !== 'null' && packageText.toLowerCase() !== 'undefined'
+            ? packageText
+            : currentPlanName;
         return {
           key: String(row.id ?? `${date}-${amount}-${index}`),
           date,
@@ -250,7 +270,7 @@ export default function PlatformGymDetailPage() {
           note: string;
         } => Boolean(v)
       );
-  }, [gym, currentPlanName]);
+  }, [gym, currentPlanName, planNameById]);
   const totalPaidAmount = useMemo(() => {
     const parseAmount = (value: string): number => {
       const n = Number(String(value).replace(/[^0-9.-]/g, ''));
