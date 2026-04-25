@@ -1,9 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+
+const teamNavItem = {
+  name: 'Team',
+  href: '/team',
+  icon: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+      />
+    </svg>
+  ),
+} as const;
 
 const navigation = [
   { 
@@ -90,6 +105,18 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
+  const navItems = useMemo(() => {
+    if (user?.role === 'GYM_ADMIN') {
+      const items = [...navigation];
+      const settingsIdx = items.findIndex((i) => i.href === '/settings');
+      if (settingsIdx >= 0) {
+        items.splice(settingsIdx, 0, teamNavItem);
+        return items;
+      }
+    }
+    return navigation;
+  }, [user?.role]);
+
   // Close sidebar when clicking outside on mobile/tablet
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -165,7 +192,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 p-4 overflow-y-auto">
         <ul className="space-y-1">
-          {navigation.map((item) => {
+          {navItems.map((item) => {
             const isActive = pathname === item.href;
             return (
               <li key={item.name}>
