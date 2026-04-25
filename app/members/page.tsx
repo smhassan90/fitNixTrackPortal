@@ -50,6 +50,29 @@ interface Member {
   billingResumeFrom?: string | null;
 }
 
+function safeText(value: unknown): string {
+  if (value == null) return '';
+  const t = String(value).trim();
+  if (!t || t.toLowerCase() === 'null' || t.toLowerCase() === 'undefined') return '';
+  return t;
+}
+
+function normalizeId(value: unknown): number | string | undefined {
+  const raw = safeText(value);
+  if (!raw) return undefined;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  return raw;
+}
+
+function normalizeDateYmd(value: unknown): string | undefined {
+  const raw = safeText(value);
+  if (!raw) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
+  const d = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return `${raw}T00:00:00.000Z`;
+}
+
 type MemberStatusActionKind = 'deactivate' | 'reactivate';
 type DateMode = 'today' | 'custom';
 
@@ -106,6 +129,25 @@ export default function MembersPage() {
   const [statusDateMode, setStatusDateMode] = useState<DateMode>('today');
   const [statusCustomDate, setStatusCustomDate] = useState('');
   const [statusSubmitting, setStatusSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!editingMember) return;
+    const firstTrainer = editingMember.trainers?.[0];
+    setFormData({
+      name: safeText(editingMember.name),
+      phone: safeText(editingMember.phone),
+      email: safeText(editingMember.email),
+      gender: safeText(editingMember.gender),
+      dateOfBirth: safeText(editingMember.dateOfBirth).split('T')[0] || '',
+      cnic: safeText(editingMember.cnic),
+      comments: safeText(editingMember.comments),
+      packageId: safeText(editingMember.packageId),
+      requiresTrainer: Boolean(firstTrainer),
+      trainerId: safeText(firstTrainer?.id),
+      discount: editingMember.discount != null ? String(editingMember.discount) : '',
+      admissionFeeWaived: editingMember.admissionAmount === 0 || editingMember.admissionAmount === null,
+    });
+  }, [editingMember]);
 
   // Fetch admission fee from API
   useEffect(() => {
@@ -363,12 +405,11 @@ export default function MembersPage() {
         phone: formData.phone || undefined,
         email: formData.email || undefined,
         gender: formData.gender || undefined,
-        dateOfBirth: formData.dateOfBirth || undefined,
+        dateOfBirth: normalizeDateYmd(formData.dateOfBirth),
         cnic: formData.cnic ? formData.cnic.replace(/\D/g, '') : undefined,
         comments: formData.comments || undefined,
-        packageId: formData.packageId || undefined,
+        packageId: normalizeId(formData.packageId),
         discount: formData.discount ? parseFloat(formData.discount) : undefined,
-        admissionFeeWaived: formData.admissionFeeWaived,
       };
 
       // Handle trainerIds differently for create vs update
@@ -376,12 +417,13 @@ export default function MembersPage() {
         // When updating: always include trainerIds to explicitly set trainers
         // Empty array means remove all trainers, array with IDs means set those trainers
         memberData.trainerIds = formData.requiresTrainer && formData.trainerId 
-          ? [formData.trainerId] 
+          ? [normalizeId(formData.trainerId)].filter(Boolean)
           : []; // Empty array to remove all trainers
       } else {
+        memberData.admissionFeeWaived = formData.admissionFeeWaived;
         // When creating: only include trainerIds if a trainer is selected
         if (formData.requiresTrainer && formData.trainerId) {
-          memberData.trainerIds = [formData.trainerId];
+          memberData.trainerIds = [normalizeId(formData.trainerId)].filter(Boolean);
         }
       }
 
@@ -441,7 +483,11 @@ export default function MembersPage() {
       }
     } catch (error: any) {
       console.error('Error saving member:', error);
-      showAlert('error', 'Error', getErrorMessage(error));
+      const backendMsg =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        getErrorMessage(error);
+      showAlert('error', 'Error', backendMsg);
     } finally {
       setLoading(false);
     }
@@ -449,21 +495,7 @@ export default function MembersPage() {
 
   const handleEdit = (member: Member) => {
     setEditingMember(member);
-    setShowAddForm(false);
-    setFormData({
-      name: member.name,
-      phone: member.phone || '',
-      email: member.email || '',
-      gender: member.gender || '',
-      dateOfBirth: member.dateOfBirth ? member.dateOfBirth.split('T')[0] : '',
-      cnic: member.cnic || '',
-      comments: member.comments || '',
-      packageId: member.packageId || '',
-      requiresTrainer: member.trainers.length > 0,
-      trainerId: member.trainers.length > 0 ? member.trainers[0].id : '',
-      discount: member.discount?.toString() || '',
-      admissionFeeWaived: member.admissionAmount === 0 || member.admissionAmount === null,
-    });
+    setShowAddForm(true);
     // Scroll to form
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1613,6 +1645,8 @@ export default function MembersPage() {
                 filteredMembers.map((member) => {
                   const memberPackage = availablePackages.find(p => String(p.id) === String(member.packageId));
                   const memberTrainer = member.trainers.length > 0 ? trainers.find(t => String(t.id) === String(member.trainers[0].id)) : null;
+                  const inactiveFromText = formatDate(member.inactiveFrom);
+                  const resumeFromText = formatDate(member.billingResumeFrom);
                   
                   // Calculate monthly payment for display (apply package discount)
                   let monthlyTotal = 0;
@@ -1703,11 +1737,11 @@ export default function MembersPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="space-y-1">
                           {statusBadge(member)}
-                          {member.inactiveFrom && (
-                            <div className="text-xs text-gray-500">Inactive from: {formatDate(member.inactiveFrom)}</div>
+                          {member.inactiveFrom && inactiveFromText !== 'N/A' && (
+                            <div className="text-xs text-gray-500">Inactive from: {inactiveFromText}</div>
                           )}
-                          {member.billingResumeFrom && (
-                            <div className="text-xs text-gray-500">Resumed billing: {formatDate(member.billingResumeFrom)}</div>
+                          {member.billingResumeFrom && resumeFromText !== 'N/A' && (
+                            <div className="text-xs text-gray-500">Resumed billing: {resumeFromText}</div>
                           )}
                         </div>
                       </td>

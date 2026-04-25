@@ -32,6 +32,40 @@ interface Package {
   updatedAt?: string;
 }
 
+function normalizeFeaturesPayload(payload: unknown): Feature[] {
+  const root = (payload && typeof payload === 'object') ? (payload as Record<string, unknown>) : {};
+  const data = (root.data && typeof root.data === 'object') ? (root.data as Record<string, unknown>) : {};
+  const list = Array.isArray(data.features)
+    ? data.features
+    : Array.isArray(root.features)
+      ? root.features
+      : Array.isArray(data.items)
+        ? data.items
+        : Array.isArray(root.items)
+          ? root.items
+          : Array.isArray(payload)
+            ? payload
+            : [];
+
+  return list
+    .map((item) => {
+      const o = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+      if (!o) return null;
+      const idRaw = o.id ?? o.featureId;
+      const nameRaw = o.name ?? o.featureName ?? o.label;
+      const id = Number(idRaw);
+      const name = String(nameRaw ?? '').trim();
+      if (!Number.isFinite(id) || !name) return null;
+      return {
+        id,
+        name,
+        createdAt: String(o.createdAt ?? ''),
+        updatedAt: String(o.updatedAt ?? ''),
+      } as Feature;
+    })
+    .filter((f): f is Feature => Boolean(f));
+}
+
 export default function PackagesPage() {
   const { user } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
@@ -69,61 +103,25 @@ export default function PackagesPage() {
     try {
       setFeaturesLoading(true);
       console.log('🔵 Fetching features from API...');
-      
-      const token = localStorage.getItem('token');
-      console.log('Token available:', !!token);
-      
-      // Try Next.js API route first
-      try {
-        const response = await fetch('/api/packages/features', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        console.log('Features API response status:', response.status);
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Features API response data:', data);
-          
-          if (data.success && data.data?.features) {
-            setAvailableFeatures(data.data.features);
-            console.log('✅ Features loaded:', data.data.features.length);
-            return;
-          } else {
-            console.warn('Features API returned success=false or missing features:', data);
-          }
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          console.warn('Features API error response:', response.status, errorData);
-        }
-      } catch (fetchError: any) {
-        console.warn('Next.js API route failed, trying external API:', fetchError);
+      // Authoritative endpoint agreed with backend.
+      const response = await api.get('/api/packages/features');
+      console.log('Features API response:', response.data);
+      const normalized = normalizeFeaturesPayload(response.data);
+      if (normalized.length > 0) {
+        setAvailableFeatures(normalized);
+        console.log('✅ Features loaded:', normalized.length);
+        return;
       }
-
-      // Fallback to external API
-      try {
-        const apiResponse = await api.get('/api/packages/features');
-        console.log('External API response:', apiResponse.data);
-        
-        if (apiResponse.data.success && apiResponse.data.data?.features) {
-          setAvailableFeatures(apiResponse.data.data.features);
-          console.log('✅ Features loaded from external API:', apiResponse.data.data.features.length);
-          return;
-        }
-      } catch (apiError: any) {
-        console.error('External API also failed:', apiError);
-      }
-
-      // If both fail, show error and keep features empty
-      console.error('❌ Failed to load features from both APIs');
       setAvailableFeatures([]);
-      showAlert('error', 'Error', 'Failed to load features from the server. Please refresh the page or contact support.');
+      showAlert('warning', 'Features', 'No package features are configured on the server yet.');
     } catch (error: any) {
       console.error('Error fetching features:', error);
-      showAlert('error', 'Error', 'Failed to load features. Please try again.');
+      const backendMsg =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Failed to load features from the server.';
+      showAlert('error', 'Error', backendMsg);
     } finally {
       setFeaturesLoading(false);
     }

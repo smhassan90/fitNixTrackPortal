@@ -47,11 +47,19 @@ api.interceptors.response.use(
     });
     
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      // Don't redirect on login page
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      const requestUrl = String(error.config?.url || '');
+      const shouldForceLogout =
+        requestUrl.includes('/api/auth/me') ||
+        requestUrl.includes('/api/auth/logout') ||
+        requestUrl.includes('/api/auth/login');
+
+      // Only force logout when auth endpoints confirm session is invalid.
+      if (shouldForceLogout) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);
