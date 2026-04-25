@@ -323,8 +323,18 @@ export default function PlatformGymDetailPage() {
     }
   };
 
-  const printReceipt = () => {
-    if (!lastReceipt) {
+  const printReceipt = (receiptOverride?: {
+    receiptNo: string;
+    gymName: string;
+    packageName: string;
+    amount: string;
+    currency: string;
+    paidAt: string;
+    method: string;
+    notes: string;
+  }) => {
+    const receipt = receiptOverride ?? lastReceipt;
+    if (!receipt) {
       showAlert('error', 'No receipt', 'Please record a payment first to print receipt.');
       return;
     }
@@ -337,7 +347,7 @@ export default function PlatformGymDetailPage() {
     const html = `
       <html>
         <head>
-          <title>Receipt ${lastReceipt.receiptNo}</title>
+          <title>Receipt ${receipt.receiptNo}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
             h1 { margin: 0 0 4px; }
@@ -350,15 +360,15 @@ export default function PlatformGymDetailPage() {
         </head>
         <body>
           <h1>FitNix Gym Payment Receipt</h1>
-          <div class="muted">Receipt #${lastReceipt.receiptNo}</div>
+          <div class="muted">Receipt #${receipt.receiptNo}</div>
           <div class="card">
-            <div class="row"><span class="label">Gym</span><span>${lastReceipt.gymName}</span></div>
-            <div class="row"><span class="label">Package</span><span>${lastReceipt.packageName || '—'}</span></div>
-            <div class="row"><span class="label">Paid date</span><span>${lastReceipt.paidAt}</span></div>
-            <div class="row"><span class="label">Method</span><span>${lastReceipt.method}</span></div>
-            <div class="row"><span class="label">Currency</span><span>${lastReceipt.currency}</span></div>
-            <div class="row"><span class="label">Amount</span><span class="amount">${lastReceipt.currency} ${lastReceipt.amount}</span></div>
-            <div class="row"><span class="label">Notes</span><span>${lastReceipt.notes || '—'}</span></div>
+            <div class="row"><span class="label">Gym</span><span>${receipt.gymName}</span></div>
+            <div class="row"><span class="label">Package</span><span>${receipt.packageName || '—'}</span></div>
+            <div class="row"><span class="label">Paid date</span><span>${receipt.paidAt}</span></div>
+            <div class="row"><span class="label">Method</span><span>${receipt.method}</span></div>
+            <div class="row"><span class="label">Currency</span><span>${receipt.currency}</span></div>
+            <div class="row"><span class="label">Amount</span><span class="amount">${receipt.currency} ${receipt.amount}</span></div>
+            <div class="row"><span class="label">Notes</span><span>${receipt.notes || '—'}</span></div>
           </div>
           <p class="muted">Generated on ${new Date().toISOString().slice(0, 19).replace('T', ' ')}</p>
           <script>
@@ -381,7 +391,7 @@ export default function PlatformGymDetailPage() {
     packageName: string;
     note: string;
   }) => {
-    setLastReceipt({
+    const receiptData = {
       receiptNo: row.receiptNo !== '—' ? row.receiptNo : `RCP-${Date.now()}`,
       gymName: String(gym?.name ?? 'Gym'),
       packageName: row.packageName || '—',
@@ -390,10 +400,9 @@ export default function PlatformGymDetailPage() {
       paidAt: row.date,
       method: row.method,
       notes: row.note === '—' ? '' : row.note,
-    });
-    setTimeout(() => {
-      printReceipt();
-    }, 0);
+    };
+    setLastReceipt(receiptData);
+    printReceipt(receiptData);
   };
 
   const submitPayment = async () => {
@@ -881,7 +890,7 @@ export default function PlatformGymDetailPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={printReceipt}
+                  onClick={() => printReceipt()}
                   disabled={!lastReceipt}
                   className="rounded-lg border px-4 py-2 text-sm disabled:opacity-40"
                 >
