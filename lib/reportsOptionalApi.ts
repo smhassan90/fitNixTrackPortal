@@ -19,6 +19,8 @@ export interface FinancialSummaryPayload {
   advanceMemberCount?: number;
   /** Members included in expectedRevenueThisMonth (same basis as the amount). */
   expectedMemberCount?: number;
+  /** Total collected for billing month = reportMonth (ledger), includes signup/admission. */
+  collectedAmountThisMonth?: number;
   /** Total actually received in [startDate, endDate] (same window as daily chart), if the API provides it. */
   amountCollectedInRange?: number;
   /** Distinct members with at least one payment in that range (same window as amountCollectedInRange). */
@@ -30,6 +32,7 @@ export interface DailyReceivedRow {
   date: string;
   amount: number;
   paymentCount?: number;
+  memberCount?: number;
 }
 
 function parseFinancialSummary(data: unknown): FinancialSummaryPayload {
@@ -69,6 +72,8 @@ function parseFinancialSummary(data: unknown): FinancialSummaryPayload {
             : d.collectedInRange != null
               ? Number(d.collectedInRange)
               : undefined,
+    collectedAmountThisMonth:
+      d.collectedAmountThisMonth != null ? Number(d.collectedAmountThisMonth) : undefined,
     membersCollectedInRange:
       d.membersCollectedInRange != null
         ? Number(d.membersCollectedInRange)
@@ -103,6 +108,7 @@ function rawSummaryLooksPresent(data: unknown): boolean {
     'expectedMemberCount',
     'expectedRevenueMemberCount',
     'amountCollectedInRange',
+    'collectedAmountThisMonth',
     'totalCollectedInRange',
     'paymentsReceivedInRange',
     'collectedInRange',
@@ -130,6 +136,7 @@ export function normalizeDailyReceivedPayload(data: unknown): DailyReceivedRow[]
           : row.count != null
             ? Number(row.count)
             : undefined,
+      memberCount: row.memberCount != null ? Number(row.memberCount) : undefined,
     }))
     .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date));
 }

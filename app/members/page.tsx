@@ -11,6 +11,10 @@ import { useAlert } from '@/hooks/useAlert';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
+import { canManageGymCatalog } from '@/lib/gymRoles';
+import { computeSignupOneTimeFees } from '@/lib/signupFees';
+import { printOneTimePaymentReceipt } from '@/lib/signupReceipt';
+import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
 
 interface Trainer {
   id: string;
@@ -87,6 +91,7 @@ export default function MembersPage() {
   const { user } = useAuth();
   const router = useRouter();
   const { alert, showAlert, closeAlert } = useAlert();
+  const canManage = canManageGymCatalog(user?.role);
   const [members, setMembers] = useState<Member[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [availablePackages, setAvailablePackages] = useState<Package[]>([]);
@@ -458,8 +463,9 @@ export default function MembersPage() {
         console.log('Create member response:', response.data);
         
         if (response.data.success) {
-          const createdMember = response.data.data.member;
+          const created = response.data.data;
           showAlert('success', 'Member Added', 'Member added successfully!');
+          notifyDashboardStatsRefresh();
           setShowAddForm(false);
           
           // Try to refresh members list (don't block on error)
@@ -472,7 +478,7 @@ export default function MembersPage() {
           
           // Generate and print receipt (don't block on error)
           try {
-            handlePrintMemberReceipt(createdMember, memberData);
+            await handlePrintMemberReceipt(created, memberData, created);
           } catch (receiptError) {
             console.warn('Failed to print receipt:', receiptError);
             // Don't show error - member was created successfully, receipt is optional
@@ -636,309 +642,62 @@ export default function MembersPage() {
     String(t.id) === String(formData.trainerId)
   );
 
-  // Calculate one-time payment (admission fee + first month's payment)
-  const oneTimePayment = useMemo(() => {
-    let total = 0;
-    
-    // Add admission fee (unless waived)
-    if (!formData.admissionFeeWaived) {
-      total += globalAdmissionAmount;
-    }
-    
-    // Add first month's payment (package + trainer - discounts)
-    let monthlyTotal = 0;
-    
-    // Find selected package
-    const pkg = availablePackages.find(p => 
-      String(p.id) === String(formData.packageId)
-    ) || null;
-    
-    if (pkg) {
-      const packagePrice = pkg.discount && pkg.discount > 0
-        ? Math.max(0, pkg.price - pkg.discount)
-        : pkg.price;
-      if (pkg.duration.includes('12')) {
-        monthlyTotal += packagePrice / 12;
-      } else {
-        monthlyTotal += packagePrice;
-      }
-    }
-    
-    // Find selected trainer
-    const trainer = trainers.find(t => 
-      String(t.id) === String(formData.trainerId)
-    );
-    
-    if (trainer && trainer.charges) {
-      monthlyTotal += trainer.charges;
-    }
-    
-    // Apply discount
-    const discountAmount = parseFloat(formData.discount || '0');
-    monthlyTotal = Math.max(0, monthlyTotal - discountAmount);
-    
-    // Add first month to one-time payment
-    total += monthlyTotal;
-    
-    return total;
-  }, [formData.admissionFeeWaived, formData.packageId, formData.trainerId, formData.discount, globalAdmissionAmount]);
+  const signupFees = useMemo(() => {
+    const pkg =
+      availablePackages.find((p) => String(p.id) === String(formData.packageId)) ?? null;
+    const trainerList =
+      formData.requiresTrainer && formData.trainerId
+        ? trainers.filter((t) => String(t.id) === String(formData.trainerId))
+        : [];
+    const admissionFeePaid = formData.admissionFeeWaived ? 0 : globalAdmissionAmount;
+    const memberDiscount = parseFloat(formData.discount || '0') || 0;
+    return computeSignupOneTimeFees({
+      admissionFeePaid,
+      packageData: pkg,
+      trainers: trainerList,
+      memberDiscount,
+    });
+  }, [
+    formData.admissionFeeWaived,
+    formData.packageId,
+    formData.trainerId,
+    formData.requiresTrainer,
+    formData.discount,
+    globalAdmissionAmount,
+    availablePackages,
+    trainers,
+  ]);
 
-  // Calculate monthly payment - recalculate whenever formData changes
-  // Note: We access availablePackages and trainers from closure, but only depend on formData values
-  const monthlyPayment = useMemo(() => {
-    let total = 0;
-    
-    // Find selected package using current formData
-    const pkg = availablePackages.find(p => 
-      String(p.id) === String(formData.packageId)
-    ) || null;
-    
-    // Package price (convert annual to monthly if needed, apply discount)
-    if (pkg) {
-      const packagePrice = pkg.discount && pkg.discount > 0
-        ? Math.max(0, pkg.price - pkg.discount)
-        : pkg.price;
-      if (pkg.duration.includes('12')) {
-        total += packagePrice / 12; // Annual package divided by 12
-      } else {
-        total += packagePrice;
-      }
-    }
-    
-    // Find selected trainer using current formData
-    const trainer = trainers.find(t => 
-      String(t.id) === String(formData.trainerId)
-    );
-    
-    // Trainer charges
-    if (trainer && trainer.charges) {
-      total += trainer.charges;
-    }
-    
-    // Apply discount
-    const discountAmount = parseFloat(formData.discount || '0');
-    total = Math.max(0, total - discountAmount);
-    
-    return total;
-  }, [formData.packageId, formData.trainerId, formData.discount]);
+  const oneTimePayment = signupFees.totalAmount;
+  const monthlyPayment = signupFees.monthlyInstallmentAmount;
 
-  const handlePrintMemberReceipt = (member: any, memberData: any) => {
+  const handlePrintMemberReceipt = async (member: any, memberData: any, createdPayload?: any) => {
     try {
-      // Get package and trainer info for receipt
-      const pkg = availablePackages.find(p => String(p.id) === String(memberData.packageId));
-      const trainer = trainers.find(t => String(t.id) === String(memberData.trainerId));
-    
-    // Calculate amounts
-    let monthlyTotal = 0;
-    if (pkg) {
-      const packagePrice = pkg.discount && pkg.discount > 0
-        ? Math.max(0, pkg.price - pkg.discount)
-        : pkg.price;
-      monthlyTotal += pkg.duration.includes('12') ? packagePrice / 12 : packagePrice;
-    }
-    if (trainer && trainer.charges) {
-      monthlyTotal += trainer.charges;
-    }
-    const discountAmount = parseFloat(memberData.discount || '0');
-    monthlyTotal = Math.max(0, monthlyTotal - discountAmount);
-    
-    // Get admission fee - check if it was waived (admissionAmount === 0) or use global amount
-    const admissionFee = memberData.admissionFeeWaived 
-      ? 0 
-      : globalAdmissionAmount;
-    const oneTimeTotal = admissionFee + monthlyTotal;
-    
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Membership Receipt - ${member.name}</title>
-          <style>
-            @media print {
-              @page { margin: 20mm; }
-            }
-            body {
-              font-family: Arial, sans-serif;
-              max-width: 600px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            .header {
-              text-align: center;
-              border-bottom: 3px solid #333;
-              padding-bottom: 20px;
-              margin-bottom: 30px;
-            }
-            .header h1 {
-              margin: 0;
-              color: #333;
-              font-size: 28px;
-            }
-            .header p {
-              margin: 5px 0;
-              color: #666;
-            }
-            .receipt-info {
-              margin-bottom: 30px;
-            }
-            .info-row {
-              display: flex;
-              justify-content: space-between;
-              padding: 10px 0;
-              border-bottom: 1px solid #eee;
-            }
-            .info-label {
-              font-weight: bold;
-              color: #333;
-            }
-            .info-value {
-              color: #666;
-            }
-            .amount-section {
-              background: #f5f5f5;
-              padding: 20px;
-              border-radius: 8px;
-              margin: 30px 0;
-            }
-            .amount-row {
-              display: flex;
-              justify-content: space-between;
-              font-size: 18px;
-              margin: 10px 0;
-            }
-            .total {
-              font-size: 24px;
-              font-weight: bold;
-              color: #333;
-              border-top: 2px solid #333;
-              padding-top: 10px;
-              margin-top: 10px;
-            }
-            .footer {
-              margin-top: 40px;
-              text-align: center;
-              color: #666;
-              font-size: 12px;
-              border-top: 1px solid #eee;
-              padding-top: 20px;
-            }
-            .status-badge {
-              display: inline-block;
-              padding: 5px 15px;
-              background: #10b981;
-              color: white;
-              border-radius: 20px;
-              font-weight: bold;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>FitNixTrack Gym</h1>
-            <p>Membership Receipt</p>
-          </div>
-          
-          <div class="receipt-info">
-            <div class="info-row">
-              <span class="info-label">Receipt Number:</span>
-              <span class="info-value">#${member.id}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Date:</span>
-              <span class="info-value">${formatDate(new Date().toISOString())}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Member Name:</span>
-              <span class="info-value">${member.name}</span>
-            </div>
-            ${member.phone ? `
-            <div class="info-row">
-              <span class="info-label">Phone:</span>
-              <span class="info-value">${member.phone}</span>
-            </div>
-            ` : ''}
-            ${member.email ? `
-            <div class="info-row">
-              <span class="info-label">Email:</span>
-              <span class="info-value">${member.email}</span>
-            </div>
-            ` : ''}
-            ${pkg ? `
-            <div class="info-row">
-              <span class="info-label">Package:</span>
-              <span class="info-value">${pkg.name} (${pkg.duration})</span>
-            </div>
-            ` : ''}
-            ${trainer ? `
-            <div class="info-row">
-              <span class="info-label">Trainer:</span>
-              <span class="info-value">${trainer.name}</span>
-            </div>
-            ` : ''}
-            <div class="info-row">
-              <span class="info-label">Status:</span>
-              <span class="info-value"><span class="status-badge">ACTIVE</span></span>
-            </div>
-          </div>
-          
-          <div class="amount-section">
-            <div class="amount-row">
-              <span>Admission Fee:</span>
-              <span>Rs. ${admissionFee.toFixed(2)}</span>
-            </div>
-            ${monthlyTotal > 0 ? `
-            <div class="amount-row">
-              <span>First Month Payment:</span>
-              <span>Rs. ${monthlyTotal.toFixed(2)}</span>
-            </div>
-            ` : ''}
-            <div class="amount-row total">
-              <span>Total One-Time Payment:</span>
-              <span>Rs. ${oneTimeTotal.toFixed(2)}</span>
-            </div>
-            ${monthlyTotal > 0 ? `
-            <div class="amount-row" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ccc;">
-              <span>Monthly Recurring Payment:</span>
-              <span>Rs. ${monthlyTotal.toFixed(2)}</span>
-            </div>
-            ` : ''}
-          </div>
-          
-          <div class="footer">
-            <p>Thank you for joining FitNixTrack Gym!</p>
-            <p>This is a computer-generated receipt.</p>
-            <p>Generated on: ${formatDate(new Date().toISOString())}</p>
-          </div>
-        </body>
-      </html>
-    `;
+      const memberRecord = member?.name ? member : createdPayload ?? member;
+      const oneTimeFromApi = createdPayload?.oneTimePayment as
+        | {
+            id?: number;
+            admissionFee?: number;
+            packageFee?: number;
+            trainerFee?: number;
+            totalAmount?: number;
+          }
+        | undefined;
 
-    // Create a blob URL and open it in a new window
-    const blob = new Blob([receiptHTML], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const printWindow = window.open(url, '_blank');
-    
-    if (!printWindow) {
-      showAlert('error', 'Print Error', 'Please allow popups for this site to print receipts.');
-      URL.revokeObjectURL(url);
-      return;
-    }
-
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.print();
-        // Clean up the blob URL after printing
-        URL.revokeObjectURL(url);
-      }, 250);
-    };
-    
-    printWindow.onerror = () => {
-      console.warn('Error opening print window');
-      URL.revokeObjectURL(url);
-    };
+      if (oneTimeFromApi?.id) {
+        await printOneTimePaymentReceipt(
+          oneTimeFromApi.id,
+          {
+            name: user?.name || user?.email || 'Staff',
+            email: user?.email ?? null,
+            role: user?.role ?? null,
+          },
+          memberRecord?.id
+        );
+        return;
+      }
     } catch (error) {
       console.error('Error generating receipt:', error);
-      // Don't throw - receipt printing failure shouldn't block member creation success
     }
   };
 
@@ -1037,7 +796,7 @@ export default function MembersPage() {
       <div className="space-y-6 overflow-x-hidden">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-dark-gray">Members</h1>
-            {user?.role === 'GYM_ADMIN' && !showAddForm && !editingMember && (
+            {canManage && !showAddForm && !editingMember && (
               <button
                 onClick={openAddForm}
                 className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
@@ -1366,12 +1125,12 @@ export default function MembersPage() {
                         <div className="space-y-1 text-xs text-white opacity-80">
                           {/* Admission Fee */}
                           <div className="flex justify-between items-center pb-2 border-b border-white border-opacity-20">
-                            <span>Admission Fee:</span>
+                            <span>Admission fee:</span>
                             <span>
                               {formData.admissionFeeWaived ? (
-                                <span className="line-through opacity-60">Rs. {globalAdmissionAmount.toLocaleString()}</span>
+                                <span className="text-yellow-200">Waived</span>
                               ) : (
-                                <span>Rs. {globalAdmissionAmount.toLocaleString()}</span>
+                                <span>Rs. {signupFees.admissionFee.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
                               )}
                             </span>
                           </div>
@@ -1458,14 +1217,14 @@ export default function MembersPage() {
                             Rs. {oneTimePayment.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                           </p>
                           <div className="text-xs text-white opacity-70 mt-1 space-y-0.5">
-                            {!formData.admissionFeeWaived && (
-                              <div>Admission: Rs. {globalAdmissionAmount.toLocaleString()}</div>
+                            {!formData.admissionFeeWaived && signupFees.admissionFee > 0 && (
+                              <div>Admission: Rs. {signupFees.admissionFee.toLocaleString()}</div>
                             )}
                             {formData.admissionFeeWaived && (
                               <div className="text-yellow-200">Admission fee waived</div>
                             )}
                             {monthlyPayment > 0 && (
-                              <div>First month: Rs. {monthlyPayment.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+                              <div>First month: Rs. {signupFees.firstMonthRecurring.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
                             )}
                           </div>
                         </div>
@@ -1627,7 +1386,7 @@ export default function MembersPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
                     Status
                   </th>
-                  {user?.role === 'GYM_ADMIN' && (
+                  {canManage && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
                       Actions
                     </th>
@@ -1637,7 +1396,7 @@ export default function MembersPage() {
               <tbody className="bg-white divide-y divide-gray-200">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={user?.role === 'GYM_ADMIN' ? 12 : 11} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={canManage ? 12 : 11} className="px-6 py-8 text-center text-gray-500">
                     {searchQuery ? 'No members found matching your search.' : 'No members found.'}
                   </td>
                 </tr>
@@ -1745,7 +1504,7 @@ export default function MembersPage() {
                           )}
                         </div>
                       </td>
-                      {user?.role === 'GYM_ADMIN' && (
+                      {canManage && (
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
                             onClick={() => handleEdit(member)}

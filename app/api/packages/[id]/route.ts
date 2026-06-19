@@ -14,14 +14,13 @@ const localUsers = [
   },
 ];
 
-// Helper function to verify admin role
-function isAdmin(request: NextRequest): boolean {
+// Helper — gym admin or manager may create/update/delete packages
+function canManageCatalog(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization');
   const token = authHeader?.replace('Bearer ', '');
   
   if (!token) return false;
   
-  // Extract user ID from token (simple token format: local_token_timestamp_userId)
   const tokenParts = token.split('_');
   if (tokenParts.length < 3 || tokenParts[0] !== 'local' || tokenParts[1] !== 'token') {
     return false;
@@ -30,8 +29,7 @@ function isAdmin(request: NextRequest): boolean {
   const userId = tokenParts[tokenParts.length - 1];
   const user = localUsers.find(u => u.id === userId);
   
-  // Check if user exists and has admin role
-  return user?.role === 'GYM_ADMIN';
+  return user?.role === 'GYM_ADMIN' || user?.role === 'GYM_MANAGER';
 }
 
 // GET /api/packages/[id] - Get single package
@@ -123,7 +121,7 @@ export async function PUT(
     
     // Otherwise, use local logic for local tokens
     // Check if user is admin
-    if (!isAdmin(request)) {
+    if (!canManageCatalog(request)) {
       return NextResponse.json(
         { success: false, error: { message: 'Unauthorized. Admin access required.' } },
         { status: 403 }
@@ -213,7 +211,7 @@ export async function DELETE(
     
     // Otherwise, use local logic for local tokens
     // Check if user is admin
-    if (!isAdmin(request)) {
+    if (!canManageCatalog(request)) {
       return NextResponse.json(
         { success: false, error: { message: 'Unauthorized. Admin access required.' } },
         { status: 403 }

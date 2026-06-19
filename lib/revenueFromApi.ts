@@ -1,5 +1,8 @@
 /** Parse dashboard / revenue API payloads into a YYYY-MM → amount map. */
 
+import type { AxiosInstance } from 'axios';
+import { assertResponseGymId } from '@/lib/feeCollections';
+
 export function currentYm(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -66,4 +69,43 @@ export function normalizeRevenueFromApiData(data: Record<string, unknown>): Reco
   }
 
   return out;
+}
+
+export interface RevenueFetchResult {
+  revenueByMonth: Record<string, number>;
+  totalRevenue?: number;
+  gymId?: number;
+  gymMismatch: string | null;
+}
+
+/**
+ * Billing-month revenue from fee_collections ledger.
+ * Tries GET /api/reports/revenue then GET /api/dashboard/revenue.
+ */
+export async function fetchRevenueReport(
+  api: AxiosInstance,
+  startMonth: string,
+  endMonth: string,
+  expectedGymId?: string | number | null
+): Promise<RevenueFetchResult> {
+  const q = `startMonth=${encodeURIComponent(startMonth)}&endMonth=${encodeURIComponent(endMonth)}`;
+  const urls = [`/api/reports/revenue?${q}`, `/api/dashboard/revenue?${q}`];
+  for (const url of urls) {
+    try {
+      const res = await api.get(url);
+      if (!res.data?.success || res.data.data == null) continue;
+      const raw = res.data.data as Record<string, unknown>;
+      const revenueByMonth = normalizeRevenueFromApiData(raw);
+      if (Object.keys(revenueByMonth).length === 0 && raw.revenueByMonth == null) continue;
+      return {
+        revenueByMonth,
+        totalRevenue: raw.totalRevenue != null ? Number(raw.totalRevenue) : undefined,
+        gymId: raw.gymId != null ? Number(raw.gymId) : undefined,
+        gymMismatch: assertResponseGymId(raw.gymId, expectedGymId),
+      };
+    } catch {
+      continue;
+    }
+  }
+  return { revenueByMonth: {}, gymMismatch: null };
 }

@@ -10,6 +10,7 @@ import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
+import { canManageGymCatalog } from '@/lib/gymRoles';
 
 interface Trainer {
   id: string;
@@ -27,6 +28,7 @@ interface Trainer {
 
 export default function TrainersPage() {
   const { user } = useAuth();
+  const canManage = canManageGymCatalog(user?.role);
   const { alert, showAlert, closeAlert } = useAlert();
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -303,7 +305,7 @@ export default function TrainersPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold text-dark-gray">Trainers</h1>
-          {user?.role === 'GYM_ADMIN' && !showAddForm && !editingTrainer && (
+          {canManage && !showAddForm && !editingTrainer && (
             <button
               onClick={openAddForm}
               className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
@@ -527,7 +529,7 @@ export default function TrainersPage() {
                     )}
                   </div>
                 </th>
-                {user?.role === 'GYM_ADMIN' && (
+                {canManage && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
                     Actions
                   </th>
@@ -572,7 +574,7 @@ export default function TrainersPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">{trainer._count?.members || 0}</div>
                   </td>
-                  {user?.role === 'GYM_ADMIN' && (
+                  {canManage && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
                         onClick={() => handleEdit(trainer)}

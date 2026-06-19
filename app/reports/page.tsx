@@ -4,9 +4,18 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Layout from '@/components/Layout';
 import Loading from '@/components/Loading';
+import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
+import { formatDate } from '@/lib/dateUtils';
 import { getErrorMessage } from '@/lib/errorHandler';
 import { colors } from '@/lib/colors';
+import {
+  categoryLabel,
+  fetchFeeCollections,
+  type FeeCollectionCategory,
+  type FeeCollectionRow,
+  type FeeCollectionsPagination,
+} from '@/lib/feeCollections';
 import { fetchAllMemberSummaries } from '@/lib/fetchAllMemberSummaries';
 import {
   fetchFinancialSummaryResult,
@@ -180,6 +189,7 @@ function MemberSublineText({ line, tone }: { line: ReportsMemberSubline; tone: '
 }
 
 export default function ReportsPage() {
+  const { user } = useAuth();
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
@@ -198,6 +208,18 @@ export default function ReportsPage() {
 
   const [newMembers, setNewMembers] = useState<{ count: number; known: boolean }>({ count: 0, known: false });
   const [paymentRows, setPaymentRows] = useState<PaymentRow[]>([]);
+
+  const [feeCollections, setFeeCollections] = useState<FeeCollectionRow[]>([]);
+  const [feePagination, setFeePagination] = useState<FeeCollectionsPagination>({
+    page: 1,
+    limit: 25,
+    total: 0,
+    totalPages: 0,
+  });
+  const [feeCategory, setFeeCategory] = useState<FeeCollectionCategory | ''>('');
+  const [feeCollectionsPage, setFeeCollectionsPage] = useState(1);
+  const [feeCollectionsLoading, setFeeCollectionsLoading] = useState(false);
+  const [feeGymMismatch, setFeeGymMismatch] = useState<string | null>(null);
 
   const reportMonth = useMemo(() => reportMonthFromEndDate(dateRange.endDate), [dateRange.endDate]);
   const reportMonthLabel = useMemo(() => {
@@ -287,9 +309,40 @@ export default function ReportsPage() {
     }
   }, [dateRange.startDate, dateRange.endDate, reportMonth]);
 
+  const loadFeeCollections = useCallback(async () => {
+    if (dateRange.startDate > dateRange.endDate) return;
+    setFeeCollectionsLoading(true);
+    try {
+      const result = await fetchFeeCollections(
+        api,
+        {
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+          category: feeCategory || undefined,
+          page: feeCollectionsPage,
+          limit: 25,
+        },
+        user?.gymId
+      );
+      setFeeCollections(result.collections);
+      setFeePagination(result.pagination);
+      if (result.gymMismatch) setFeeGymMismatch(result.gymMismatch);
+    } finally {
+      setFeeCollectionsLoading(false);
+    }
+  }, [dateRange.startDate, dateRange.endDate, feeCategory, feeCollectionsPage, user?.gymId]);
+
   useEffect(() => {
     void loadReports();
   }, [loadReports]);
+
+  useEffect(() => {
+    setFeeCollectionsPage(1);
+  }, [dateRange.startDate, dateRange.endDate, feeCategory]);
+
+  useEffect(() => {
+    if (hasLoadedOnce) void loadFeeCollections();
+  }, [loadFeeCollections, hasLoadedOnce]);
 
   const bucketMoney = useMemo(() => {
     let overdue = 0;
@@ -391,9 +444,15 @@ export default function ReportsPage() {
   /** Cash received in the selected [startDate, endDate] window. */
   const displayCollected = useMemo(() => {
     if (apiSummary?.amountCollectedInRange != null) return apiSummary.amountCollectedInRange;
+    if (apiSummary?.collectedAmountThisMonth != null) return apiSummary.collectedAmountThisMonth;
     if (dailyFromApi) return collectedFromDaily;
     return null;
-  }, [apiSummary?.amountCollectedInRange, dailyFromApi, collectedFromDaily]);
+  }, [
+    apiSummary?.amountCollectedInRange,
+    apiSummary?.collectedAmountThisMonth,
+    dailyFromApi,
+    collectedFromDaily,
+  ]);
 
   const membersFromSummariesLastPaid = useMemo(
     () => membersFromSummariesLastPaidInRange(paymentRows, dateRange.startDate, dateRange.endDate),
@@ -682,6 +741,116 @@ export default function ReportsPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-dark-gray">Payments collected (ledger)</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Fee collection history from <code className="text-xs">GET /api/reports/fee-collections</code> — cash
+                actually received in the selected date range.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-xs text-gray-500">
+                Category
+                <select
+                  value={feeCategory}
+                  onChange={(e) => setFeeCategory(e.target.value as FeeCollectionCategory | '')}
+                  className="ml-2 rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                >
+                  <option value="">All</option>
+                  <option value="MONTHLY_FEE">Monthly</option>
+                  <option value="SIGNUP_FEE">Signup</option>
+                  <option value="ADMISSION_ONLY">Admission only</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {feeGymMismatch && (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              {feeGymMismatch}
+            </p>
+          )}
+
+          {feeCollectionsLoading && feeCollections.length === 0 ? (
+            <p className="mt-4 text-sm text-gray-500">Loading collection history…</p>
+          ) : feeCollections.length === 0 ? (
+            <p className="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+              No fee collections in this date range.
+            </p>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-light-gray">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-dark-gray">Collected</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-dark-gray">Member</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-dark-gray">Amount</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-dark-gray">Billing month</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-dark-gray">Type</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-dark-gray">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {feeCollections.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50/80">
+                      <td className="whitespace-nowrap px-3 py-2 text-gray-600">{formatDate(row.collectedAt)}</td>
+                      <td className="px-3 py-2">
+                        <Link
+                          href={`/payments/members/${row.memberId}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {row.memberName}
+                        </Link>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 font-medium">
+                        {moneyPrefix}
+                        {row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600">{row.billingMonth ?? '—'}</td>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                          {categoryLabel(row.category)}
+                        </span>
+                      </td>
+                      <td className="max-w-xs truncate px-3 py-2 text-gray-600" title={row.description}>
+                        {row.description}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {feePagination.totalPages > 1 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+              <p className="text-gray-500">
+                Page {feePagination.page} of {feePagination.totalPages} · {feePagination.total} entries
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={feeCollectionsPage <= 1 || feeCollectionsLoading}
+                  onClick={() => setFeeCollectionsPage((p) => Math.max(1, p - 1))}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  disabled={feeCollectionsPage >= feePagination.totalPages || feeCollectionsLoading}
+                  onClick={() => setFeeCollectionsPage((p) => p + 1)}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         {topOverdue.length > 0 && (

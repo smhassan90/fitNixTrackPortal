@@ -12,6 +12,10 @@ import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
+import { canManageGymPayments } from '@/lib/gymRoles';
+import { printPaymentReceipt } from '@/lib/paymentReceipt';
+import { printReceiptForPaymentRecord, type PrintablePaymentRecord } from '@/lib/paymentReceiptUrl';
+import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
 import { postMarkProjectedMonthPaid } from '@/lib/markProjectedMonthPaidApi';
 import { mergeWithProjectedAdvanceMonths } from '@/lib/projectedMonthlyInstallments';
 import {
@@ -20,6 +24,21 @@ import {
   uiLabelForBucket,
   type InstallmentUiBucket,
 } from '@/lib/monthlyInstallmentUi';
+import {
+  bulkSelectableUnpaid,
+  canSelectInstallmentForBulk,
+  getBulkPayBlockReason,
+  getPayBlockReason,
+  hasUnpaidOverdue,
+  installmentKey,
+} from '@/lib/paymentPayOrder';
+import {
+  hasPendingSignupOneTime,
+  normalizePendingOneTime,
+  SIGNUP_PAY_BLOCK_MESSAGE,
+  withResolvedAdmissionFee,
+  type PendingOneTimePayment,
+} from '@/lib/signupFees';
 
 type InstallmentStatus = 'PENDING' | 'OVERDUE' | 'PAID' | string;
 
@@ -44,6 +63,37 @@ interface MemberStatusLite {
   isActive?: boolean;
   inactiveFrom?: string | null;
   billingResumeFrom?: string | null;
+}
+
+interface OneTimePaymentRecord {
+  id: number;
+  type: 'one-time';
+  admissionFee: number;
+  packageFee: number;
+  trainerFee: number;
+  totalAmount: number;
+  status: string;
+  paidDate: string | null;
+  createdAt: string;
+  receiptPath?: string;
+}
+
+function normalizeOneTimePaymentRecord(raw: Record<string, unknown>): OneTimePaymentRecord | null {
+  const id = Number(raw.id);
+  if (!id || Number.isNaN(id)) return null;
+  if (raw.type != null && String(raw.type) !== 'one-time') return null;
+  return {
+    id,
+    type: 'one-time',
+    admissionFee: Number(raw.admissionFee) || 0,
+    packageFee: Number(raw.packageFee) || 0,
+    trainerFee: Number(raw.trainerFee) || 0,
+    totalAmount: Number(raw.totalAmount) || 0,
+    status: String(raw.status ?? ''),
+    paidDate: raw.paidDate != null ? String(raw.paidDate) : null,
+    createdAt: String(raw.createdAt ?? ''),
+    receiptPath: raw.receiptPath != null ? String(raw.receiptPath) : undefined,
+  };
 }
 
 type MemberStatusActionKind = 'deactivate' | 'reactivate';
@@ -79,15 +129,19 @@ export default function MemberPaymentsDetailPage() {
   const memberId = String(params.id ?? '');
   const { user } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
+  const canPay = canManageGymPayments(user?.role);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [memberName, setMemberName] = useState<string>('');
   const [memberStatus, setMemberStatus] = useState<MemberStatusLite | null>(null);
   const [monthlyInstallments, setMonthlyInstallments] = useState<MonthlyInstallment[]>([]);
+  const [pendingOneTime, setPendingOneTime] = useState<PendingOneTimePayment | null>(null);
+  const [oneTimeHistory, setOneTimeHistory] = useState<OneTimePaymentRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [singleConfirm, setSingleConfirm] = useState<MonthlyInstallment | null>(null);
+  const [oneTimeConfirm, setOneTimeConfirm] = useState(false);
   const [unpaidConfirm, setUnpaidConfirm] = useState<MonthlyInstallment | null>(null);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusDateMode, setStatusDateMode] = useState<DateMode>('today');
@@ -99,11 +153,20 @@ export default function MemberPaymentsDetailPage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.get(`/api/members/${memberId}/payments?type=monthly`);
+      const response = await api.get(`/api/members/${memberId}/payments?type=all`);
       if (!response.data?.success) {
         throw new Error(response.data?.error?.message || 'Failed to load payments');
       }
       const data = response.data.data || {};
+      const normalizedOneTime = normalizePendingOneTime(data.pendingOneTime);
+      setPendingOneTime(normalizedOneTime ? withResolvedAdmissionFee(normalizedOneTime) : null);
+      const paymentRows = Array.isArray(data.payments) ? (data.payments as Record<string, unknown>[]) : [];
+      setOneTimeHistory(
+        paymentRows
+          .map(normalizeOneTimePaymentRecord)
+          .filter((row): row is OneTimePaymentRecord => row != null)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      );
       const timeline = (data.monthlyInstallments || []) as Record<string, unknown>[];
       const normalized = timeline.map(normalizeInstallment).sort(sortByDueDate);
       const withProjected = mergeWithProjectedAdvanceMonths(normalized, { horizonMonthsFromToday: 12 });
@@ -200,9 +263,21 @@ export default function MemberPaymentsDetailPage() {
     grouped.pending.length === 0 &&
     grouped.advance.length === 0;
 
-  const selectableUnpaid = useMemo(() => {
-    return monthlyInstallments.filter((i) => isInstallmentUnpaid(i));
-  }, [monthlyInstallments]);
+  const signupBlocksMonthly = hasPendingSignupOneTime(pendingOneTime);
+  const payOrderOptions = useMemo(
+    () => ({ pendingSignupOneTime: signupBlocksMonthly }),
+    [signupBlocksMonthly]
+  );
+
+  const selectableUnpaid = useMemo(
+    () => bulkSelectableUnpaid(monthlyInstallments, payOrderOptions),
+    [monthlyInstallments, payOrderOptions]
+  );
+
+  const overdueBlocksPending = useMemo(
+    () => hasUnpaidOverdue(monthlyInstallments),
+    [monthlyInstallments]
+  );
 
   const hasProjectedRows = useMemo(
     () => monthlyInstallments.some((i) => i.isProjected),
@@ -224,33 +299,38 @@ export default function MemberPaymentsDetailPage() {
     })[0];
   }, [monthlyInstallments]);
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (key: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
 
   const selectAllUnpaid = () => {
-    const all = new Set(selectableUnpaid.map((i) => i.id));
+    const all = new Set(selectableUnpaid.map((i) => installmentKey(i)));
     setSelectedIds(all);
   };
 
   const clearSelection = () => setSelectedIds(new Set());
 
   const handleBulkMarkPaid = async () => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) {
+    const keys = Array.from(selectedIds);
+    if (keys.length === 0) {
       showAlert('warning', 'Nothing selected', 'Select at least one unpaid installment.');
+      return;
+    }
+    const selected = keys
+      .map((key) => monthlyInstallments.find((i) => installmentKey(i) === key))
+      .filter((i): i is MonthlyInstallment => Boolean(i));
+    const bulkBlock = getBulkPayBlockReason(selected, monthlyInstallments, payOrderOptions);
+    if (bulkBlock) {
+      showAlert('warning', 'Pay in order', bulkBlock);
       return;
     }
     try {
       setBulkSubmitting(true);
-      const selected = ids
-        .map((id) => monthlyInstallments.find((i) => i.id === id))
-        .filter((i): i is MonthlyInstallment => Boolean(i));
 
       const projected = selected.filter((i) => i.isProjected);
       const real = selected.filter((i) => !i.isProjected);
@@ -275,8 +355,9 @@ export default function MemberPaymentsDetailPage() {
         }
       }
 
-      showAlert('success', 'Payments recorded', `${ids.length} installment(s) marked as paid.`);
+      showAlert('success', 'Payments recorded', `${keys.length} installment(s) marked as paid.`);
       clearSelection();
+      notifyDashboardStatsRefresh();
       await fetchDetail();
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
@@ -285,7 +366,46 @@ export default function MemberPaymentsDetailPage() {
     }
   };
 
+  const handleMarkOneTimePaid = async () => {
+    if (!pendingOneTime?.id) return;
+    const oneTimeId = pendingOneTime.id;
+    try {
+      setBulkSubmitting(true);
+      const response = await api.patch(`/api/payments/one-time/${oneTimeId}/mark-paid`);
+      if (!response.data?.success) {
+        throw new Error(response.data?.error?.message || 'Mark paid failed');
+      }
+      showAlert('success', 'Signup payment recorded', 'Signup one-time payment marked as paid.');
+      setOneTimeConfirm(false);
+      notifyDashboardStatsRefresh();
+      await fetchDetail();
+      try {
+        await printReceiptForPaymentRecord(
+          { type: 'one-time', id: oneTimeId },
+          {
+            name: user?.name || user?.email || 'Staff',
+            email: user?.email ?? null,
+            role: user?.role ?? null,
+          },
+          memberId
+        );
+      } catch (printErr) {
+        console.warn('Signup receipt print failed:', printErr);
+      }
+    } catch (e: unknown) {
+      showAlert('error', 'Error', getErrorMessage(e));
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
   const handleSingleMarkPaid = async (inst: MonthlyInstallment) => {
+    const blockReason = getPayBlockReason(inst, monthlyInstallments, payOrderOptions);
+    if (blockReason) {
+      showAlert('warning', 'Pay in order', blockReason);
+      setSingleConfirm(null);
+      return;
+    }
     try {
       setBulkSubmitting(true);
       if (inst.isProjected) {
@@ -303,6 +423,7 @@ export default function MemberPaymentsDetailPage() {
       }
       showAlert('success', 'Payment recorded', 'Installment marked as paid.');
       setSingleConfirm(null);
+      notifyDashboardStatsRefresh();
       await fetchDetail();
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
@@ -348,88 +469,41 @@ export default function MemberPaymentsDetailPage() {
       showAlert('warning', 'Cannot print receipt', 'Receipts are only available for paid installments.');
       return;
     }
-    let packageInfo: { name: string; price: number; discount?: number | null; duration?: string } | null = null;
-    let originalAmount = payment.amount;
-    let discountAmount = 0;
-    try {
-      const memberResponse = await api.get(`/api/members/${memberId}`);
-      if (memberResponse.data.success && memberResponse.data.data.member) {
-        const member = memberResponse.data.data.member;
-        if (member.packageId) {
-          const packageResponse = await api.get(`/api/packages/${member.packageId}`);
-          if (packageResponse.data.success && packageResponse.data.data.package) {
-            packageInfo = packageResponse.data.data.package;
-            if (packageInfo) {
-              const packagePrice = packageInfo.price;
-              const packageDiscount = packageInfo.discount || 0;
-              const isAnnual = packageInfo.duration?.includes('12') || false;
-              let monthlyBase = isAnnual ? packagePrice / 12 : packagePrice;
-              if (packageDiscount > 0) {
-                if (isAnnual) {
-                  monthlyBase = (packagePrice - packageDiscount) / 12;
-                  discountAmount = packageDiscount / 12;
-                } else {
-                  monthlyBase = packagePrice - packageDiscount;
-                  discountAmount = packageDiscount;
-                }
-              }
-              originalAmount = isAnnual ? packagePrice / 12 : packagePrice;
-            }
-          }
-        }
-      }
-    } catch {
-      /* continue */
-    }
-
-    const displayName = memberName || payment.member?.name || 'Member';
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Payment Receipt - ${displayName}</title>
-          <style>
-            @media print { @page { margin: 20mm; } }
-            body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { text-align: center; border-bottom: 3px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-            .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
-            .amount-section { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 30px 0; }
-            .amount-row { display: flex; justify-content: space-between; font-size: 18px; margin: 10px 0; }
-            .total { font-size: 24px; font-weight: bold; border-top: 2px solid #333; padding-top: 10px; margin-top: 10px; }
-            .footer { margin-top: 40px; text-align: center; color: #666; font-size: 12px; }
-            .status-badge { display: inline-block; padding: 5px 15px; background: #10b981; color: white; border-radius: 20px; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="header"><h1>FitNixTrack Gym</h1><p>Payment Receipt</p></div>
-          <div class="info-row"><span><strong>Receipt #</strong></span><span>${payment.id}</span></div>
-          <div class="info-row"><span><strong>Date</strong></span><span>${formatDate(payment.paidDate || payment.dueDate)}</span></div>
-          <div class="info-row"><span><strong>Member</strong></span><span>${displayName}</span></div>
-          <div class="info-row"><span><strong>Month</strong></span><span>${payment.month}</span></div>
-          <div class="info-row"><span><strong>Status</strong></span><span><span class="status-badge">PAID</span></span></div>
-          <div class="amount-section">
-            ${packageInfo && discountAmount > 0 ? `<div class="amount-row"><span>Package</span><span>${packageInfo.name}</span></div>` : ''}
-            <div class="amount-row total"><span>Total Paid</span><span>Rs. ${payment.amount.toFixed(2)}</span></div>
-          </div>
-          <div class="footer"><p>Thank you for your payment!</p></div>
-        </body>
-      </html>
-    `;
-    const blob = new Blob([receiptHTML], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const printWindow = window.open(url, '_blank');
-    if (!printWindow) {
-      showAlert('error', 'Print error', 'Allow popups to print receipts.');
-      URL.revokeObjectURL(url);
+    if (!payment.id) {
+      showAlert('error', 'Print error', 'This installment has no payment ID yet.');
       return;
     }
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.print();
-        URL.revokeObjectURL(url);
-      }, 250);
-    };
+    try {
+      await printPaymentReceipt(payment.id, {
+        name: user?.name || user?.email || 'Staff',
+        email: user?.email ?? null,
+        role: user?.role ?? null,
+      }, memberId);
+    } catch (e: unknown) {
+      showAlert('error', 'Print error', getErrorMessage(e));
+    }
   };
+
+  const handlePrintOneTimeReceipt = async (record: PrintablePaymentRecord) => {
+    try {
+      await printReceiptForPaymentRecord(
+        record,
+        {
+          name: user?.name || user?.email || 'Staff',
+          email: user?.email ?? null,
+          role: user?.role ?? null,
+        },
+        memberId
+      );
+    } catch (e: unknown) {
+      showAlert('error', 'Print error', getErrorMessage(e));
+    }
+  };
+
+  const paidOneTimeHistory = useMemo(
+    () => oneTimeHistory.filter((row) => row.status === 'PAID'),
+    [oneTimeHistory]
+  );
 
   const currentStatusAction: MemberStatusActionKind =
     memberStatus?.isActive === false ? 'reactivate' : 'deactivate';
@@ -491,14 +565,14 @@ export default function MemberPaymentsDetailPage() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-light-gray">
             <tr>
-              {showSelect && user?.role === 'GYM_ADMIN' && (
+              {showSelect && canPay && (
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray w-12"> </th>
               )}
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Month</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Amount</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Due</th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Status</th>
-              {user?.role === 'GYM_ADMIN' && (
+              {canPay && (
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Actions</th>
               )}
             </tr>
@@ -506,16 +580,22 @@ export default function MemberPaymentsDetailPage() {
           <tbody className="divide-y divide-gray-200 bg-white">
             {items.map((row) => {
               const bucket = uiBucketForInstallment(row);
-              const canSelect = showSelect && isInstallmentUnpaid(row);
+              const rowKey = installmentKey(row);
+              const payBlockReason = getPayBlockReason(row, monthlyInstallments, payOrderOptions);
+              const canPayRow = row.status !== 'PAID' && payBlockReason === null;
+              const canSelect =
+                showSelect &&
+                isInstallmentUnpaid(row) &&
+                canSelectInstallmentForBulk(row, monthlyInstallments, selectedIds, payOrderOptions);
               return (
-                <tr key={row.id} className="hover:bg-gray-50/80">
-                  {showSelect && user?.role === 'GYM_ADMIN' && (
+                <tr key={rowKey} className="hover:bg-gray-50/80">
+                  {showSelect && canPay && (
                     <td className="px-4 py-3">
                       {canSelect ? (
                         <input
                           type="checkbox"
-                          checked={selectedIds.has(row.id)}
-                          onChange={() => toggleSelect(row.id)}
+                          checked={selectedIds.has(rowKey)}
+                          onChange={() => toggleSelect(rowKey)}
                           className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                         />
                       ) : (
@@ -538,16 +618,25 @@ export default function MemberPaymentsDetailPage() {
                       {uiLabelForBucket(bucket)}
                     </span>
                   </td>
-                  {user?.role === 'GYM_ADMIN' && (
+                  {canPay && (
                     <td className="px-4 py-3 text-sm">
                       {row.status !== 'PAID' ? (
-                        <button
-                          type="button"
-                          onClick={() => setSingleConfirm(row)}
-                          className="rounded-lg bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
-                        >
-                          Mark paid
-                        </button>
+                        canPayRow ? (
+                          <button
+                            type="button"
+                            onClick={() => setSingleConfirm(row)}
+                            className="rounded-lg bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
+                          >
+                            Mark paid
+                          </button>
+                        ) : (
+                          <span
+                            className="text-xs text-gray-500"
+                            title={payBlockReason ?? undefined}
+                          >
+                            {signupBlocksMonthly ? 'Pay signup first' : 'Pay earlier months first'}
+                          </span>
+                        )
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           <button
@@ -591,6 +680,20 @@ export default function MemberPaymentsDetailPage() {
   return (
     <Layout>
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
+      <ConfirmationDialog
+        isOpen={oneTimeConfirm}
+        onClose={() => setOneTimeConfirm(false)}
+        onConfirm={() => void handleMarkOneTimePaid()}
+        title="Mark signup payment as paid"
+        message={
+          pendingOneTime
+            ? `Mark signup payment of Rs. ${pendingOneTime.totalAmount.toFixed(2)} as paid?`
+            : ''
+        }
+        confirmText="Mark signup paid"
+        cancelText="Cancel"
+        type="warning"
+      />
       <ConfirmationDialog
         isOpen={!!singleConfirm}
         onClose={() => setSingleConfirm(null)}
@@ -694,6 +797,17 @@ export default function MemberPaymentsDetailPage() {
                 )}
               </div>
             )}
+            {signupBlocksMonthly && (
+              <p className="mt-2 max-w-2xl rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900">
+                {SIGNUP_PAY_BLOCK_MESSAGE}
+              </p>
+            )}
+            {overdueBlocksPending && !signupBlocksMonthly && (
+              <p className="mt-2 max-w-2xl rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Clear all <span className="font-medium">overdue</span> installments before paying pending or advance
+                months.
+              </p>
+            )}
             {hasProjectedRows && (
               <p className="mt-2 max-w-2xl text-sm text-gray-500">
                 <span className="font-medium">(projected)</span> is the next billing month when your system has not
@@ -701,7 +815,7 @@ export default function MemberPaymentsDetailPage() {
               </p>
             )}
           </div>
-          {user?.role === 'GYM_ADMIN' && selectableUnpaid.length > 0 && (
+          {canPay && selectableUnpaid.length > 0 && !signupBlocksMonthly && (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -720,7 +834,7 @@ export default function MemberPaymentsDetailPage() {
                 onClick={selectAllUnpaid}
                 className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-dark-gray hover:bg-gray-50"
               >
-                Select all unpaid
+                Select {overdueBlocksPending ? 'all overdue' : 'all unpaid'}
               </button>
               <button
                 type="button"
@@ -759,7 +873,120 @@ export default function MemberPaymentsDetailPage() {
           <p className="text-sm text-gray-500">Refreshing…</p>
         )}
 
-        {monthlyInstallments.length === 0 && !loading && !error ? (
+        {pendingOneTime && (
+          <section className="space-y-3 rounded-lg border border-violet-200 bg-violet-50/50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-violet-950">Signup / one-time payment</h2>
+                <p className="mt-1 text-sm text-violet-800">Pay this before monthly installments.</p>
+                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                  <div className="flex justify-between gap-4 rounded-md bg-white/80 px-3 py-2 sm:col-span-2">
+                    <dt className="font-medium text-violet-900">Admission fee</dt>
+                    <dd className="font-semibold text-gray-900">
+                      {pendingOneTime.admissionFee > 0
+                        ? `Rs. ${pendingOneTime.admissionFee.toFixed(2)}`
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4 rounded-md bg-white/80 px-3 py-2">
+                    <dt className="text-gray-600">Package (1st month)</dt>
+                    <dd className="font-medium text-gray-900">Rs. {pendingOneTime.packageFee.toFixed(2)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4 rounded-md bg-white/80 px-3 py-2">
+                    <dt className="text-gray-600">Trainer fee</dt>
+                    <dd className="font-medium text-gray-900">Rs. {pendingOneTime.trainerFee.toFixed(2)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4 rounded-md border border-violet-200 bg-white px-3 py-2">
+                    <dt className="font-semibold text-violet-900">Total</dt>
+                    <dd className="font-bold text-violet-900">Rs. {pendingOneTime.totalAmount.toFixed(2)}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="flex shrink-0 flex-col gap-2">
+                {canPay && pendingOneTime.status === 'PENDING' && (
+                  <button
+                    type="button"
+                    disabled={bulkSubmitting}
+                    onClick={() => setOneTimeConfirm(true)}
+                    className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    Mark signup paid
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={bulkSubmitting}
+                  onClick={() =>
+                    void handlePrintOneTimeReceipt({ type: 'one-time', id: pendingOneTime.id })
+                  }
+                  className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-50"
+                >
+                  Print receipt
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {paidOneTimeHistory.length > 0 && (
+          <section className="space-y-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-semibold text-dark-gray">Signup payment history</h2>
+            <div className="overflow-hidden rounded-lg border border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-light-gray">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Breakdown</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Total</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {paidOneTimeHistory.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50/80">
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {formatDate(row.paidDate || row.createdAt)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        <div>Admission: Rs. {row.admissionFee.toFixed(2)}</div>
+                        <div>Package: Rs. {row.packageFee.toFixed(2)}</div>
+                        <div>Trainer: Rs. {row.trainerFee.toFixed(2)}</div>
+                      </td>
+                      <td className="px-4 py-3 text-sm font-medium">Rs. {row.totalAmount.toFixed(2)}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handlePrintOneTimeReceipt({
+                              type: row.type,
+                              id: row.id,
+                              receiptPath: row.receiptPath,
+                            })
+                          }
+                          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-gray-800 hover:bg-gray-50"
+                        >
+                          Receipt
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        <div className={signupBlocksMonthly ? 'pointer-events-none space-y-6 opacity-50' : 'space-y-6'}>
+        {monthlyInstallments.length > 0 && (
+          <h2 className="text-lg font-semibold text-dark-gray">Monthly installments</h2>
+        )}
+        {monthlyInstallments.length === 0 && !loading && !error && !pendingOneTime ? (
           <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-gray-500">
             No monthly installment history for this member.
           </div>
@@ -801,6 +1028,7 @@ export default function MemberPaymentsDetailPage() {
             </section>
           </>
         )}
+        </div>
       </div>
     </Layout>
   );

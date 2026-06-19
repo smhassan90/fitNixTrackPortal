@@ -5,16 +5,26 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
+import { canManageGymPayments } from '@/lib/gymRoles';
 import {
   tailwindBadgeForUiBucket,
   uiBucketForNextUnpaid,
   uiLabelForBucket,
 } from '@/lib/monthlyInstallmentUi';
+import {
+  normalizePendingOneTime,
+  withResolvedAdmissionFee,
+  type PendingOneTimePayment,
+  SIGNUP_PAY_BLOCK_MESSAGE,
+} from '@/lib/signupFees';
+import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
+import { printOneTimePaymentReceipt } from '@/lib/signupReceipt';
 
 type SortByKey = 'name' | 'nextDueDate' | 'overdueCount';
 
@@ -46,6 +56,7 @@ interface NextUnpaid {
 interface MemberPaymentSummaryRow {
   member: MemberSummaryMember;
   nextUnpaid: NextUnpaid | null;
+  nextOneTime: PendingOneTimePayment | null;
   overdueMonthCount: number;
 }
 
@@ -85,9 +96,15 @@ function normalizeMemberSummary(raw: Record<string, unknown>): MemberPaymentSumm
     };
   }
 
+  const nextOneTimeRaw =
+    normalizePendingOneTime(raw.nextOneTime) ??
+    normalizePendingOneTime(raw.pendingOneTime);
+  const nextOneTime = nextOneTimeRaw ? withResolvedAdmissionFee(nextOneTimeRaw) : null;
+
   return {
     member,
     nextUnpaid,
+    nextOneTime,
     overdueMonthCount: Number(raw.overdueMonthCount) || 0,
   };
 }
@@ -118,6 +135,11 @@ function PaymentsPageContent() {
   const [onlyWithOpenInstallments, setOnlyWithOpenInstallments] = useState(false);
   /** From URL ?bucket= (dashboard) or ?status=paid */
   const [statusFilter, setStatusFilter] = useState<PaymentStatusFilter>('all');
+  const [confirmPayRow, setConfirmPayRow] = useState<MemberPaymentSummaryRow | null>(null);
+  const [confirmOneTimeRow, setConfirmOneTimeRow] = useState<MemberPaymentSummaryRow | null>(null);
+  const [markingPaid, setMarkingPaid] = useState(false);
+
+  const canPay = canManageGymPayments(user?.role);
 
   const syncFromUrl = useCallback(() => {
     const open = searchParams.get('onlyWithOpenInstallments');
@@ -254,6 +276,95 @@ function PaymentsPageContent() {
     setPagination((p) => ({ ...p, page: 1 }));
   };
 
+  const handleMarkOneTimePaid = async (row: MemberPaymentSummaryRow) => {
+    const oneTime = row.nextOneTime;
+    if (!oneTime?.id) {
+      showAlert('error', 'Cannot mark paid', 'No pending signup payment was found for this member.');
+      return;
+    }
+    const oneTimeId = oneTime.id;
+    try {
+      setMarkingPaid(true);
+      const response = await api.patch(`/api/payments/one-time/${oneTimeId}/mark-paid`);
+      if (!response.data?.success) {
+        throw new Error(response.data?.error?.message || 'Mark paid failed');
+      }
+      showAlert(
+        'success',
+        'Signup payment recorded',
+        `${row.member.name} — Rs. ${oneTime.totalAmount.toFixed(2)} signup payment marked as paid.`
+      );
+      setConfirmOneTimeRow(null);
+      notifyDashboardStatsRefresh();
+      await fetchSummaries();
+      try {
+        await printOneTimePaymentReceipt(
+          oneTimeId,
+          {
+            name: user?.name || user?.email || 'Staff',
+            email: user?.email ?? null,
+            role: user?.role ?? null,
+          },
+          row.member.id
+        );
+      } catch (printErr) {
+        console.warn('Signup receipt print failed:', printErr);
+      }
+    } catch (e: unknown) {
+      showAlert('error', 'Error', getErrorMessage(e));
+    } finally {
+      setMarkingPaid(false);
+    }
+  };
+
+  const handleMarkNextPaid = async (row: MemberPaymentSummaryRow) => {
+    if (row.nextOneTime) {
+      showAlert('warning', 'Pay signup first', SIGNUP_PAY_BLOCK_MESSAGE);
+      setConfirmPayRow(null);
+      return;
+    }
+    const nextUnpaid = row.nextUnpaid;
+    const paymentId = nextUnpaid?.paymentId;
+    if (!paymentId || !nextUnpaid) {
+      showAlert('error', 'Cannot mark paid', 'No open installment was found for this member.');
+      return;
+    }
+    const nextBucket = uiBucketForNextUnpaid({
+      displayBucket: nextUnpaid.displayBucket,
+      dueDate: nextUnpaid.dueDate,
+      status: nextUnpaid.status,
+      isOverdue: nextUnpaid.isOverdue,
+    });
+    if (row.overdueMonthCount > 0 && nextBucket !== 'overdue') {
+      showAlert(
+        'warning',
+        'Pay in order',
+        'Clear all overdue installments before paying pending or advance months.'
+      );
+      setConfirmPayRow(null);
+      return;
+    }
+    try {
+      setMarkingPaid(true);
+      const response = await api.patch(`/api/payments/${paymentId}/mark-paid`);
+      if (!response.data?.success) {
+        throw new Error(response.data?.error?.message || 'Mark paid failed');
+      }
+      showAlert(
+        'success',
+        'Payment recorded',
+        `${row.member.name} — ${row.nextUnpaid?.month ?? 'installment'} marked as paid.`
+      );
+      setConfirmPayRow(null);
+      notifyDashboardStatsRefresh();
+      await fetchSummaries();
+    } catch (e: unknown) {
+      showAlert('error', 'Error', getErrorMessage(e));
+    } finally {
+      setMarkingPaid(false);
+    }
+  };
+
   const handleCheckOverdue = async () => {
     try {
       setLoading(true);
@@ -293,7 +404,7 @@ function PaymentsPageContent() {
   const filteredRows = useMemo(() => {
     if (statusFilter === 'all') return rows;
     return rows.filter((row) => {
-      if (statusFilter === 'paid') return !row.nextUnpaid;
+      if (statusFilter === 'paid') return !row.nextUnpaid && !row.nextOneTime;
       if (!row.nextUnpaid) return false;
       const b = uiBucketForNextUnpaid({
         displayBucket: row.nextUnpaid.displayBucket,
@@ -342,9 +453,39 @@ function PaymentsPageContent() {
 
   const showInitialSpinner = loading && rows.length === 0 && !listError;
 
+  const tableColumnCount = canPay ? 6 : 5;
+
   return (
     <Layout>
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
+      <ConfirmationDialog
+        isOpen={!!confirmOneTimeRow}
+        onClose={() => !markingPaid && setConfirmOneTimeRow(null)}
+        onConfirm={() => confirmOneTimeRow && void handleMarkOneTimePaid(confirmOneTimeRow)}
+        title="Mark signup payment as paid"
+        message={
+          confirmOneTimeRow?.nextOneTime
+            ? `Mark signup payment of Rs. ${confirmOneTimeRow.nextOneTime.totalAmount.toFixed(2)} for ${confirmOneTimeRow.member.name} as paid? (Admission Rs. ${confirmOneTimeRow.nextOneTime.admissionFee.toFixed(2)}, package 1st month Rs. ${confirmOneTimeRow.nextOneTime.packageFee.toFixed(2)}, trainer Rs. ${confirmOneTimeRow.nextOneTime.trainerFee.toFixed(2)})`
+            : ''
+        }
+        confirmText={markingPaid ? 'Saving…' : 'Mark signup paid'}
+        cancelText="Cancel"
+        type="warning"
+      />
+      <ConfirmationDialog
+        isOpen={!!confirmPayRow}
+        onClose={() => !markingPaid && setConfirmPayRow(null)}
+        onConfirm={() => confirmPayRow && void handleMarkNextPaid(confirmPayRow)}
+        title="Mark installment as paid"
+        message={
+          confirmPayRow?.nextUnpaid
+            ? `Mark Rs. ${confirmPayRow.nextUnpaid.amount.toFixed(2)} for ${confirmPayRow.member.name} (${confirmPayRow.nextUnpaid.month}) as paid?`
+            : ''
+        }
+        confirmText={markingPaid ? 'Saving…' : 'Mark as paid'}
+        cancelText="Cancel"
+        type="warning"
+      />
 
       {showInitialSpinner ? (
         <Loading message="Loading payments…" />
@@ -354,7 +495,7 @@ function PaymentsPageContent() {
             <div>
               <h1 className="text-3xl font-bold text-dark-gray">Payments</h1>
               <p className="mt-1 text-sm text-gray-500">
-                One row per member — open a member to view history and mark multiple months paid.
+                One row per member — pay pending <span className="font-medium">signup</span> first, then monthly installments.
               </p>
               {statusFilter === 'overdue' && (
                 <p className="mt-2 text-sm font-medium text-red-800">
@@ -374,7 +515,7 @@ function PaymentsPageContent() {
               )}
             </div>
             <div className="flex flex-wrap gap-2">
-              {user?.role === 'GYM_ADMIN' && (
+              {canPay && (
                 <button
                   type="button"
                   onClick={handleCheckOverdue}
@@ -520,12 +661,17 @@ function PaymentsPageContent() {
                     >
                       Overdue months {sortBy === 'overdueCount' && (sortOrder === 'asc' ? '↑' : '↓')}
                     </th>
+                    {canPay && (
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-dark-gray">
+                        Actions
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {tableRows.length === 0 && !loading ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                      <td colSpan={tableColumnCount} className="px-6 py-10 text-center text-gray-500">
                         {listError ? '—' : emptyMessage}
                       </td>
                     </tr>
@@ -539,6 +685,9 @@ function PaymentsPageContent() {
                             isOverdue: row.nextUnpaid.isOverdue,
                           })
                         : null;
+                      const canMarkRow =
+                        row.nextUnpaid &&
+                        (row.overdueMonthCount === 0 || nextBucket === 'overdue');
                       return (
                         <tr
                           key={row.member.id}
@@ -558,20 +707,48 @@ function PaymentsPageContent() {
                             <div className="text-sm text-gray-500">{row.member.phone || row.member.email || '—'}</div>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            {row.nextOneTime ? (
+                              <div className="mb-1">
+                                <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-violet-800">
+                                  Signup due
+                                </span>
+                                <div className="mt-1 font-medium text-violet-900">
+                                  Rs. {row.nextOneTime.totalAmount.toFixed(2)}
+                                </div>
+                                {row.nextOneTime.admissionFee > 0 && (
+                                  <div className="text-[10px] text-violet-700">
+                                    Incl. admission Rs. {row.nextOneTime.admissionFee.toFixed(2)}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
                             {row.nextUnpaid ? (
-                              <>
-                                Rs. {row.nextUnpaid.amount.toFixed(2)}
+                              <div className={row.nextOneTime ? 'mt-2 border-t border-gray-100 pt-2' : ''}>
+                                {row.nextOneTime ? (
+                                  <div className="text-[10px] font-medium uppercase text-gray-400">Monthly</div>
+                                ) : null}
+                                <div>Rs. {row.nextUnpaid.amount.toFixed(2)}</div>
                                 <div className="text-xs text-gray-500">{row.nextUnpaid.month}</div>
-                              </>
-                            ) : (
+                              </div>
+                            ) : !row.nextOneTime ? (
                               <span className="text-gray-500">—</span>
-                            )}
+                            ) : null}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-600">
-                            {row.nextUnpaid ? formatDate(row.nextUnpaid.dueDate) : '—'}
+                            {row.nextOneTime ? (
+                              <span className="text-violet-700">At signup</span>
+                            ) : row.nextUnpaid ? (
+                              formatDate(row.nextUnpaid.dueDate)
+                            ) : (
+                              '—'
+                            )}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4">
-                            {!row.nextUnpaid ? (
+                            {row.nextOneTime ? (
+                              <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800">
+                                SIGNUP
+                              </span>
+                            ) : !row.nextUnpaid ? (
                               <span
                                 className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${tailwindBadgeForUiBucket(
                                   'paid'
@@ -604,6 +781,46 @@ function PaymentsPageContent() {
                               <span className="text-gray-400">0</span>
                             )}
                           </td>
+                          {canPay && (
+                            <td className="whitespace-nowrap px-6 py-4 text-sm">
+                              {row.nextOneTime ? (
+                                <button
+                                  type="button"
+                                  disabled={markingPaid}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmOneTimeRow(row);
+                                  }}
+                                  className="rounded-lg bg-violet-600 px-3 py-1.5 font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                                >
+                                  Mark signup paid
+                                </button>
+                              ) : row.nextUnpaid ? (
+                                canMarkRow ? (
+                                  <button
+                                    type="button"
+                                    disabled={markingPaid}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmPayRow(row);
+                                    }}
+                                    className="rounded-lg bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                                  >
+                                    Mark paid
+                                  </button>
+                                ) : (
+                                  <span
+                                    className="text-xs text-gray-500"
+                                    title="Clear all overdue installments before paying pending or advance months."
+                                  >
+                                    Pay overdues first
+                                  </span>
+                                )
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                          )}
                         </tr>
                       );
                     })

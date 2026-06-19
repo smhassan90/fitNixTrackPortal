@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { isJwtExpired } from '@/lib/jwtClient';
+import { normalizeGymRole } from '@/lib/gymRoles';
 
 interface User {
   id: string;
@@ -81,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   id: String(userData.id),
                   name: userData.name,
                   email: userData.email,
-                  role: userData.role,
+                  role: normalizeGymRole(userData.role),
                   gymId: String(userData.gymId),
                   gymName: userData.gymName || userData.gym?.name,
                 };
@@ -133,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   id: userData.id,
                   name: userData.name,
                   email: userData.email,
-                  role: userData.role,
+                  role: normalizeGymRole(userData.role),
                   gymId: userData.gymId,
                   gymName: userData.gymName,
                 });
@@ -204,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: String(userData.id),
           name: userData.name,
           email: userData.email,
-          role: userData.role,
+          role: normalizeGymRole(userData.role),
           gymId: String(userData.gymId),
           gymName: userData.gymName || userData.gym?.name,
         };

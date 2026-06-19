@@ -1,18 +1,30 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Loading from '@/components/Loading';
+import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 import { colors } from '@/lib/colors';
 import {
   currentYm,
   eachYmBetween,
+  fetchRevenueReport,
   normalizeRevenueFromApiData,
   ymMonthsAgo,
 } from '@/lib/revenueFromApi';
+import {
+  assertResponseGymId,
+  categoryLabel,
+  normalizeRecentCollections,
+  parseTotalCollectedThisMonth,
+  type FeeCollectionRow,
+} from '@/lib/feeCollections';
+import { DASHBOARD_STATS_REFRESH_EVENT } from '@/lib/dashboardEvents';
+import { formatDate } from '@/lib/dateUtils';
 import {
   BarChart,
   Bar,
@@ -28,6 +40,7 @@ interface DashboardStats {
   totalTrainers: number;
   pendingPayments: number;
   overduePayments: number;
+  totalCollectedThisMonth: number;
 }
 
 type RevenuePresetId = 'this_month' | 'last_6_months' | 'last_12_months' | 'custom';
@@ -41,7 +54,10 @@ const RANGE_PRESETS: { id: RevenuePresetId; label: string; title: string }[] = [
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentCollections, setRecentCollections] = useState<FeeCollectionRow[]>([]);
+  const [gymMismatch, setGymMismatch] = useState<string | null>(null);
   const [revenueByMonthFull, setRevenueByMonthFull] = useState<Record<string, number>>({});
   const [revenuePreset, setRevenuePreset] = useState<RevenuePresetId>('last_6_months');
   const [revenueRangeStart, setRevenueRangeStart] = useState(() => ymMonthsAgo(5));
@@ -62,13 +78,18 @@ export default function DashboardPage() {
 
       if (response.data.success) {
         const data = response.data.data as Record<string, unknown>;
+        const mismatch = assertResponseGymId(data.gymId, user?.gymId);
+        setGymMismatch(mismatch);
 
         setStats({
           totalMembers: Number(data.totalMembers) || 0,
           totalTrainers: Number(data.totalTrainers) || 0,
           pendingPayments: Number(data.pendingPayments) || 0,
           overduePayments: Number(data.overduePayments) || 0,
+          totalCollectedThisMonth: parseTotalCollectedThisMonth(data),
         });
+
+        setRecentCollections(normalizeRecentCollections(data.recentCollections));
 
         setRevenueByMonthFull((prev) => ({
           ...prev,
@@ -83,24 +104,22 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.gymId]);
 
   const fetchRevenueForRange = useCallback(async (start: string, end: string) => {
     setRevenueLoading(true);
     try {
-      const response = await api.get(
-        `/api/dashboard/revenue?startMonth=${encodeURIComponent(start)}&endMonth=${encodeURIComponent(end)}`
-      );
-      if (response.data?.success && response.data.data) {
-        const chunk = normalizeRevenueFromApiData(response.data.data as Record<string, unknown>);
-        setRevenueByMonthFull((prev) => ({ ...prev, ...chunk }));
+      const result = await fetchRevenueReport(api, start, end, user?.gymId);
+      if (result.gymMismatch) setGymMismatch(result.gymMismatch);
+      if (Object.keys(result.revenueByMonth).length > 0) {
+        setRevenueByMonthFull((prev) => ({ ...prev, ...result.revenueByMonth }));
       }
     } catch {
       /* optional endpoint */
     } finally {
       setRevenueLoading(false);
     }
-  }, []);
+  }, [user?.gymId]);
 
   const applyRange = useCallback(
     (start: string, end: string, fetchRemote: boolean) => {
@@ -140,6 +159,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     void fetchDashboardStats();
+  }, [fetchDashboardStats]);
+
+  useEffect(() => {
+    const onRefresh = () => {
+      void fetchDashboardStats();
+    };
+    window.addEventListener(DASHBOARD_STATS_REFRESH_EVENT, onRefresh);
+    return () => window.removeEventListener(DASHBOARD_STATS_REFRESH_EVENT, onRefresh);
   }, [fetchDashboardStats]);
 
   useEffect(() => {
@@ -236,7 +263,38 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {gymMismatch && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            {gymMismatch}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-5">
+          <div
+            onClick={() => router.push('/reports')}
+            className="transform cursor-pointer rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 p-6 text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="mb-1 text-sm font-medium text-emerald-100">Income</p>
+                <p className="text-3xl font-bold">
+                  Rs. {stats.totalCollectedThisMonth.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                </p>
+                <p className="mt-2 text-xs text-emerald-100">Collected this month</p>
+              </div>
+              <div className="rounded-full bg-white bg-opacity-20 p-4">
+                <svg className="h-8 w-8" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z" />
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
           <div
             onClick={() => handleCardClick('/members')}
             className="transform cursor-pointer rounded-xl bg-primary p-6 text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
@@ -331,13 +389,67 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {recentCollections.length > 0 && (
+          <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg">
+            <div className="border-b border-gray-100 bg-slate-50/80 px-4 py-4 sm:px-6">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-dark-gray">Recent payments collected</h2>
+                  <p className="mt-0.5 text-sm text-gray-500">Latest fee collection ledger entries</p>
+                </div>
+                <Link href="/reports" className="text-sm font-medium text-primary hover:underline">
+                  Full history →
+                </Link>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-light-gray">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Member</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Amount</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Collected</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Billing month</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Description</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {recentCollections.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="cursor-pointer hover:bg-gray-50/80"
+                      onClick={() => router.push(`/payments/members/${row.memberId}`)}
+                    >
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.memberName}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        Rs. {row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{formatDate(row.collectedAt)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{row.billingMonth ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                          {categoryLabel(row.category)}
+                        </span>
+                      </td>
+                      <td className="max-w-xs truncate px-4 py-3 text-sm text-gray-600" title={row.description}>
+                        {row.description}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
         <div className="overflow-hidden rounded-2xl border border-gray-100 bg-gradient-to-br from-white via-slate-50/80 to-blue-50/40 shadow-lg">
           <div className="border-b border-gray-100/80 bg-white/60 px-4 py-4 backdrop-blur-sm sm:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-dark-gray sm:text-xl">Revenue overview</h2>
                 <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
-                  Pick a range; missing months show as zero.
+                  Billing-month collections from the fee ledger; missing months show as zero.
                 </p>
               </div>
               <button
