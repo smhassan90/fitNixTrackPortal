@@ -1,6 +1,6 @@
 /**
  * Member sublines for report KPIs. Prefers API *MemberCount when present.
- * Optional fallback uses open-member-summaries bucket counts (same basis as
+ * Optional  fallback uses open-member-summaries bucket counts (same basis as
  * client-side rupee totals when the server omits counts).
  */
 
