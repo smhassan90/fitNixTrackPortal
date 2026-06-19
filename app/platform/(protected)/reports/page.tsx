@@ -7,7 +7,7 @@ import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
 import Loading from '@/components/Loading';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
-import { formatMetricValue, friendlyMetricLabel } from '@/lib/platform/presentation';
+import { describeTopGymRow, formatMetricValue, friendlyMetricLabel } from '@/lib/platform/presentation';
 
 export default function PlatformReportsPage() {
   const { alert, showAlert, closeAlert } = useAlert();
@@ -115,16 +115,17 @@ export default function PlatformReportsPage() {
             <p className="text-xs text-dark-gray-light mt-1">Ranked by members on file.</p>
             {top.length ? (
               <ul className="mt-4 space-y-2 text-sm">
-                {top.map((row, i) => (
-                  <li key={i} className="flex justify-between border-b border-light-gray pb-2">
-                    <span className="font-medium text-dark-gray truncate pr-2">
-                      {(row as { name?: string })?.name ?? 'Gym'}
-                    </span>
-                    <span className="shrink-0 text-dark-gray-light tabular-nums">
-                      {(row as { membersCount?: number })?.membersCount ?? '—'} members
-                    </span>
-                  </li>
-                ))}
+                {top.map((row, i) => {
+                  const { name, membersCount, gymId } = describeTopGymRow(row);
+                  return (
+                    <li key={gymId ?? i} className="flex justify-between border-b border-light-gray pb-2">
+                      <span className="font-medium text-dark-gray truncate pr-2">{name}</span>
+                      <span className="shrink-0 text-dark-gray-light tabular-nums">
+                        {membersCount != null ? membersCount.toLocaleString() : '—'} members
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p className="mt-4 text-sm text-dark-gray-light">Choose dates and tap Refresh.</p>

@@ -13,6 +13,7 @@ import Loading from '@/components/Loading';
 import { useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
 import {
   describeBillingRow,
+  describeTopGymRow,
   formatMetricValue,
   friendlyMetricLabel,
 } from '@/lib/platform/presentation';
@@ -101,16 +102,17 @@ export default function PlatformOverviewPage() {
           <p className="text-xs text-dark-gray-light mt-1">By active member count.</p>
           <ul className="mt-4 space-y-2 text-sm">
             {top.length === 0 && <li className="text-dark-gray-light">No data yet.</li>}
-            {top.slice(0, 5).map((row, i) => (
-              <li key={i} className="flex justify-between border-b border-light-gray pb-2">
-                <span className="truncate pr-2 font-medium text-dark-gray">
-                  {(row as { name?: string })?.name ?? 'Gym'}
-                </span>
-                <span className="shrink-0 text-dark-gray-light tabular-nums">
-                  {(row as { membersCount?: number })?.membersCount ?? '—'} members
-                </span>
-              </li>
-            ))}
+            {top.slice(0, 5).map((row, i) => {
+              const { name, membersCount, gymId } = describeTopGymRow(row);
+              return (
+                <li key={gymId ?? i} className="flex justify-between border-b border-light-gray pb-2">
+                  <span className="truncate pr-2 font-medium text-dark-gray">{name}</span>
+                  <span className="shrink-0 text-dark-gray-light tabular-nums">
+                    {membersCount != null ? membersCount.toLocaleString() : '—'} members
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </section>
 

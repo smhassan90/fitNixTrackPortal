@@ -132,6 +132,48 @@ export function describeAuditRow(row: unknown): { when: string; action: string; 
   return { when, action, detail: parts.join(' · ') || '—' };
 }
 
+/** Top gyms report row (backend nests gym under `gym`) */
+export function describeTopGymRow(row: unknown): {
+  name: string;
+  membersCount: number | null;
+  gymId: string | number | null;
+} {
+  if (!row || typeof row !== 'object') {
+    return { name: 'Gym', membersCount: null, gymId: null };
+  }
+  const o = row as Record<string, unknown>;
+  const nested = o.gym ?? o.tenant;
+  let name = '';
+  if (nested && typeof nested === 'object') {
+    const g = nested as Record<string, unknown>;
+    const nestedName = firstDefinedValue(g, ['name', 'gymName', 'tenantName']);
+    if (nestedName != null) name = String(nestedName).trim();
+  }
+  if (!name) {
+    const flatName = firstDefinedValue(o, ['gymName', 'tenantName', 'name', 'organizationName', 'slug']);
+    if (flatName != null) name = String(flatName).trim();
+  }
+
+  const countRaw = firstDefinedValue(o, [
+    'membersCount',
+    'activeMemberCount',
+    'activeMembersCount',
+    'memberCount',
+  ]);
+  const membersCount =
+    countRaw != null && !Number.isNaN(Number(countRaw)) ? Number(countRaw) : null;
+
+  const gymId =
+    (nested && typeof nested === 'object'
+      ? (nested as Record<string, unknown>).id
+      : null) ??
+    o.gymId ??
+    o.id ??
+    null;
+
+  return { name: name || 'Gym', membersCount, gymId: gymId as string | number | null };
+}
+
 /** Ordered “gym profile” fields for the overview tab */
 export function gymProfileSummary(gym: Record<string, unknown>): Array<{ label: string; value: string }> {
   const rows: Array<{ label: string; value: string }> = [];
