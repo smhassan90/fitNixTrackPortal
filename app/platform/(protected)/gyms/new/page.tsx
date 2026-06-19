@@ -27,7 +27,7 @@ import {
   type LocationCatalog,
 } from '@/lib/platform/locationCatalog';
 
-const STEPS = ['Name', 'Slug', 'Location', 'Logo', 'Plan & dates', 'Owner', 'Review'] as const;
+const STEPS = ['Name', 'Slug', 'Location', 'Logo', 'Plan & dates', 'Gym admin login', 'Review'] as const;
 
 type Wizard = {
   name: string;
@@ -262,6 +262,8 @@ export default function CreateGymWizardPage() {
           setGenPw(null);
           router.push('/platform/gyms');
         }}
+        title="Gym admin password"
+        description={`Save this password now — it will not be shown again. The gym admin signs in at /login with email ${w.ownerEmail.trim() || '(owner email)'} and this password.`}
       />
 
       <div className="max-w-2xl">
@@ -415,17 +417,20 @@ export default function CreateGymWizardPage() {
           )}
           {step === 5 && (
             <>
+              <h2 className="text-base font-semibold text-dark-gray">Gym admin login</h2>
               <p className="text-xs text-dark-gray-light">
-                This person becomes the first gym admin. Leave the password blank to let the system create one — you
-                will be asked to copy it once.
+                Create the account the gym owner uses to sign in at{' '}
+                <span className="font-mono">/login</span> (members, payments, etc.). This is{' '}
+                <strong>not</strong> your platform operator login. Set a password now, or leave it blank and copy the
+                auto-generated password once after the gym is created.
               </p>
-              <label className="block text-sm font-medium">Owner name</label>
+              <label className="block text-sm font-medium">Admin name *</label>
               <input
                 value={w.ownerName}
                 onChange={(e) => setW((p) => ({ ...p, ownerName: e.target.value }))}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
               />
-              <label className="block text-sm font-medium">Owner email</label>
+              <label className="block text-sm font-medium">Login email *</label>
               <input
                 type="email"
                 value={w.ownerEmail}
@@ -485,8 +490,8 @@ export default function CreateGymWizardPage() {
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-dark-gray-light">Owner</dt>
-                <dd className="text-right">{`${w.ownerName} <${w.ownerEmail}>`}</dd>
+                <dt className="text-dark-gray-light">Gym admin login</dt>
+                <dd className="text-right">{`${w.ownerName} · ${w.ownerEmail}`}</dd>
               </div>
             </dl>
           )}
@@ -523,8 +528,8 @@ export default function CreateGymWizardPage() {
         </div>
 
         <p className="mt-6 text-xs text-dark-gray-light max-w-xl">
-          Need to add more managers later or reset the owner password? Use your internal support process until those
-          self-service tools ship.
+          After the gym is created, open the gym → <strong>Gym admin</strong> tab anytime to reset the owner&apos;s
+          password if they forget their login.
         </p>
       </div>
     </>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { usePlatformAuth } from '@/contexts/PlatformAuthContext';
 import { PlatformApiError } from '@/lib/platform/errors';
 import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
+import { sanitizePlatformReturnTo } from '@/lib/platform/sessionRedirect';
 import Loading from '@/components/Loading';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
@@ -33,7 +34,9 @@ export default function PlatformLoginPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      router.replace('/platform');
+      const q = new URLSearchParams(window.location.search);
+      const returnTo = sanitizePlatformReturnTo(q.get('returnTo'));
+      router.replace(returnTo ?? '/platform');
     }
   }, [authLoading, user, router]);
 
@@ -47,7 +50,9 @@ export default function PlatformLoginPage() {
     try {
       await login(email.trim(), password);
       setPassword('');
-      router.replace('/platform');
+      const q = new URLSearchParams(window.location.search);
+      const returnTo = sanitizePlatformReturnTo(q.get('returnTo'));
+      router.replace(returnTo ?? '/platform');
     } catch (err) {
       const msg = mapPlatformErrorToUserMessage(err);
       const status = err instanceof PlatformApiError ? err.status : undefined;
@@ -103,6 +108,12 @@ export default function PlatformLoginPage() {
           {sessionNotice && (
             <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
               {sessionNotice}
+              {typeof window !== 'undefined' &&
+                sanitizePlatformReturnTo(new URLSearchParams(window.location.search).get('returnTo')) && (
+                  <span className="block mt-1 text-blue-800">
+                    After sign-in you will return to the page you were on.
+                  </span>
+                )}
             </div>
           )}
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">

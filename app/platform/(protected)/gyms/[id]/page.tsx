@@ -18,6 +18,7 @@ import { patchGymProfileSchema, patchSubscriptionSchema } from '@/lib/platform/v
 import { useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
 import Loading from '@/components/Loading';
 import PlatformLogoUpload from '@/components/platform/PlatformLogoUpload';
+import GymOwnerAdminSection, { normalizeGymOwnerAdmin } from '@/components/platform/GymOwnerAdminSection';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
@@ -33,10 +34,11 @@ import {
   type LocationCatalog,
 } from '@/lib/platform/locationCatalog';
 
-type Tab = 'overview' | 'subscription' | 'activity';
+type Tab = 'overview' | 'owner' | 'subscription' | 'activity';
 
 const TAB_LABELS: Record<Tab, string> = {
   overview: 'Profile',
+  owner: 'Gym admin',
   subscription: 'Billing',
   activity: 'History',
 };
@@ -278,6 +280,7 @@ export default function PlatformGymDetailPage() {
     };
     return billingHistoryRows.reduce((sum, row) => sum + parseAmount(row.amount), 0);
   }, [billingHistoryRows]);
+  const ownerAdmin = useMemo(() => normalizeGymOwnerAdmin(gym?.ownerAdmin), [gym?.ownerAdmin]);
 
   const saveProfile = async () => {
     const body: Record<string, unknown> = {};
@@ -533,8 +536,17 @@ export default function PlatformGymDetailPage() {
           <p className="text-sm text-dark-gray-light mt-1">
             {suspended
               ? 'This gym is paused — their team cannot use the gym portal until you activate it again.'
-              : 'View profile, billing, and history for this gym.'}
+              : 'View profile, billing, and gym admin login for this tenant.'}
           </p>
+          {!ownerAdmin && isSuper && (
+            <div className="mt-3 rounded-lg border border-warning bg-warning-light/30 px-3 py-2 text-sm text-warning-dark">
+              No gym admin login yet. Open the{' '}
+              <button type="button" onClick={() => setTab('owner')} className="font-semibold underline">
+                Gym admin
+              </button>{' '}
+              tab to create the account the owner uses at <span className="font-mono text-xs">/login</span>.
+            </div>
+          )}
         </div>
         {isSuper && (
           <div className="flex gap-2">
@@ -559,17 +571,22 @@ export default function PlatformGymDetailPage() {
         )}
       </div>
 
-      <div className="mt-6 border-b border-light-gray-dark flex gap-4 text-sm">
-        {(['overview', 'subscription', 'activity'] as Tab[]).map((t) => (
+      <div className="mt-6 border-b border-light-gray-dark flex gap-4 text-sm flex-wrap">
+        {(['overview', 'owner', 'subscription', 'activity'] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`pb-2 capitalize border-b-2 -mb-px ${
+            className={`pb-2 border-b-2 -mb-px flex items-center gap-1.5 ${
               tab === t ? 'border-purple text-purple font-medium' : 'border-transparent text-dark-gray-light'
             }`}
           >
             {TAB_LABELS[t]}
+            {t === 'owner' && !ownerAdmin && (
+              <span className="rounded-full bg-warning px-1.5 py-0.5 text-[10px] font-semibold text-white leading-none">
+                Setup
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -674,6 +691,16 @@ export default function PlatformGymDetailPage() {
           </div>
         )}
 
+        {tab === 'owner' && (
+          <GymOwnerAdminSection
+            gymId={id}
+            ownerAdmin={ownerAdmin}
+            isSuper={isSuper}
+            onRefresh={load}
+            onNotify={(type, title, message) => showAlert(type, title, message)}
+          />
+        )}
+
         {tab === 'subscription' && (
           <section className="rounded-xl bg-white p-4 shadow border border-light-gray-dark max-w-lg">
             <h2 className="font-semibold">Subscription / billing</h2>
@@ -756,10 +783,6 @@ export default function PlatformGymDetailPage() {
                 The full audit trail is limited to super admins. Ask a super admin if you need a copy of events.
               </p>
             )}
-            <p className="mt-4 text-xs text-dark-gray-light max-w-xl">
-              To add more gym managers or reset an owner password after setup, use your support process until those
-              tools exist in the product.
-            </p>
             <div className="mt-6">
               <h3 className="font-medium text-sm">Billing history</h3>
               <p className="mt-1 text-xs text-dark-gray-light">Total paid: {totalPaidAmount.toLocaleString()}</p>

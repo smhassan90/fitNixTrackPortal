@@ -5,6 +5,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import { usePlatformAuth } from '@/contexts/PlatformAuthContext';
 import Loading from '@/components/Loading';
 import PlatformSidebar from '@/components/platform/PlatformSidebar';
+import PlatformSessionBanner from '@/components/platform/PlatformSessionBanner';
+import { platformLoginUrl } from '@/lib/platform/sessionRedirect';
 
 export default function PlatformProtectedShell({ children }: { children: React.ReactNode }) {
   const { user, loading } = usePlatformAuth();
@@ -13,7 +15,7 @@ export default function PlatformProtectedShell({ children }: { children: React.R
 
   useEffect(() => {
     if (!loading && !user && pathname !== '/platform/login') {
-      router.replace('/platform/login');
+      router.replace(platformLoginUrl('expired'));
     }
   }, [loading, user, router, pathname]);
 
@@ -29,7 +31,10 @@ export default function PlatformProtectedShell({ children }: { children: React.R
     <div className="flex min-h-screen">
       <PlatformSidebar />
       <div className="flex-1 overflow-x-auto">
-        <div className="max-w-7xl mx-auto p-6 md:p-8">{children}</div>
+        <div className="max-w-7xl mx-auto p-6 md:p-8">
+          <PlatformSessionBanner />
+          {children}
+        </div>
       </div>
     </div>
   );

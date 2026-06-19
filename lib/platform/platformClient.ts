@@ -11,6 +11,7 @@ import { isJwtExpired } from '@/lib/jwtClient';
 import { PLATFORM_TOKEN_KEY, PLATFORM_USER_KEY } from './constants';
 import type { PlatformApiEnvelope } from './types';
 import { PlatformApiError } from './errors';
+import { platformLoginUrl } from './sessionRedirect';
 
 export function readPlatformToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -51,9 +52,7 @@ platformClient.interceptors.response.use(
         const tok = readPlatformToken();
         const likelyExpiry = !tok || (tok.startsWith('eyJ') && isJwtExpired(tok));
         clearPlatformSession();
-        window.location.href = likelyExpiry
-          ? '/platform/login?session=expired'
-          : '/platform/login?session=invalid';
+        window.location.href = platformLoginUrl(likelyExpiry ? 'expired' : 'invalid');
       }
     }
     return Promise.reject(error);

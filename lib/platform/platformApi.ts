@@ -3,6 +3,7 @@ import platformClient, { assertPlatformSuccess } from './platformClient';
 import type {
   CreateGymResponse,
   CreatePlatformUserResponse,
+  GymOwnerAdminMutationData,
   PlatformApiEnvelope,
   PlatformAuditLogsData,
   PlatformBillingDuesData,
@@ -96,6 +97,46 @@ export async function listPlatformGyms(params: Record<string, string | number | 
 
 export async function getPlatformGym(id: string | number) {
   const res = await platformClient.get<PlatformApiEnvelope<unknown>>(`/api/platform/gyms/${id}`);
+  return assertPlatformSuccess(res);
+}
+
+export async function getPlatformGymOwnerAdmin(gymId: string | number) {
+  const res = await platformClient.get<PlatformApiEnvelope<{ ownerAdmin: unknown }>>(
+    `/api/platform/gyms/${gymId}/owner-admin`
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function createPlatformGymOwnerAdmin(
+  gymId: string | number,
+  body: { name: string; email: string; phone?: string; password?: string }
+) {
+  const res = await platformClient.post<PlatformApiEnvelope<GymOwnerAdminMutationData>>(
+    `/api/platform/gyms/${gymId}/owner-admin`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function resetPlatformGymOwnerAdminPassword(
+  gymId: string | number,
+  body: { password?: string } = {}
+) {
+  const res = await platformClient.post<PlatformApiEnvelope<GymOwnerAdminMutationData>>(
+    `/api/platform/gyms/${gymId}/owner-admin/reset-password`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function patchPlatformGymOwnerAdmin(
+  gymId: string | number,
+  body: { name?: string; email?: string; phone?: string | null; isActive?: boolean }
+) {
+  const res = await platformClient.patch<PlatformApiEnvelope<GymOwnerAdminMutationData>>(
+    `/api/platform/gyms/${gymId}/owner-admin`,
+    body
+  );
   return assertPlatformSuccess(res);
 }
 

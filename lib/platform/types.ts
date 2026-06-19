@@ -128,3 +128,20 @@ export interface CreatePlatformUserResponse {
   generatedPassword?: string;
   [key: string]: unknown;
 }
+
+/** Gym owner admin — GYM_ADMIN who logs into the gym app (not platform portal). */
+export interface GymOwnerAdmin {
+  id: string | number;
+  name: string;
+  email: string;
+  phone?: string | null;
+  role: string;
+  isActive: boolean;
+  lastLoginAt?: string | null;
+  createdAt?: string;
+}
+
+export interface GymOwnerAdminMutationData {
+  ownerAdmin: GymOwnerAdmin;
+  generatedPassword?: string;
+}

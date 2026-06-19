@@ -10,6 +10,7 @@ import {
 import { isJwtExpired } from '@/lib/jwtClient';
 import { platformAuthLogin, platformAuthLogout, platformAuthMe } from '@/lib/platform/platformApi';
 import type { PlatformUser } from '@/lib/platform/types';
+import { platformLoginUrl } from '@/lib/platform/sessionRedirect';
 
 interface PlatformAuthContextValue {
   user: PlatformUser | null;
@@ -70,7 +71,7 @@ export function PlatformAuthProvider({ children }: { children: React.ReactNode }
       setUser(null);
       const p = window.location.pathname;
       if (p.startsWith('/platform') && !p.startsWith('/platform/login')) {
-        window.location.replace('/platform/login?session=expired');
+        window.location.replace(platformLoginUrl('expired'));
       }
     };
     sync();
