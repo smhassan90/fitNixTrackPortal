@@ -1,3 +1,4 @@
+import { put } from '@vercel/blob';
 import { NextRequest, NextResponse } from 'next/server';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
@@ -17,11 +18,11 @@ function extForMime(mime: string): string | null {
 }
 
 /**
- * Stores logo under /public/gym-logos and returns an absolute http(s) URL for logoUrl.
+ * Stores logo and returns an absolute http(s) URL for logoUrl.
  * Requires a valid platform JWT (validated against the same API as the rest of the app).
  *
- * For production, prefer object storage (S3, etc.); serverless hosts often have a read-only
- * filesystem — set NEXT_PUBLIC_APP_URL to a stable public origin the API can reach.
+ * - Production (Vercel): uses Vercel Blob when BLOB_READ_WRITE_TOKEN is set.
+ * - Local dev: writes to /public/gym-logos (set NEXT_PUBLIC_APP_URL for stable logo URLs).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -85,20 +86,38 @@ export async function POST(request: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const filename = `${randomUUID()}.${ext}`;
-    const dir = path.join(process.cwd(), 'public', 'gym-logos');
-    await mkdir(dir, { recursive: true });
-    await writeFile(path.join(dir, filename), buffer);
 
-    const publicBase =
-      (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/$/, '') ||
-      request.nextUrl.origin;
-    const url = `${publicBase}/gym-logos/${filename}`;
+    let url: string;
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const blob = await put(`gym-logos/${filename}`, buffer, {
+        access: 'public',
+        contentType: mime,
+      });
+      url = blob.url;
+    } else {
+      const dir = path.join(process.cwd(), 'public', 'gym-logos');
+      await mkdir(dir, { recursive: true });
+      await writeFile(path.join(dir, filename), buffer);
+      const publicBase =
+        (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/$/, '') ||
+        request.nextUrl.origin;
+      url = `${publicBase}/gym-logos/${filename}`;
+    }
 
     return NextResponse.json({ success: true, data: { url } });
   } catch (e) {
     console.error('upload-logo:', e);
+    const missingBlob = Boolean(process.env.VERCEL) && !process.env.BLOB_READ_WRITE_TOKEN;
     return NextResponse.json(
-      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to store image' } },
+      {
+        success: false,
+        error: {
+          code: missingBlob ? 'CONFIG_ERROR' : 'INTERNAL_ERROR',
+          message: missingBlob
+            ? 'Logo uploads on Vercel require a Blob store. Add one under Project → Storage in the Vercel dashboard.'
+            : 'Failed to store image',
+        },
+      },
       { status: 500 }
     );
   }
