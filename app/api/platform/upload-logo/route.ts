@@ -26,7 +26,6 @@ function extForMime(mime: string): string | null {
  */
 export async function POST(request: NextRequest) {
   try {
-    const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
     const auth = request.headers.get('authorization');
     if (!auth?.startsWith('Bearer ')) {
       return NextResponse.json(
@@ -35,13 +34,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const me = await fetch(`${apiUrl}/api/platform/auth/me`, {
+    const me = await fetch(new URL('/api/platform/auth/me', request.nextUrl.origin), {
       headers: { Authorization: auth },
     });
     if (!me.ok) {
       return NextResponse.json(
         { success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid or expired platform session' } },
         { status: 401 }
+      );
+    }
+
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    if (process.env.VERCEL && !blobToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'CONFIG_ERROR',
+            message:
+              'Logo uploads on Vercel require a Blob store on this project. In Vercel → Storage → create Blob, connect it to this frontend project, then redeploy.',
+          },
+        },
+        { status: 503 }
       );
     }
 
@@ -88,10 +102,11 @@ export async function POST(request: NextRequest) {
     const filename = `${randomUUID()}.${ext}`;
 
     let url: string;
-    if (process.env.BLOB_READ_WRITE_TOKEN) {
+    if (blobToken) {
       const blob = await put(`gym-logos/${filename}`, buffer, {
         access: 'public',
         contentType: mime,
+        token: blobToken,
       });
       url = blob.url;
     } else {
@@ -107,15 +122,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: { url } });
   } catch (e) {
     console.error('upload-logo:', e);
-    const missingBlob = Boolean(process.env.VERCEL) && !process.env.BLOB_READ_WRITE_TOKEN;
+    const detail = e instanceof Error ? e.message : '';
+    const missingBlob =
+      Boolean(process.env.VERCEL) &&
+      !process.env.BLOB_READ_WRITE_TOKEN &&
+      /no token found/i.test(detail);
     return NextResponse.json(
       {
         success: false,
         error: {
           code: missingBlob ? 'CONFIG_ERROR' : 'INTERNAL_ERROR',
           message: missingBlob
-            ? 'Logo uploads on Vercel require a Blob store. Add one under Project → Storage in the Vercel dashboard.'
-            : 'Failed to store image',
+            ? 'Logo uploads on Vercel require a Blob store on this frontend project. Add one under Storage, then redeploy.'
+            : detail && !/token/i.test(detail)
+              ? `Failed to store image: ${detail}`
+              : detail || 'Failed to store image',
         },
       },
       { status: 500 }

@@ -53,6 +53,9 @@ export function mapCodeToMessage(
       'Too many attempts. Please wait before trying again.',
     NOT_FOUND: fallback || 'The requested resource was not found.',
     INTERNAL_ERROR: fallback || 'Something went wrong on the server.',
+    CONFIG_ERROR:
+      fallback ||
+      'Upload storage is not configured. Add a Vercel Blob store to this project and redeploy.',
   };
   if (code && messages[code]) return messages[code];
   return fallback || detailStr || 'An unexpected error occurred';
