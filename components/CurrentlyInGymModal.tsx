@@ -45,7 +45,7 @@ export default function CurrentlyInGymModal({
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
             <h2 className="text-2xl font-bold text-dark-gray">Members Currently In Gym</h2>
-            <p className="text-sm text-gray-500 mt-1">Members who checked in today and haven't checked out</p>
+            <p className="text-sm text-gray-500 mt-1">Members who checked in today and have not checked out</p>
           </div>
           <button
             onClick={onClose}
