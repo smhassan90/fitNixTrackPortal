@@ -56,33 +56,48 @@ export function buildSignupReceiptHtml(ctx: SignupReceiptContext): string {
     <title>Signup receipt — ${escapeHtml(ctx.memberName)}</title>
     <style>
       @media print {
-        @page { size: A4 portrait; margin: 10mm; }
+        @page { size: A4 portrait; margin: 4mm; }
         html, body {
           width: 100%;
-          height: 100%;
+          height: auto !important;
+          min-height: 0 !important;
           margin: 0;
           padding: 0;
         }
-        .page { min-height: 100%; border: none; }
+        .page {
+          display: block !important;
+          min-height: 0 !important;
+          height: auto !important;
+          padding: 8px 10px !important;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .head { padding-bottom: 10px !important; margin-bottom: 10px !important; }
+        .head h1 { font-size: 30px !important; }
+        .head p { font-size: 16px !important; }
+        .meta { font-size: 17px !important; margin-bottom: 10px !important; }
+        .meta div { padding: 4px 0 !important; }
+        .amt { padding: 12px !important; margin-top: 10px !important; }
+        .row { font-size: 17px !important; padding: 5px 0 !important; }
+        .total { font-size: 26px !important; margin-top: 10px !important; padding-top: 10px !important; }
+        .foot { font-size: 15px !important; margin-top: 10px !important; padding-top: 10px !important; }
       }
       * { box-sizing: border-box; }
       html, body {
         width: 100%;
-        min-height: 100vh;
+        height: auto;
+        min-height: 0;
         margin: 0;
         padding: 0;
       }
       body {
         font-family: system-ui, Arial, sans-serif;
         color: #111;
-        display: flex;
-        flex-direction: column;
       }
       .page {
-        display: flex;
-        flex-direction: column;
         width: 100%;
-        min-height: 100vh;
+        max-width: 800px;
+        margin: 0 auto;
         padding: 24px;
       }
       .head {
@@ -91,12 +106,11 @@ export function buildSignupReceiptHtml(ctx: SignupReceiptContext): string {
         padding-bottom: 20px;
         margin-bottom: 24px;
       }
-      .head h1 { margin: 0; font-size: 32px; }
-      .head p { margin: 8px 0 0; font-size: 16px; color: #555; }
+      .head h1 { margin: 0; font-size: 40px; }
+      .head p { margin: 8px 0 0; font-size: 20px; color: #555; }
       .meta {
-        font-size: 15px;
+        font-size: 20px;
         margin-bottom: 24px;
-        flex: 1;
       }
       .meta div {
         display: flex;
@@ -109,19 +123,19 @@ export function buildSignupReceiptHtml(ctx: SignupReceiptContext): string {
         border: 1px solid #e5e7eb;
         border-radius: 8px;
         padding: 24px;
-        margin-top: auto;
+        margin-top: 16px;
       }
       .row {
         display: flex;
         justify-content: space-between;
-        font-size: 16px;
+        font-size: 20px;
         padding: 10px 0;
       }
       .row.muted { color: #6b7280; }
       .total {
         display: flex;
         justify-content: space-between;
-        font-size: 24px;
+        font-size: 32px;
         font-weight: 700;
         border-top: 2px solid #111;
         margin-top: 16px;
@@ -130,7 +144,7 @@ export function buildSignupReceiptHtml(ctx: SignupReceiptContext): string {
       .foot {
         margin-top: 24px;
         text-align: center;
-        font-size: 13px;
+        font-size: 17px;
         color: #6b7280;
         border-top: 1px dashed #d1d5db;
         padding-top: 16px;
@@ -159,24 +173,33 @@ export function buildSignupReceiptHtml(ctx: SignupReceiptContext): string {
       Thank you — retain for your records
     </div>
     </div>
+    <script>
+      (function () {
+        var done = false;
+        function printOnce() {
+          if (done) return;
+          done = true;
+          window.focus();
+          window.print();
+        }
+        if (document.readyState === 'complete') setTimeout(printOnce, 150);
+        else window.addEventListener('load', function () { setTimeout(printOnce, 150); });
+      })();
+    </script>
   </body>
 </html>`;
 }
 
 export function openSignupReceiptPrintWindow(html: string): Window | null {
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const printWindow = window.open(url, '_blank');
+  const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    URL.revokeObjectURL(url);
     return null;
   }
-  printWindow.onload = () => {
-    setTimeout(() => {
-      printWindow.print();
-      URL.revokeObjectURL(url);
-    }, 350);
-  };
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+
   return printWindow;
 }
 

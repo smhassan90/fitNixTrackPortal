@@ -25,6 +25,10 @@ import {
 } from '@/lib/signupFees';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
 import { printOneTimePaymentReceipt } from '@/lib/signupReceipt';
+import {
+  receiptPrintedByFromUser,
+  tryPrintMonthlyReceiptAfterMarkPaid,
+} from '@/lib/paymentReceiptUrl';
 
 type SortByKey = 'name' | 'nextDueDate' | 'overdueCount';
 
@@ -300,15 +304,16 @@ function PaymentsPageContent() {
       try {
         await printOneTimePaymentReceipt(
           oneTimeId,
-          {
-            name: user?.name || user?.email || 'Staff',
-            email: user?.email ?? null,
-            role: user?.role ?? null,
-          },
+          receiptPrintedByFromUser(user),
           row.member.id
         );
       } catch (printErr) {
         console.warn('Signup receipt print failed:', printErr);
+        showAlert(
+          'warning',
+          'Receipt',
+          'Payment saved. Allow popups to print the receipt, or open it from the member payments page.'
+        );
       }
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
@@ -358,6 +363,20 @@ function PaymentsPageContent() {
       setConfirmPayRow(null);
       notifyDashboardStatsRefresh();
       await fetchSummaries();
+      try {
+        await tryPrintMonthlyReceiptAfterMarkPaid({
+          paymentId,
+          memberId: row.member.id,
+          printedBy: receiptPrintedByFromUser(user),
+        });
+      } catch (printErr) {
+        console.warn('Receipt print failed:', printErr);
+        showAlert(
+          'warning',
+          'Receipt',
+          'Payment saved. Allow popups to print the receipt, or open it from the member payments page.'
+        );
+      }
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {

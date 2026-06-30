@@ -14,7 +14,13 @@ import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 import { canManageGymPayments } from '@/lib/gymRoles';
 import { printPaymentReceipt } from '@/lib/paymentReceipt';
-import { printReceiptForPaymentRecord, type PrintablePaymentRecord } from '@/lib/paymentReceiptUrl';
+import {
+  printReceiptForPaymentRecord,
+  receiptPrintedByFromUser,
+  resolvePaymentIdAfterMarkPaid,
+  tryPrintMonthlyReceiptAfterMarkPaid,
+  type PrintablePaymentRecord,
+} from '@/lib/paymentReceiptUrl';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
 import { postMarkProjectedMonthPaid } from '@/lib/markProjectedMonthPaidApi';
 import { mergeWithProjectedAdvanceMonths } from '@/lib/projectedMonthlyInstallments';
@@ -382,15 +388,16 @@ export default function MemberPaymentsDetailPage() {
       try {
         await printReceiptForPaymentRecord(
           { type: 'one-time', id: oneTimeId },
-          {
-            name: user?.name || user?.email || 'Staff',
-            email: user?.email ?? null,
-            role: user?.role ?? null,
-          },
+          receiptPrintedByFromUser(user),
           memberId
         );
       } catch (printErr) {
         console.warn('Signup receipt print failed:', printErr);
+        showAlert(
+          'warning',
+          'Receipt',
+          'Payment saved. Allow popups to print the receipt.'
+        );
       }
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
@@ -406,9 +413,11 @@ export default function MemberPaymentsDetailPage() {
       setSingleConfirm(null);
       return;
     }
+    const wasProjected = Boolean(inst.isProjected);
+    const billingMonth = inst.month;
     try {
       setBulkSubmitting(true);
-      if (inst.isProjected) {
+      if (wasProjected) {
         await postMarkProjectedMonthPaid({
           memberId,
           billingMonth: inst.month,
@@ -425,6 +434,28 @@ export default function MemberPaymentsDetailPage() {
       setSingleConfirm(null);
       notifyDashboardStatsRefresh();
       await fetchDetail();
+      try {
+        const paymentId = await resolvePaymentIdAfterMarkPaid({
+          memberId,
+          month: billingMonth,
+          existingId: inst.id,
+          wasProjected,
+        });
+        if (paymentId != null) {
+          await tryPrintMonthlyReceiptAfterMarkPaid({
+            paymentId,
+            memberId,
+            printedBy: receiptPrintedByFromUser(user),
+          });
+        }
+      } catch (printErr) {
+        console.warn('Receipt print failed:', printErr);
+        showAlert(
+          'warning',
+          'Receipt',
+          'Payment saved. Allow popups to print the receipt.'
+        );
+      }
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {
@@ -474,11 +505,7 @@ export default function MemberPaymentsDetailPage() {
       return;
     }
     try {
-      await printPaymentReceipt(payment.id, {
-        name: user?.name || user?.email || 'Staff',
-        email: user?.email ?? null,
-        role: user?.role ?? null,
-      }, memberId);
+      await printPaymentReceipt(payment.id, receiptPrintedByFromUser(user), memberId);
     } catch (e: unknown) {
       showAlert('error', 'Print error', getErrorMessage(e));
     }
@@ -488,11 +515,7 @@ export default function MemberPaymentsDetailPage() {
     try {
       await printReceiptForPaymentRecord(
         record,
-        {
-          name: user?.name || user?.email || 'Staff',
-          email: user?.email ?? null,
-          role: user?.role ?? null,
-        },
+        receiptPrintedByFromUser(user),
         memberId
       );
     } catch (e: unknown) {

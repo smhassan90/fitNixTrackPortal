@@ -378,30 +378,64 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
     <title>Receipt ${escapeHtml(data.receiptNumber)}</title>
     <style>
       @media print {
-        @page { size: A4 portrait; margin: 10mm; }
+        @page { size: A4 portrait; margin: 4mm; }
         html, body {
           width: 100%;
-          height: 100%;
+          height: auto !important;
+          min-height: 0 !important;
           margin: 0;
           padding: 0;
+          overflow: visible;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
         }
         .rcpt {
-          min-height: 100%;
+          display: block !important;
+          width: 100% !important;
+          max-width: none !important;
+          min-height: 0 !important;
+          height: auto !important;
           border: none;
           border-radius: 0;
+          page-break-after: avoid;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .logo-bar { padding: 8px 12px 6px !important; }
+        .logo-bar img { max-height: 56px !important; max-width: 56px !important; }
+        .head { padding: 10px 12px !important; }
+        .head .gym { font-size: 30px !important; }
+        .head .meta { font-size: 15px !important; margin-top: 3px !important; }
+        .strip { padding: 8px 12px !important; font-size: 16px !important; }
+        .strip strong { font-size: 18px !important; }
+        .badge { font-size: 14px !important; padding: 4px 10px !important; }
+        .body { padding: 10px 12px 6px !important; display: block !important; }
+        .cols { gap: 10px 14px !important; margin-bottom: 10px !important; }
+        .block h4 { font-size: 14px !important; margin-bottom: 5px !important; padding-bottom: 4px !important; }
+        .rows { gap: 3px !important; }
+        .r { font-size: 17px !important; padding: 2px 0 !important; line-height: 1.35 !important; }
+        .amt { padding: 10px 12px !important; margin-top: 8px !important; }
+        .amt .r { font-size: 17px !important; padding: 3px 0 !important; }
+        .amt .total { font-size: 26px !important; margin-top: 8px !important; padding-top: 8px !important; }
+        .foot {
+          margin-top: 8px !important;
+          padding: 8px 12px 4px !important;
+          font-size: 14px !important;
+          line-height: 1.35 !important;
+          page-break-before: avoid !important;
+          break-before: avoid-page !important;
         }
       }
       * { box-sizing: border-box; margin: 0; padding: 0; }
       html, body {
         width: 100%;
-        min-height: 100vh;
+        height: auto;
+        min-height: 0;
       }
       body {
         font-family: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
-        font-size: 14px;
-        line-height: 1.45;
+        font-size: 21px;
+        line-height: 1.5;
         color: #111;
         background: #fff;
         margin: 0;
@@ -411,46 +445,47 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         display: flex;
         flex-direction: column;
         width: 100%;
-        min-height: 100vh;
+        max-width: 800px;
+        margin: 0 auto;
         border: 1px solid #ddd;
         overflow: hidden;
       }
       .logo-bar {
         text-align: center;
-        padding: 24px 24px 16px;
+        padding: 18px 20px 12px;
         background: #fff;
         border-bottom: 1px solid #e5e7eb;
       }
       .logo-bar img {
         display: block;
         margin: 0 auto;
-        max-width: 120px;
-        max-height: 120px;
+        max-width: 100px;
+        max-height: 100px;
         width: auto;
         height: auto;
         object-fit: contain;
       }
       .head {
         text-align: center;
-        padding: 20px 24px;
+        padding: 16px 20px;
         background: #111827;
         color: #fff;
       }
-      .head .gym { font-size: 28px; font-weight: 700; }
-      .head .meta { font-size: 13px; color: #cbd5e1; margin-top: 6px; }
+      .head .gym { font-size: 40px; font-weight: 700; }
+      .head .meta { font-size: 18px; color: #cbd5e1; margin-top: 6px; }
       .strip {
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: 12px;
-        padding: 14px 24px;
+        padding: 12px 20px;
         background: #f3f4f6;
         border-bottom: 1px solid #e5e7eb;
-        font-size: 14px;
+        font-size: 20px;
       }
-      .strip strong { font-size: 16px; }
+      .strip strong { font-size: 22px; }
       .badge {
-        font-size: 12px;
+        font-size: 16px;
         font-weight: 700;
         padding: 6px 12px;
         border-radius: 4px;
@@ -459,62 +494,61 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         white-space: nowrap;
       }
       .body {
-        flex: 1;
         display: flex;
         flex-direction: column;
-        padding: 24px;
+        padding: 18px 20px;
       }
       .cols {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 24px 32px;
-        margin-bottom: 24px;
+        gap: 18px 24px;
+        margin-bottom: 18px;
       }
       .block h4 {
-        font-size: 12px;
+        font-size: 15px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         color: #6b7280;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
         padding-bottom: 6px;
         border-bottom: 1px solid #e5e7eb;
       }
-      .rows { display: flex; flex-direction: column; gap: 6px; }
+      .rows { display: flex; flex-direction: column; gap: 4px; }
       .r {
         display: flex;
         justify-content: space-between;
         gap: 16px;
-        font-size: 14px;
+        font-size: 20px;
         padding: 4px 0;
       }
       .r dt { color: #6b7280; flex-shrink: 0; }
       .r dd { text-align: right; font-weight: 500; word-break: break-word; }
       .amt {
-        margin-top: auto;
-        padding: 20px 24px;
+        margin-top: 14px;
+        padding: 16px 18px;
         background: #f9fafb;
         border: 1px solid #e5e7eb;
         border-radius: 8px;
       }
-      .amt .r { font-size: 15px; padding: 6px 0; }
+      .amt .r { font-size: 21px; padding: 5px 0; }
       .amt .total {
         display: flex;
         justify-content: space-between;
-        margin-top: 12px;
-        padding-top: 12px;
+        margin-top: 10px;
+        padding-top: 10px;
         border-top: 2px solid #111;
-        font-size: 22px;
+        font-size: 34px;
         font-weight: 700;
       }
       .foot {
-        margin-top: 24px;
-        padding: 16px 24px 24px;
+        margin-top: 14px;
+        padding: 12px 20px 16px;
         border-top: 1px dashed #d1d5db;
-        font-size: 12px;
+        font-size: 17px;
         color: #6b7280;
         text-align: center;
-        line-height: 1.5;
+        line-height: 1.45;
       }
     </style>
   </head>
@@ -550,13 +584,45 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         <div class="amt">
           ${amountRows}
         </div>
-      </div>
 
-      <div class="foot">
-        By ${escapeHtml(printedByLine)} · ${escapeHtml(formatDateTime(data.generatedAt))}<br />
-        Thank you — retain for your records
+        <div class="foot">
+          By ${escapeHtml(printedByLine)} · ${escapeHtml(formatDateTime(data.generatedAt))}<br />
+          Thank you — retain for your records
+        </div>
       </div>
     </div>
+    <script>
+      (function () {
+        var done = false;
+        function printOnce() {
+          if (done) return;
+          done = true;
+          window.focus();
+          window.print();
+        }
+        function whenReady() {
+          var imgs = document.images;
+          if (!imgs.length) {
+            setTimeout(printOnce, 150);
+            return;
+          }
+          var pending = imgs.length;
+          function tick() {
+            pending -= 1;
+            if (pending <= 0) setTimeout(printOnce, 150);
+          }
+          for (var i = 0; i < imgs.length; i += 1) {
+            if (imgs[i].complete) tick();
+            else {
+              imgs[i].addEventListener('load', tick);
+              imgs[i].addEventListener('error', tick);
+            }
+          }
+        }
+        if (document.readyState === 'complete') whenReady();
+        else window.addEventListener('load', whenReady);
+      })();
+    </script>
   </body>
 </html>`;
 }
@@ -673,19 +739,15 @@ export async function fetchOneTimePaymentReceiptData(
 }
 
 export function openPaymentReceiptPrintWindow(html: string): Window | null {
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const printWindow = window.open(url, '_blank');
+  const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    URL.revokeObjectURL(url);
     return null;
   }
-  printWindow.onload = () => {
-    setTimeout(() => {
-      printWindow.print();
-      URL.revokeObjectURL(url);
-    }, 350);
-  };
+
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+
   return printWindow;
 }
 
