@@ -74,26 +74,26 @@ function escapeHtml(value: unknown): string {
 function formatMoney(amount: number | null | undefined): string {
   const n = Number(amount);
   if (Number.isNaN(n)) return 'Rs. 0.00';
-  return `Rs. ${n.toFixed(2)}`;
+  return `Rs. ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return formatDate(iso);
-  return d.toLocaleString(undefined, {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+function formatReceiptDate(dateInput: string | null | undefined): string {
+  if (!dateInput) return '—';
+  const normalized = dateInput.includes('T') ? dateInput : `${dateInput}T12:00:00`;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return formatDate(dateInput);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function formatMonthShort(monthKey: string): string {
+function formatReceiptDateUpper(dateInput: string | null | undefined): string {
+  return formatReceiptDate(dateInput).toUpperCase();
+}
+
+function formatReceiptMonthFull(monthKey: string): string {
   const [y, m] = monthKey.split('-').map((x) => parseInt(x, 10));
   if (!y || !m) return monthKey;
   const d = new Date(y, m - 1, 1);
-  return d.toLocaleString(undefined, { month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
 export function resolveGymLogoUrl(logoUrl?: string | null): string | null {
@@ -109,56 +109,14 @@ export function resolveGymLogoUrl(logoUrl?: string | null): string | null {
   return u;
 }
 
-function gymLocationLine(gym: PaymentReceiptData['gym']): string {
-  return [gym.address, gym.city, gym.country].filter(Boolean).join(', ');
-}
-
-function humanizeRole(role?: string | null): string {
-  if (!role) return 'Staff';
-  return role
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function optionalRow(label: string, value: unknown): string {
+function receiptBoxRow(label: string, value: unknown): string {
   if (value == null || String(value).trim() === '') return '';
-  return `<div class="r"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+  return `<div class="row"><span class="lbl">${escapeHtml(label)}:</span><span class="val">${escapeHtml(value)}</span></div>`;
 }
 
-function featuresInline(features: string[]): string {
-  return features.map((f) => escapeHtml(f)).join(' · ');
-}
-
-function buildAvailedServicesBlock(data: PaymentReceiptData): string {
-  const pkg = data.package;
-  const trainers = data.trainers;
-  let rows = '';
-
-  if (pkg) {
-    rows += optionalRow('Package', `${pkg.name} (${pkg.duration})`);
-    rows += optionalRow('Package fee', `${formatMoney(packageNetMonthly(pkg))}/mo`);
-    if (pkg.features && pkg.features.length > 0) {
-      rows += optionalRow('Includes', featuresInline(pkg.features));
-    }
-  } else {
-    rows += optionalRow('Package', 'Not availed');
-  }
-
-  if (trainers.length > 0) {
-    trainers.forEach((t, i) => {
-      const label = trainers.length > 1 ? `Trainer ${i + 1}` : 'Trainer';
-      const chargePart =
-        t.charges != null && !Number.isNaN(Number(t.charges))
-          ? `${t.name} (${formatMoney(t.charges)}/mo)`
-          : t.name;
-      rows += optionalRow(label, chargePart);
-    });
-  } else {
-    rows += optionalRow('Trainer', 'Not assigned');
-  }
-
-  return `<div class="block"><h4>Availed services</h4><dl class="rows">${rows}</dl></div>`;
+function receiptSection(title: string, rows: string): string {
+  if (!rows.trim()) return '';
+  return `<div class="section"><div class="section-title">${escapeHtml(title)}</div>${rows}</div>`;
 }
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -261,335 +219,344 @@ async function enrichReceiptFromMember(
   }
 }
 
-function buildAmountBreakdown(data: PaymentReceiptData): string {
+function buildPaymentDetailsRows(data: PaymentReceiptData): string {
   const signup = data.signupPayment;
-  if (signup) {
-    const memberDiscount =
-      Number(signup.memberDiscount ?? data.member.memberDiscount) || 0;
-    let rows = '';
+  const memberDiscount = Number(signup?.memberDiscount ?? data.member.memberDiscount) || 0;
+  let rows = '';
 
-    if (signup.admissionFee > 0) {
-      rows += `<div class="r"><dt>Admission fee</dt><dd>${formatMoney(signup.admissionFee)}</dd></div>`;
-    }
-    if (signup.packageFee > 0) {
-      rows += `<div class="r"><dt>Package (1st month)</dt><dd>${formatMoney(signup.packageFee)}</dd></div>`;
-    }
-    if (signup.trainerFee > 0) {
-      rows += `<div class="r"><dt>Trainer fee</dt><dd>${formatMoney(signup.trainerFee)}</dd></div>`;
-    }
-    if (memberDiscount > 0) {
-      rows += `<div class="r"><dt>Member discount</dt><dd>- ${formatMoney(memberDiscount)}</dd></div>`;
-    }
-    rows += `<div class="total">
-    <span>Received</span>
-    <span>${formatMoney(data.payment.amount)}</span>
-  </div>`;
-    if (
-      data.receiptType === 'signup-monthly' &&
-      data.payment.monthlyInstallmentAmount != null &&
-      data.payment.monthlyInstallmentAmount > 0 &&
-      Math.abs(data.payment.monthlyInstallmentAmount - data.payment.amount) > 0.009
-    ) {
-      rows += `<div class="r" style="margin-top:6px"><dt class="muted">Monthly installment</dt><dd>${formatMoney(data.payment.monthlyInstallmentAmount)}</dd></div>`;
-    }
+  if (data.receiptType === 'one-time') {
+    rows += receiptBoxRow('PAYMENT TYPE', 'Signup / one-time');
+    if (signup?.admissionFee) rows += receiptBoxRow('ADMISSION FEE', formatMoney(signup.admissionFee));
+    if (signup?.packageFee) rows += receiptBoxRow('PACKAGE', formatMoney(signup.packageFee));
+    if (signup?.trainerFee) rows += receiptBoxRow('TRAINER', formatMoney(signup.trainerFee));
+    if (memberDiscount > 0) rows += receiptBoxRow('DISCOUNT', `- ${formatMoney(memberDiscount)}`);
+    rows += receiptBoxRow('PAID DATE', formatReceiptDate(data.payment.paidDate || data.generatedAt));
     return rows;
   }
 
-  const pkg = data.package;
-  const pkgNetMonthly = pkg ? packageNetMonthly(pkg) : null;
-  const memberDiscount = Number(data.member.memberDiscount) || 0;
-  const trainers = data.trainers;
-  let rows = '';
-
-  if (pkg) {
-    rows += `<div class="r"><dt>Package fee</dt><dd>${formatMoney(pkgNetMonthly ?? 0)}</dd></div>`;
+  if (data.payment.month) {
+    rows += receiptBoxRow('PAYMENT MONTH', formatReceiptMonthFull(data.payment.month));
   }
 
-  if (trainers.length > 0) {
-    trainers.forEach((t) => {
-      const label =
-        trainers.length > 1 ? `Trainer fee (${t.name})` : `Trainer fee${t.name ? ` (${t.name})` : ''}`;
+  if (signup) {
+    if (signup.admissionFee > 0) rows += receiptBoxRow('ADMISSION FEE', formatMoney(signup.admissionFee));
+    if (signup.packageFee > 0) rows += receiptBoxRow('PACKAGE', formatMoney(signup.packageFee));
+    if (signup.trainerFee > 0) rows += receiptBoxRow('TRAINER', formatMoney(signup.trainerFee));
+  } else {
+    const pkg = data.package;
+    if (pkg) {
+      rows += receiptBoxRow('PACKAGE', formatMoney(packageNetMonthly(pkg)));
+    }
+    data.trainers.forEach((t, i) => {
+      const label = data.trainers.length > 1 ? `TRAINER ${i + 1}` : 'TRAINER';
       const fee = t.charges != null && !Number.isNaN(Number(t.charges)) ? Number(t.charges) : 0;
-      rows += `<div class="r"><dt>${escapeHtml(label)}</dt><dd>${formatMoney(fee)}</dd></div>`;
+      if (fee > 0) rows += receiptBoxRow(label, formatMoney(fee));
     });
   }
 
-  if (memberDiscount > 0) {
-    rows += `<div class="r"><dt>Member discount</dt><dd>- ${formatMoney(memberDiscount)}</dd></div>`;
-  }
-
-  rows += `<div class="total">
-    <span>Received</span>
-    <span>${formatMoney(data.payment.amount)}</span>
-  </div>`;
+  if (memberDiscount > 0) rows += receiptBoxRow('DISCOUNT', `- ${formatMoney(memberDiscount)}`);
+  rows += receiptBoxRow(
+    'PAID DATE',
+    formatReceiptDate(data.payment.paidDate || data.payment.dueDate || data.generatedAt)
+  );
 
   return rows;
 }
 
 export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
   const logoUrl = resolveGymLogoUrl(data.gym.logoUrl);
-  const location = gymLocationLine(data.gym);
-  const availedBlock = buildAvailedServicesBlock(data);
-  const amountRows = buildAmountBreakdown(data);
-  const gymContact = [
-    location,
-    data.gym.phone ? `Tel ${data.gym.phone}` : '',
-    data.gym.email || '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
-
-  const printedByLine = data.printedBy
-    ? `${data.printedBy.name}${data.printedBy.role ? ` (${humanizeRole(data.printedBy.role)})` : ''}`
-    : '—';
+  const receiptDate = formatReceiptDateUpper(
+    data.payment.paidDate || data.payment.dueDate || data.generatedAt
+  );
 
   const memberRows =
-    optionalRow('ID', data.member.id) +
-    optionalRow('Name', data.member.name) +
-    optionalRow('Phone', data.member.phone) +
-    optionalRow('CNIC', data.member.cnic) +
-    optionalRow('Status', data.member.isActive === false ? 'Inactive' : 'Active') +
-    optionalRow(
-      'Monthly fee',
-      data.member.monthlyPaymentAmount != null ? formatMoney(data.member.monthlyPaymentAmount) : null
-    );
+    receiptBoxRow('MEMBER ID', data.member.id) +
+    receiptBoxRow('NAME', data.member.name) +
+    receiptBoxRow('PHONE', data.member.phone);
 
-  const paymentRows =
-    data.receiptType === 'one-time'
-      ? optionalRow('Type', 'Signup / one-time payment') +
-        optionalRow('Paid', formatDate(data.payment.paidDate || data.generatedAt)) +
-        optionalRow('Status', data.payment.status)
-      : optionalRow('Month', formatMonthShort(data.payment.month)) +
-        optionalRow('Due', data.payment.dueDate ? formatDate(data.payment.dueDate) : null) +
-        optionalRow('Paid', formatDate(data.payment.paidDate || data.payment.dueDate)) +
-        optionalRow('Status', data.payment.status);
+  const packageRows =
+    receiptBoxRow('PACKAGE', data.package?.name || '—') +
+    receiptBoxRow('START DATE', formatReceiptDate(data.member.membershipStart)) +
+    receiptBoxRow('EXPIRY DATE', formatReceiptDate(data.member.membershipEnd));
 
-  const receiptSubtitle =
-    data.receiptType === 'one-time'
-      ? 'Signup / one-time payment receipt'
-      : data.receiptType === 'signup-monthly'
-        ? 'Membership receipt (includes signup)'
-        : 'Payment receipt';
+  const paymentRows = buildPaymentDetailsRows(data);
+  const totalAmount = formatMoney(data.payment.amount);
+
+  const logoBlock = logoUrl
+    ? `<div class="logo-wrap"><img class="logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(data.gym.name)}" /></div>`
+    : `<div class="gym-name">${escapeHtml(data.gym.name || 'Gym')}</div>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Receipt ${escapeHtml(data.receiptNumber)}</title>
     <style>
-      @media print {
-        @page { size: A4 portrait; margin: 4mm; }
-        html, body {
-          width: 100%;
-          height: auto !important;
-          min-height: 0 !important;
-          margin: 0;
-          padding: 0;
-          overflow: visible;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-        .rcpt {
-          display: block !important;
-          width: 100% !important;
-          max-width: none !important;
-          min-height: 0 !important;
-          height: auto !important;
-          border: none;
-          border-radius: 0;
-          page-break-after: avoid;
-          page-break-inside: avoid;
-          break-inside: avoid;
-        }
-        .logo-bar { padding: 8px 12px 6px !important; }
-        .logo-bar img { max-height: 56px !important; max-width: 56px !important; }
-        .head { padding: 10px 12px !important; }
-        .head .gym { font-size: 30px !important; }
-        .head .meta { font-size: 15px !important; margin-top: 3px !important; }
-        .strip { padding: 8px 12px !important; font-size: 16px !important; }
-        .strip strong { font-size: 18px !important; }
-        .badge { font-size: 14px !important; padding: 4px 10px !important; }
-        .body { padding: 10px 12px 6px !important; display: block !important; }
-        .cols { gap: 10px 14px !important; margin-bottom: 10px !important; }
-        .block h4 { font-size: 14px !important; margin-bottom: 5px !important; padding-bottom: 4px !important; }
-        .rows { gap: 3px !important; }
-        .r { font-size: 17px !important; padding: 2px 0 !important; line-height: 1.35 !important; }
-        .amt { padding: 10px 12px !important; margin-top: 8px !important; }
-        .amt .r { font-size: 17px !important; padding: 3px 0 !important; }
-        .amt .total { font-size: 26px !important; margin-top: 8px !important; padding-top: 8px !important; }
-        .foot {
-          margin-top: 8px !important;
-          padding: 8px 12px 4px !important;
-          font-size: 14px !important;
-          line-height: 1.35 !important;
-          page-break-before: avoid !important;
-          break-before: avoid-page !important;
-        }
-      }
       * { box-sizing: border-box; margin: 0; padding: 0; }
       html, body {
         width: 100%;
-        height: auto;
-        min-height: 0;
+        background: #fff;
       }
       body {
-        font-family: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
-        font-size: 21px;
-        line-height: 1.5;
-        color: #111;
-        background: #fff;
-        margin: 0;
-        padding: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        color: #000;
+        -webkit-font-smoothing: antialiased;
       }
       .rcpt {
         display: flex;
         flex-direction: column;
         width: 100%;
-        max-width: 800px;
+        max-width: 100%;
         margin: 0 auto;
-        border: 1px solid #ddd;
-        overflow: hidden;
+        padding: 14px 18px 18px;
       }
-      .logo-bar {
+      .top-bar,
+      .brand,
+      .divider {
+        flex-shrink: 0;
+      }
+      .top-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .doc-type {
+        font-size: 15px;
+        font-weight: 400;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding-top: 2px;
+      }
+      .receipt-meta {
+        text-align: right;
+      }
+      .receipt-no {
+        font-size: 22px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        line-height: 1.2;
+      }
+      .receipt-date {
+        font-size: 16px;
+        font-weight: 400;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        margin-top: 4px;
+      }
+      .brand {
         text-align: center;
-        padding: 18px 20px 12px;
-        background: #fff;
-        border-bottom: 1px solid #e5e7eb;
+        margin: 8px 0 14px;
       }
-      .logo-bar img {
-        display: block;
+      .logo-wrap {
+        display: flex;
+        justify-content: center;
+        align-items: center;
         margin: 0 auto;
-        max-width: 100px;
-        max-height: 100px;
+      }
+      .logo {
+        display: block;
+        max-width: min(92vw, 520px);
+        max-height: 180px;
         width: auto;
         height: auto;
         object-fit: contain;
       }
-      .head {
-        text-align: center;
-        padding: 16px 20px;
-        background: #111827;
-        color: #fff;
+      .gym-name {
+        font-size: 42px;
+        font-weight: 800;
+        line-height: 1.15;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        padding: 8px 0;
       }
-      .head .gym { font-size: 40px; font-weight: 700; }
-      .head .meta { font-size: 18px; color: #cbd5e1; margin-top: 6px; }
-      .strip {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        padding: 12px 20px;
-        background: #f3f4f6;
-        border-bottom: 1px solid #e5e7eb;
-        font-size: 20px;
+      .divider {
+        border: none;
+        border-top: 4px solid #000;
+        margin: 0 0 18px;
       }
-      .strip strong { font-size: 22px; }
-      .badge {
-        font-size: 16px;
-        font-weight: 700;
-        padding: 6px 12px;
-        border-radius: 4px;
-        background: #059669;
-        color: #fff;
-        white-space: nowrap;
-      }
-      .body {
+      .sections {
         display: flex;
         flex-direction: column;
-        padding: 18px 20px;
+        gap: 20px;
+        margin-bottom: 20px;
       }
-      .cols {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 18px 24px;
-        margin-bottom: 18px;
+      .section {
+        position: relative;
+        border: 2px solid #000;
+        padding: 22px 14px 14px;
+        flex-shrink: 0;
       }
-      .block h4 {
-        font-size: 15px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: #6b7280;
-        margin-bottom: 8px;
-        padding-bottom: 6px;
-        border-bottom: 1px solid #e5e7eb;
-      }
-      .rows { display: flex; flex-direction: column; gap: 4px; }
-      .r {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        font-size: 20px;
-        padding: 4px 0;
-      }
-      .r dt { color: #6b7280; flex-shrink: 0; }
-      .r dd { text-align: right; font-weight: 500; word-break: break-word; }
-      .amt {
-        margin-top: 14px;
-        padding: 16px 18px;
-        background: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-      }
-      .amt .r { font-size: 21px; padding: 5px 0; }
-      .amt .total {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 2px solid #111;
-        font-size: 34px;
-        font-weight: 700;
-      }
-      .foot {
-        margin-top: 14px;
-        padding: 12px 20px 16px;
-        border-top: 1px dashed #d1d5db;
+      .section-title {
+        position: absolute;
+        top: -13px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #fff;
+        padding: 0 12px;
         font-size: 17px;
-        color: #6b7280;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        padding: 12px 2px;
+        font-size: 23px;
+        font-weight: 400;
+        line-height: 1.25;
+      }
+      .lbl {
+        flex-shrink: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        font-weight: 400;
+      }
+      .val {
+        flex-shrink: 0;
+        text-align: right;
+        font-weight: 400;
+        word-break: break-word;
+        max-width: 58%;
+      }
+      .total-box {
+        border: 3px solid #000;
         text-align: center;
-        line-height: 1.45;
+        padding: 18px 14px 22px;
+        margin-top: 20px;
+        flex-shrink: 0;
+      }
+      .total-label {
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+      .total-amount {
+        font-size: 56px;
+        font-weight: 900;
+        line-height: 1.15;
+        letter-spacing: 0.01em;
+      }
+      .disclaimer {
+        border: 2px solid #000;
+        text-align: center;
+        padding: 14px 12px;
+        margin-top: 18px;
+        flex-shrink: 0;
+        font-size: 17px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+      @media print {
+        @page { size: A4 portrait; margin: 4mm; }
+        html, body {
+          width: 100%;
+          height: auto;
+          margin: 0;
+          padding: 0;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .rcpt {
+          display: block;
+          width: 100%;
+          margin: 0;
+          padding: 3mm 4mm;
+          page-break-after: avoid;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .top-bar { margin-bottom: 2mm; gap: 10px; }
+        .doc-type { font-size: 11pt; padding-top: 0; }
+        .receipt-no { font-size: 15pt; }
+        .receipt-date { font-size: 10.5pt; margin-top: 0.5mm; }
+        .brand { margin: 2mm 0 2.5mm; }
+        .logo { max-height: 24mm; max-width: 72mm; }
+        .gym-name { font-size: 22pt; padding: 1.5mm 0; }
+        .divider { margin: 0 0 3mm; border-top-width: 3px; }
+        .sections {
+          display: block;
+          gap: 0;
+          margin-bottom: 3mm;
+        }
+        .section {
+          padding: 3.5mm 3mm 2mm;
+          border-width: 2px;
+          margin-bottom: 3.5mm;
+        }
+        .section:last-child { margin-bottom: 0; }
+        .section-title {
+          font-size: 11pt;
+          top: -2.5mm;
+          padding: 0 2mm;
+        }
+        .row {
+          font-size: 13pt;
+          padding: 1.4mm 1px;
+          gap: 8px;
+          line-height: 1.25;
+          font-weight: 400;
+        }
+        .lbl, .val { font-weight: 400; }
+        .receipt-no { font-weight: 800; }
+        .section-title { font-weight: 800; }
+        .total-label { font-weight: 800; }
+        .total-amount { font-size: 32pt; line-height: 1.1; font-weight: 900; }
+        .disclaimer { font-weight: 800; }
+        .gym-name { font-weight: 800; }
+        .total-box {
+          padding: 3mm 3mm 3.5mm;
+          margin-top: 3.5mm;
+          border-width: 2.5px;
+        }
+        .total-label { font-size: 11pt; margin-bottom: 1.5mm; }
+        .disclaimer {
+          padding: 2.5mm 3mm;
+          margin-top: 3mm;
+          font-size: 11pt;
+          border-width: 2px;
+        }
       }
     </style>
   </head>
   <body>
     <div class="rcpt">
-      ${logoUrl ? `<div class="logo-bar"><img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(data.gym.name)} logo" /></div>` : ''}
-      <div class="head">
-        <div class="gym">${escapeHtml(data.gym.name || 'Gym')}</div>
-        ${gymContact ? `<div class="meta">${escapeHtml(gymContact)}</div>` : ''}
-        <div class="meta" style="margin-top:4px">${escapeHtml(receiptSubtitle)}</div>
-      </div>
-
-      <div class="strip">
-        <span><strong>${escapeHtml(data.receiptNumber)}</strong></span>
-        <span>ID ${escapeHtml(data.payment.id ?? data.payment.month)}</span>
-        <span class="badge">${escapeHtml(data.payment.status)}</span>
-      </div>
-
-      <div class="body">
-        <div class="cols">
-          <div class="block">
-            <h4>Payment</h4>
-            <dl class="rows">${paymentRows}</dl>
-          </div>
-          <div class="block">
-            <h4>Member</h4>
-            <dl class="rows">${memberRows}</dl>
-          </div>
-        </div>
-
-        ${availedBlock}
-
-        <div class="amt">
-          ${amountRows}
-        </div>
-
-        <div class="foot">
-          By ${escapeHtml(printedByLine)} · ${escapeHtml(formatDateTime(data.generatedAt))}<br />
-          Thank you — retain for your records
+      <div class="top-bar">
+        <div class="doc-type">Payment Receipt</div>
+        <div class="receipt-meta">
+          <div class="receipt-no">Receipt #${escapeHtml(data.receiptNumber)}</div>
+          <div class="receipt-date">Date: ${escapeHtml(receiptDate)}</div>
         </div>
       </div>
+
+      <div class="brand">
+        ${logoBlock}
+      </div>
+
+      <hr class="divider" />
+
+      <div class="sections">
+        ${receiptSection('Member Information', memberRows)}
+        ${receiptSection('Package Information', packageRows)}
+        ${receiptSection('Payment Details', paymentRows)}
+      </div>
+
+      <div class="total-box">
+        <div class="total-label">Total Payable Amount</div>
+        <div class="total-amount">${escapeHtml(totalAmount)}</div>
+      </div>
+
+      <div class="disclaimer">Fees once paid is non-refundable</div>
     </div>
     <script>
       (function () {
