@@ -33,7 +33,9 @@ export async function resolvePaymentIdAfterMarkPaid(params: {
     (r) => String(r.month) === params.month && String(r.status).toUpperCase() === 'PAID'
   );
   const id = row?.id;
-  return id != null && String(id).trim() !== '' ? id : null;
+  if (id == null || String(id).trim() === '') return null;
+  if (typeof id === 'string' || typeof id === 'number') return id;
+  return null;
 }
 
 export async function tryPrintMonthlyReceiptAfterMarkPaid(params: {
