@@ -15,10 +15,27 @@ export const getErrorMessage = (error: any): string => {
   }
 
   // Map error codes to user-friendly messages
+  const validationDetailMessage = (() => {
+    if (!details) return '';
+    if (Array.isArray(details)) {
+      return details
+        .map((d) => {
+          if (d && typeof d === 'object' && 'message' in d) {
+            const path = 'path' in d && d.path ? `${String(d.path)}: ` : '';
+            return `${path}${String((d as { message: unknown }).message)}`;
+          }
+          return String(d);
+        })
+        .join(', ');
+    }
+    if (typeof details === 'object') {
+      return Object.values(details).flat().join(', ');
+    }
+    return String(details);
+  })();
+
   const errorMessages: Record<string, string> = {
-    VALIDATION_ERROR: details 
-      ? Object.values(details).flat().join(', ')
-      : 'Please check your input and try again',
+    VALIDATION_ERROR: validationDetailMessage || 'Please check your input and try again',
     UNAUTHORIZED: rawMessage
       ? /invalid|expired|token/i.test(rawMessage)
         ? 'Your session has expired or is no longer valid. Please sign in again.'

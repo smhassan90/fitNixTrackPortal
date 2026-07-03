@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
@@ -8,6 +9,13 @@ import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
+import {
+  exportNoSignInCsv,
+  fetchNoSignInReport,
+  type NoSignInReport,
+} from '@/lib/attendanceApi';
+
+type AttendanceTab = 'history' | 'no-sign-in';
 
 interface MemberOption {
   id: number;
@@ -47,6 +55,7 @@ interface AttendanceFilters {
 
 export default function AttendancePage() {
   const { alert, showAlert, closeAlert } = useAlert();
+  const [activeTab, setActiveTab] = useState<AttendanceTab>('history');
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +77,11 @@ export default function AttendancePage() {
   });
   const prevFiltersRef = useRef(filters);
   const prevSortConfigRef = useRef<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  const [noSignInDays, setNoSignInDays] = useState('2');
+  const [noSignInReport, setNoSignInReport] = useState<NoSignInReport | null>(null);
+  const [noSignInLoading, setNoSignInLoading] = useState(false);
+  const [noSignInError, setNoSignInError] = useState<string | null>(null);
 
   // Fetch members for filter dropdown
   const fetchMembers = useCallback(async () => {
@@ -153,6 +167,25 @@ export default function AttendancePage() {
     }
   }, [showAlert]);
 
+  const fetchNoSignIn = useCallback(
+    async (days: number) => {
+      try {
+        setNoSignInLoading(true);
+        setNoSignInError(null);
+        const report = await fetchNoSignInReport(days);
+        setNoSignInReport(report);
+      } catch (error: unknown) {
+        const msg = getErrorMessage(error);
+        setNoSignInError(msg);
+        setNoSignInReport(null);
+        showAlert('error', 'No sign-in report', msg);
+      } finally {
+        setNoSignInLoading(false);
+      }
+    },
+    [showAlert]
+  );
+
   // Load members on mount
   useEffect(() => {
     fetchMembers();
@@ -188,6 +221,22 @@ export default function AttendancePage() {
     prevFiltersRef.current = filters;
     prevSortConfigRef.current = filters.sortBy ? { key: filters.sortBy, direction: filters.sortOrder || 'desc' } : null;
   }, [filters, fetchAttendance]);
+
+  useEffect(() => {
+    if (activeTab !== 'no-sign-in') return;
+    const days = parseInt(noSignInDays, 10);
+    if (Number.isNaN(days) || days < 1) return;
+    void fetchNoSignIn(days);
+  }, [activeTab, noSignInDays, fetchNoSignIn]);
+
+  const handleNoSignInDaysApply = () => {
+    const days = parseInt(noSignInDays, 10);
+    if (Number.isNaN(days) || days < 1 || days > 365) {
+      showAlert('error', 'Invalid days', 'Enter a value between 1 and 365.');
+      return;
+    }
+    void fetchNoSignIn(days);
+  };
 
   // Handle filter changes
   const handleFilterChange = (key: keyof AttendanceFilters, value: any) => {
@@ -231,7 +280,7 @@ export default function AttendancePage() {
     }
   };
 
-  if (loading && records.length === 0) {
+  if (loading && records.length === 0 && activeTab === 'history') {
     return (
       <Layout>
         <Loading message="Loading attendance..." />
@@ -250,12 +299,147 @@ export default function AttendancePage() {
       />
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-dark-gray">Attendance</h1>
-          <div className="text-sm text-gray-500">
-            API: {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}
+          <div>
+            <h1 className="text-3xl font-bold text-dark-gray">Attendance</h1>
+            <p className="text-sm text-gray-500 mt-1">History and absence reports</p>
           </div>
         </div>
 
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex gap-4">
+            <button
+              type="button"
+              onClick={() => setActiveTab('history')}
+              className={`whitespace-nowrap px-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'history'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              History
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('no-sign-in')}
+              className={`whitespace-nowrap px-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'no-sign-in'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              No show / Absence
+            </button>
+          </nav>
+        </div>
+
+        {activeTab === 'no-sign-in' && (
+          <>
+            <div className="bg-white p-4 rounded-lg shadow flex flex-wrap items-end gap-4">
+              <div>
+                <label className="block text-sm font-medium text-dark-gray mb-1">
+                  No check-in for at least (days)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={noSignInDays}
+                  onChange={(e) => setNoSignInDays(e.target.value)}
+                  className="w-32 px-4 py-2 border rounded-lg"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleNoSignInDaysApply}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90"
+              >
+                Apply
+              </button>
+              {noSignInReport && noSignInReport.members.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => exportNoSignInCsv(noSignInReport)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+                >
+                  Export CSV
+                </button>
+              )}
+              {noSignInReport?.cutoffDate && (
+                <p className="text-sm text-gray-500">
+                  Cutoff: {formatDate(noSignInReport.cutoffDate)} · {noSignInReport.total} member
+                  {noSignInReport.total === 1 ? '' : 's'}
+                </p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              {noSignInLoading ? (
+                <div className="px-6 py-12 text-center text-gray-500">Loading report…</div>
+              ) : noSignInError ? (
+                <div className="px-6 py-12 text-center">
+                  <p className="text-red-600 mb-4">{noSignInError}</p>
+                  <button
+                    type="button"
+                    onClick={handleNoSignInDaysApply}
+                    className="px-4 py-2 bg-primary text-white rounded-lg"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : !noSignInReport || noSignInReport.members.length === 0 ? (
+                <div className="px-6 py-12 text-center text-gray-500">
+                  All active members checked in within the last{' '}
+                  {noSignInReport?.days ?? noSignInDays} days.
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-light-gray">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Phone</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Last check-in</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Days absent</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Payment</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {noSignInReport.members.map((member) => (
+                      <tr key={member.memberId} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-dark-gray">{member.memberName}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{member.phone || '—'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {member.lastCheckInDate ? formatDate(member.lastCheckInDate) : 'Never'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">{member.daysSinceLastSignIn}</td>
+                        <td className="px-6 py-4">
+                          {member.hasOverduePayment ? (
+                            <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+                              Overdue
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <Link
+                            href={`/members?highlight=${member.memberId}`}
+                            className="text-primary font-medium hover:underline"
+                          >
+                            View member
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        )}
+
+        {activeTab === 'history' && (
+          <>
         {/* Filters */}
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -541,6 +725,8 @@ export default function AttendancePage() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
     </Layout>
   );

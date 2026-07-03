@@ -15,6 +15,7 @@ import { canManageGymCatalog } from '@/lib/gymRoles';
 import { computeSignupOneTimeFees } from '@/lib/signupFees';
 import { printOneTimePaymentReceipt } from '@/lib/signupReceipt';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
+import { DEFAULT_MAX_MEMBER_DISCOUNT, fetchGymSettings } from '@/lib/attendanceApi';
 
 interface Trainer {
   id: string;
@@ -122,6 +123,7 @@ export default function MembersPage() {
   });
   
   const [globalAdmissionAmount, setGlobalAdmissionAmount] = useState<number>(0);
+  const [maxMemberDiscount, setMaxMemberDiscount] = useState<number>(DEFAULT_MAX_MEMBER_DISCOUNT);
   const [statusDialog, setStatusDialog] = useState<{
     isOpen: boolean;
     member: Member | null;
@@ -154,20 +156,20 @@ export default function MembersPage() {
     });
   }, [editingMember]);
 
-  // Fetch admission fee from API
+  // Fetch gym billing settings (admission fee, max member discount)
   useEffect(() => {
-    const fetchAdmissionFee = async () => {
+    const loadGymSettings = async () => {
       try {
-        const response = await api.get('/api/settings');
-        if (response.data.success) {
-          setGlobalAdmissionAmount(response.data.data.admissionFee || 0);
-        }
+        const data = await fetchGymSettings();
+        setGlobalAdmissionAmount(data.admissionFee || 0);
+        setMaxMemberDiscount(data.maxMemberDiscount);
       } catch (error) {
-        console.warn('Could not fetch admission fee, using default:', error);
+        console.warn('Could not fetch gym settings, using defaults:', error);
         setGlobalAdmissionAmount(0);
+        setMaxMemberDiscount(DEFAULT_MAX_MEMBER_DISCOUNT);
       }
     };
-    fetchAdmissionFee();
+    void loadGymSettings();
   }, []);
 
   // Fetch members from API
@@ -403,6 +405,18 @@ export default function MembersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const discountAmount = Number(formData.discount);
+      if (!Number.isNaN(discountAmount) && discountAmount > 0) {
+        if (discountAmount > maxMemberDiscount) {
+          showAlert(
+            'error',
+            'Discount too high',
+            `Maximum member discount is Rs. ${maxMemberDiscount.toLocaleString()}. Change the limit in Settings if needed.`
+          );
+          return;
+        }
+      }
+
       setLoading(true);
       
       const memberData: any = {
@@ -414,7 +428,9 @@ export default function MembersPage() {
         cnic: formData.cnic ? formData.cnic.replace(/\D/g, '') : undefined,
         comments: formData.comments || undefined,
         packageId: normalizeId(formData.packageId),
-        discount: formData.discount ? parseFloat(formData.discount) : undefined,
+        ...(!Number.isNaN(discountAmount) && discountAmount > 0
+          ? { discount: discountAmount }
+          : {}),
       };
 
       // Handle trainerIds differently for create vs update
@@ -673,18 +689,30 @@ export default function MembersPage() {
 
   const handlePrintMemberReceipt = async (member: any, memberData: any, createdPayload?: any) => {
     try {
-      const memberRecord = member?.name ? member : createdPayload ?? member;
-      const oneTimeFromApi = createdPayload?.oneTimePayment as
+      const root = createdPayload ?? member;
+      const memberRecord =
+        root?.member?.name != null ? root.member : root?.name ? root : member;
+      const oneTimeFromApi = (root?.oneTimePayment ??
+        root?.paymentSummary?.oneTimePayment ??
+        member?.oneTimePayment) as
         | {
             id?: number;
             admissionFee?: number;
             packageFee?: number;
             trainerFee?: number;
             totalAmount?: number;
+            memberDiscount?: number | null;
           }
         | undefined;
 
       if (oneTimeFromApi?.id) {
+        const discountHint =
+          Number(
+            oneTimeFromApi.memberDiscount ??
+              root?.discount ??
+              memberRecord?.discount ??
+              memberData?.discount
+          ) || undefined;
         await printOneTimePaymentReceipt(
           oneTimeFromApi.id,
           {
@@ -692,7 +720,8 @@ export default function MembersPage() {
             email: user?.email ?? null,
             role: user?.role ?? null,
           },
-          memberRecord?.id
+          memberRecord?.id,
+          discountHint ? { memberDiscount: discountHint } : undefined
         );
         return;
       }
@@ -1096,18 +1125,30 @@ export default function MembersPage() {
                     <input
                       type="number"
                       min="0"
-                      max="999999"
+                      max={maxMemberDiscount}
                       step="100"
                       value={formData.discount}
                       onChange={(e) => {
                         const value = e.target.value;
-                        if (value === '' || (parseFloat(value) >= 0 && parseFloat(value) <= 999999)) {
+                        if (value === '') {
+                          setFormData({ ...formData, discount: value });
+                          return;
+                        }
+                        const parsed = parseFloat(value);
+                        if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= maxMemberDiscount) {
                           setFormData({ ...formData, discount: value });
                         }
                       }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       placeholder="e.g., 200"
                     />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Maximum Rs. {maxMemberDiscount.toLocaleString()} per member (
+                      <a href="/settings" className="text-primary underline">
+                        change in Settings
+                      </a>
+                      )
+                    </p>
                     {formData.discount && parseFloat(formData.discount) > 0 && (
                       <p className="text-xs text-green-600 mt-1">
                         Discount of Rs. {parseFloat(formData.discount).toLocaleString()} will be applied

@@ -17,6 +17,10 @@ export interface SignupPaymentReceiptSection {
 
 export type PaymentReceiptType = 'monthly' | 'one-time' | 'signup-monthly';
 
+export interface ReceiptEnrichmentHints {
+  memberDiscount?: number | null;
+}
+
 export interface PaymentReceiptData {
   receiptNumber: string;
   receiptType?: PaymentReceiptType;
@@ -170,6 +174,99 @@ function packageNetMonthly(pkg: NonNullable<PaymentReceiptData['package']>): num
   return isAnnual ? Math.max(0, pkg.price - discount) / 12 : Math.max(0, pkg.price - discount);
 }
 
+function isSignupReceipt(data: PaymentReceiptData): boolean {
+  return data.receiptType === 'one-time' && data.signupPayment != null;
+}
+
+/** Prefer API signup total; never sum line items on the client for one-time receipts. */
+export function resolveReceiptPaymentAmount(data: PaymentReceiptData): number {
+  if (isSignupReceipt(data)) {
+    return Number(data.signupPayment!.totalAmount) || Number(data.payment.amount) || 0;
+  }
+  return (
+    Number(data.payment.amount) ||
+    Number(data.payment.monthlyInstallmentAmount) ||
+    0
+  );
+}
+
+function withMemberDiscount(
+  data: PaymentReceiptData,
+  memberDiscount: number,
+  target: 'signup' | 'member' | 'both' = 'both'
+): PaymentReceiptData {
+  if (memberDiscount <= 0) return data;
+  return {
+    ...data,
+    member:
+      target === 'signup'
+        ? data.member
+        : { ...data.member, memberDiscount },
+    signupPayment:
+      data.signupPayment && target !== 'member'
+        ? {
+            ...data.signupPayment,
+            memberDiscount: data.signupPayment.memberDiscount ?? memberDiscount,
+          }
+        : data.signupPayment,
+  };
+}
+
+/** Signup: signupPayment.memberDiscount only. Monthly: member.memberDiscount only. */
+export function resolveReceiptMemberDiscountAmount(data: PaymentReceiptData): number {
+  if (isSignupReceipt(data)) {
+    const d = data.signupPayment?.memberDiscount;
+    return d != null && !Number.isNaN(Number(d)) && Number(d) > 0 ? Number(d) : 0;
+  }
+  const d = data.member.memberDiscount;
+  return d != null && !Number.isNaN(Number(d)) && Number(d) > 0 ? Number(d) : 0;
+}
+
+function applyReceiptEnrichment(
+  data: PaymentReceiptData,
+  hints?: ReceiptEnrichmentHints | null
+): PaymentReceiptData {
+  const hintDiscount = hints?.memberDiscount != null ? Number(hints.memberDiscount) : 0;
+  if (hintDiscount <= 0) return data;
+
+  if (isSignupReceipt(data) && resolveReceiptMemberDiscountAmount(data) <= 0) {
+    return withMemberDiscount(data, hintDiscount, 'signup');
+  }
+  if (!isSignupReceipt(data) && resolveReceiptMemberDiscountAmount(data) <= 0) {
+    return withMemberDiscount(data, hintDiscount, 'member');
+  }
+  return data;
+}
+
+function pickSignupPaymentRaw(raw: Record<string, unknown>): unknown {
+  const payment = asRecord(raw.payment) ?? {};
+  return (
+    raw.signupPayment ??
+    raw.signup ??
+    raw.oneTimePayment ??
+    payment.signupPayment ??
+    payment.oneTimePayment ??
+    payment.signup ??
+    null
+  );
+}
+
+function resolveMemberDiscount(
+  member: Record<string, unknown>,
+  signup: SignupPaymentReceiptSection | null
+): number | null {
+  if (signup?.memberDiscount != null && !Number.isNaN(Number(signup.memberDiscount))) {
+    return Number(signup.memberDiscount);
+  }
+  if (member.memberDiscount != null && !Number.isNaN(Number(member.memberDiscount))) {
+    return Number(member.memberDiscount);
+  }
+  if (member.discount != null && !Number.isNaN(Number(member.discount))) {
+    return Number(member.discount);
+  }
+  return null;
+}
+
 
 async function enrichReceiptFromMember(
   data: PaymentReceiptData,
@@ -183,7 +280,20 @@ async function enrichReceiptFromMember(
   );
   const needsPackageFeatures =
     data.package != null && (!data.package.features || data.package.features.length === 0);
-  if (!needsPackage && !needsTrainers && !needsTrainerCharges && !needsPackageFeatures) return data;
+  const needsMemberDiscount =
+    isSignupReceipt(data)
+      ? !data.signupPayment?.memberDiscount
+      : data.member.memberDiscount == null;
+
+  if (
+    !needsPackage &&
+    !needsTrainers &&
+    !needsTrainerCharges &&
+    !needsPackageFeatures &&
+    !needsMemberDiscount
+  ) {
+    return data;
+  }
 
   try {
     const res = await api.get(`/api/members/${memberId}`);
@@ -194,18 +304,20 @@ async function enrichReceiptFromMember(
 
     let pkg = data.package;
     const packageId = m.packageId ?? asRecord(m.package)?.id;
-    if (packageId != null) {
-      try {
-        const pRes = await api.get(`/api/packages/${packageId}`);
-        if (pRes.data?.success) {
-          const full = normalizePackage(pRes.data.data?.package ?? pRes.data.data);
-          if (full) pkg = full;
+    if (needsPackage || needsPackageFeatures) {
+      if (packageId != null) {
+        try {
+          const pRes = await api.get(`/api/packages/${packageId}`);
+          if (pRes.data?.success) {
+            const full = normalizePackage(pRes.data.data?.package ?? pRes.data.data);
+            if (full) pkg = full;
+          }
+        } catch {
+          if (!pkg && m.package) pkg = normalizePackage(m.package);
         }
-      } catch {
-        if (!pkg && m.package) pkg = normalizePackage(m.package);
+      } else if (!pkg && m.package) {
+        pkg = normalizePackage(m.package);
       }
-    } else if (!pkg && m.package) {
-      pkg = normalizePackage(m.package);
     }
 
     const trainers =
@@ -213,48 +325,62 @@ async function enrichReceiptFromMember(
         ? data.trainers
         : normalizeTrainers(m.trainers);
 
-    return { ...data, package: pkg, trainers };
+    let enriched: PaymentReceiptData = { ...data, package: pkg, trainers };
+    const fetchedDiscount = resolveMemberDiscount(m, null);
+    if (fetchedDiscount != null && fetchedDiscount > 0) {
+      if (isSignupReceipt(enriched) && !enriched.signupPayment?.memberDiscount) {
+        enriched = withMemberDiscount(enriched, fetchedDiscount, 'signup');
+      } else if (!isSignupReceipt(enriched) && enriched.member.memberDiscount == null) {
+        enriched = withMemberDiscount(enriched, fetchedDiscount, 'member');
+      }
+    }
+    return enriched;
   } catch {
     return data;
   }
 }
 
 function buildPaymentDetailsRows(data: PaymentReceiptData): string {
-  const signup = data.signupPayment;
-  const memberDiscount = Number(signup?.memberDiscount ?? data.member.memberDiscount) || 0;
+  const memberDiscount = resolveReceiptMemberDiscountAmount(data);
   let rows = '';
 
-  if (data.receiptType === 'one-time') {
+  if (isSignupReceipt(data)) {
+    const signup = data.signupPayment!;
     rows += receiptBoxRow('PAYMENT TYPE', 'Signup / one-time');
-    if (signup?.admissionFee) rows += receiptBoxRow('ADMISSION FEE', formatMoney(signup.admissionFee));
-    if (signup?.packageFee) rows += receiptBoxRow('PACKAGE', formatMoney(signup.packageFee));
-    if (signup?.trainerFee) rows += receiptBoxRow('TRAINER', formatMoney(signup.trainerFee));
-    if (memberDiscount > 0) rows += receiptBoxRow('DISCOUNT', `- ${formatMoney(memberDiscount)}`);
+    if (signup.admissionFee) {
+      rows += receiptBoxRow('ADMISSION FEE', formatMoney(signup.admissionFee));
+    }
+    if (signup.packageFee) {
+      rows += receiptBoxRow('PACKAGE (1ST MONTH)', formatMoney(signup.packageFee));
+    }
+    if (signup.trainerFee) {
+      rows += receiptBoxRow('TRAINER', formatMoney(signup.trainerFee));
+    }
+    if (memberDiscount > 0) {
+      rows += receiptBoxRow('MEMBER DISCOUNT', `- ${formatMoney(memberDiscount)}`);
+    }
     rows += receiptBoxRow('PAID DATE', formatReceiptDate(data.payment.paidDate || data.generatedAt));
     return rows;
   }
 
+  // Regular monthly receipt — signupPayment is null; total comes from payment.amount
   if (data.payment.month) {
     rows += receiptBoxRow('PAYMENT MONTH', formatReceiptMonthFull(data.payment.month));
   }
 
-  if (signup) {
-    if (signup.admissionFee > 0) rows += receiptBoxRow('ADMISSION FEE', formatMoney(signup.admissionFee));
-    if (signup.packageFee > 0) rows += receiptBoxRow('PACKAGE', formatMoney(signup.packageFee));
-    if (signup.trainerFee > 0) rows += receiptBoxRow('TRAINER', formatMoney(signup.trainerFee));
-  } else {
-    const pkg = data.package;
-    if (pkg) {
-      rows += receiptBoxRow('PACKAGE', formatMoney(packageNetMonthly(pkg)));
-    }
-    data.trainers.forEach((t, i) => {
-      const label = data.trainers.length > 1 ? `TRAINER ${i + 1}` : 'TRAINER';
-      const fee = t.charges != null && !Number.isNaN(Number(t.charges)) ? Number(t.charges) : 0;
-      if (fee > 0) rows += receiptBoxRow(label, formatMoney(fee));
-    });
+  const pkg = data.package;
+  if (pkg) {
+    rows += receiptBoxRow('PACKAGE', formatMoney(packageNetMonthly(pkg)));
   }
+  data.trainers.forEach((t, i) => {
+    const label = data.trainers.length > 1 ? `TRAINER ${i + 1}` : 'TRAINER';
+    const fee = t.charges != null && !Number.isNaN(Number(t.charges)) ? Number(t.charges) : 0;
+    if (fee > 0) rows += receiptBoxRow(label, formatMoney(fee));
+  });
 
-  if (memberDiscount > 0) rows += receiptBoxRow('DISCOUNT', `- ${formatMoney(memberDiscount)}`);
+  if (memberDiscount > 0) {
+    rows += receiptBoxRow('MEMBER DISCOUNT', `- ${formatMoney(memberDiscount)}`);
+  }
   rows += receiptBoxRow(
     'PAID DATE',
     formatReceiptDate(data.payment.paidDate || data.payment.dueDate || data.generatedAt)
@@ -280,7 +406,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
     receiptBoxRow('EXPIRY DATE', formatReceiptDate(data.member.membershipEnd));
 
   const paymentRows = buildPaymentDetailsRows(data);
-  const totalAmount = formatMoney(data.payment.amount);
+  const totalAmount = formatMoney(resolveReceiptPaymentAmount(data));
 
   const logoBlock = logoUrl
     ? `<div class="logo-wrap"><img class="logo" src="${escapeHtml(logoUrl)}" alt="${escapeHtml(data.gym.name)}" /></div>`
@@ -597,12 +723,22 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
 function normalizeSignupPayment(raw: unknown): SignupPaymentReceiptSection | null {
   const row = asRecord(raw);
   if (!row) return null;
+  const hasFees =
+    row.admissionFee != null ||
+    row.packageFee != null ||
+    row.trainerFee != null ||
+    row.totalAmount != null;
+  if (!hasFees) return null;
+  const memberDiscountRaw = row.memberDiscount;
   return {
     admissionFee: Number(row.admissionFee) || 0,
     packageFee: Number(row.packageFee) || 0,
     trainerFee: Number(row.trainerFee) || 0,
     totalAmount: Number(row.totalAmount) || 0,
-    memberDiscount: row.memberDiscount != null ? Number(row.memberDiscount) : null,
+    memberDiscount:
+      memberDiscountRaw != null && !Number.isNaN(Number(memberDiscountRaw))
+        ? Number(memberDiscountRaw)
+        : null,
   };
 }
 
@@ -620,9 +756,21 @@ export function normalizeReceiptApiPayload(
   const member = (raw.member as Record<string, unknown>) || {};
   const payment = (raw.payment as Record<string, unknown>) || {};
   const apiPrintedBy = raw.printedBy as Record<string, unknown> | null | undefined;
-  const signupPayment = normalizeSignupPayment(raw.signupPayment);
-  const receiptType = normalizeReceiptType(raw.receiptType);
+  const signupPayment = normalizeSignupPayment(pickSignupPaymentRaw(raw));
+  const receiptTypeRaw =
+    raw.receiptType ?? raw.type ?? payment.type ?? (signupPayment ? 'one-time' : 'monthly');
+  const receiptType = normalizeReceiptType(receiptTypeRaw);
   const paymentId = payment.id as string | number | undefined;
+  const memberDiscount =
+    member.memberDiscount != null && !Number.isNaN(Number(member.memberDiscount))
+      ? Number(member.memberDiscount)
+      : member.discount != null && !Number.isNaN(Number(member.discount))
+        ? Number(member.discount)
+        : null;
+  const paymentAmount =
+    receiptType === 'one-time' && signupPayment
+      ? Number(signupPayment.totalAmount) || Number(payment.amount) || 0
+      : Number(payment.amount) || Number(payment.monthlyInstallmentAmount) || 0;
 
   return {
     receiptNumber: String(raw.receiptNumber ?? (paymentId != null ? `PAY-${paymentId}` : 'RECEIPT')),
@@ -654,7 +802,7 @@ export function normalizeReceiptApiPayload(
       membershipEnd: member.membershipEnd != null ? String(member.membershipEnd) : null,
       monthlyPaymentAmount:
         member.monthlyPaymentAmount != null ? Number(member.monthlyPaymentAmount) : null,
-      memberDiscount: member.memberDiscount != null ? Number(member.memberDiscount) : null,
+      memberDiscount,
       isActive: member.isActive !== false,
     },
     package: normalizePackage(raw.package),
@@ -663,7 +811,7 @@ export function normalizeReceiptApiPayload(
     payment: {
       id: paymentId,
       month: payment.month != null ? String(payment.month) : '',
-      amount: Number(payment.amount) || 0,
+      amount: paymentAmount,
       monthlyInstallmentAmount:
         payment.monthlyInstallmentAmount != null
           ? Number(payment.monthlyInstallmentAmount)
@@ -678,7 +826,8 @@ export function normalizeReceiptApiPayload(
 export async function fetchPaymentReceiptData(
   paymentId: string | number,
   printedBy?: PaymentReceiptPrintedBy | null,
-  memberId?: string | number
+  memberId?: string | number,
+  hints?: ReceiptEnrichmentHints | null
 ): Promise<PaymentReceiptData> {
   const response = await api.get(`/api/payments/${paymentId}/receipt`);
   if (!response.data?.success) {
@@ -687,22 +836,34 @@ export async function fetchPaymentReceiptData(
   const raw = response.data.data as Record<string, unknown>;
   const base = normalizeReceiptApiPayload(raw, printedBy);
   const resolvedMemberId = memberId ?? base.member.id;
-  return enrichReceiptFromMember(base, resolvedMemberId);
+  const enriched = await enrichReceiptFromMember(base, resolvedMemberId);
+  return applyReceiptEnrichment(enriched, hints);
 }
 
 export async function fetchOneTimePaymentReceiptData(
   oneTimePaymentId: string | number,
   printedBy?: PaymentReceiptPrintedBy | null,
-  memberId?: string | number
+  memberId?: string | number,
+  hints?: ReceiptEnrichmentHints | null
 ): Promise<PaymentReceiptData> {
   const response = await api.get(`/api/payments/one-time/${oneTimePaymentId}/receipt`);
   if (!response.data?.success) {
     throw new Error(response.data?.error?.message || 'Failed to load signup receipt data');
   }
   const raw = response.data.data as Record<string, unknown>;
-  const base = normalizeReceiptApiPayload(raw, printedBy);
+  let base = normalizeReceiptApiPayload(raw, printedBy);
+  if (base.receiptType !== 'one-time') {
+    base = { ...base, receiptType: 'one-time' };
+  }
+  if (!base.signupPayment) {
+    const fallbackSignup = normalizeSignupPayment(pickSignupPaymentRaw(raw));
+    if (fallbackSignup) {
+      base = { ...base, signupPayment: fallbackSignup };
+    }
+  }
   const resolvedMemberId = memberId ?? base.member.id;
-  return enrichReceiptFromMember(base, resolvedMemberId);
+  const enriched = await enrichReceiptFromMember(base, resolvedMemberId);
+  return applyReceiptEnrichment(enriched, hints);
 }
 
 export function openPaymentReceiptPrintWindow(html: string): Window | null {
@@ -721,9 +882,10 @@ export function openPaymentReceiptPrintWindow(html: string): Window | null {
 export async function printPaymentReceipt(
   paymentId: string | number,
   printedBy?: PaymentReceiptPrintedBy | null,
-  memberId?: string | number
+  memberId?: string | number,
+  hints?: ReceiptEnrichmentHints | null
 ): Promise<void> {
-  const data = await fetchPaymentReceiptData(paymentId, printedBy, memberId);
+  const data = await fetchPaymentReceiptData(paymentId, printedBy, memberId, hints);
   const html = buildPaymentReceiptHtml(data);
   const win = openPaymentReceiptPrintWindow(html);
   if (!win) {
@@ -734,9 +896,10 @@ export async function printPaymentReceipt(
 export async function printOneTimePaymentReceipt(
   oneTimePaymentId: string | number,
   printedBy?: PaymentReceiptPrintedBy | null,
-  memberId?: string | number
+  memberId?: string | number,
+  hints?: ReceiptEnrichmentHints | null
 ): Promise<void> {
-  const data = await fetchOneTimePaymentReceiptData(oneTimePaymentId, printedBy, memberId);
+  const data = await fetchOneTimePaymentReceiptData(oneTimePaymentId, printedBy, memberId, hints);
   const html = buildPaymentReceiptHtml(data);
   const win = openPaymentReceiptPrintWindow(html);
   if (!win) {

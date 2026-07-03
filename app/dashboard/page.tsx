@@ -26,6 +26,13 @@ import {
 import { DASHBOARD_STATS_REFRESH_EVENT } from '@/lib/dashboardEvents';
 import { formatDate } from '@/lib/dateUtils';
 import {
+  fetchCurrentlyInGym,
+  normalizeDashboardAttendanceStats,
+  type DashboardAttendanceStats,
+  type MemberInGym,
+} from '@/lib/attendanceApi';
+import CurrentlyInGymModal from '@/components/CurrentlyInGymModal';
+import {
   BarChart,
   Bar,
   XAxis,
@@ -68,6 +75,10 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [revenueLoading, setRevenueLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attendanceStats, setAttendanceStats] = useState<DashboardAttendanceStats | null>(null);
+  const [inGymModalOpen, setInGymModalOpen] = useState(false);
+  const [inGymMembers, setInGymMembers] = useState<MemberInGym[]>([]);
+  const [inGymLoading, setInGymLoading] = useState(false);
 
   const fetchDashboardStats = useCallback(async () => {
     try {
@@ -90,6 +101,7 @@ export default function DashboardPage() {
         });
 
         setRecentCollections(normalizeRecentCollections(data.recentCollections));
+        setAttendanceStats(normalizeDashboardAttendanceStats(data));
 
         setRevenueByMonthFull((prev) => ({
           ...prev,
@@ -218,6 +230,19 @@ export default function DashboardPage() {
     setRefreshing(false);
   };
 
+  const openInGymModal = async () => {
+    setInGymModalOpen(true);
+    setInGymLoading(true);
+    try {
+      const data = await fetchCurrentlyInGym();
+      setInGymMembers(data.members);
+    } catch {
+      setInGymMembers([]);
+    } finally {
+      setInGymLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -247,6 +272,15 @@ export default function DashboardPage() {
 
   return (
     <Layout>
+      <CurrentlyInGymModal
+        isOpen={inGymModalOpen}
+        onClose={() => setInGymModalOpen(false)}
+        members={inGymMembers}
+        count={attendanceStats?.currentlyInGym ?? inGymMembers.length}
+        overdueCount={attendanceStats?.currentlyInGymOverdueCount ?? 0}
+        autoCheckoutHours={attendanceStats?.attendancePolicy.autoCheckoutHours ?? 6}
+        loading={inGymLoading}
+      />
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -269,7 +303,24 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-5">
+        {attendanceStats && attendanceStats.currentlyInGymOverdueCount > 0 && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {attendanceStats.currentlyInGymOverdueCount} member
+              {attendanceStats.currentlyInGymOverdueCount === 1 ? '' : 's'} currently in gym have overdue
+              payments
+            </span>
+            <button
+              type="button"
+              onClick={openInGymModal}
+              className="text-sm font-medium text-red-800 underline hover:no-underline"
+            >
+              View details
+            </button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-6">
           <div
             onClick={() => router.push('/reports')}
             className="transform cursor-pointer rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 p-6 text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
@@ -387,7 +438,94 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+
+          <div
+            onClick={openInGymModal}
+            className="transform cursor-pointer rounded-xl bg-gradient-to-br from-violet-600 to-indigo-700 p-6 text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="mb-1 text-sm font-medium text-violet-100">In gym now</p>
+                <p className="text-4xl font-bold">{attendanceStats?.currentlyInGym ?? 0}</p>
+                <p className="mt-2 text-xs text-violet-100">
+                  Checked in, not signed out (within{' '}
+                  {attendanceStats?.attendancePolicy.autoCheckoutHours ?? 6}h window)
+                </p>
+              </div>
+              <div className="rounded-full bg-white bg-opacity-20 p-4">
+                <svg className="h-8 w-8" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
         </div>
+
+        {attendanceStats && attendanceStats.recentCheckInsWithOverdue.length > 0 && (
+          <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg">
+            <div className="border-b border-gray-100 bg-slate-50/80 px-4 py-4 sm:px-6">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-dark-gray">In gym now</h2>
+                  <p className="mt-0.5 text-sm text-gray-500">
+                    Recent check-ins within the {attendanceStats.attendancePolicy.autoCheckoutHours}h window
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openInGymModal}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  View all →
+                </button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-light-gray">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Member</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Check-in</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Duration</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {attendanceStats.recentCheckInsWithOverdue.map((row) => (
+                    <tr
+                      key={`${row.memberId}-${row.checkInTime}`}
+                      className={`cursor-pointer hover:bg-gray-50/80 ${
+                        row.hasOverduePayment ? 'border-l-4 border-l-amber-500 bg-amber-50/30' : ''
+                      }`}
+                      onClick={() => router.push(`/payments/members/${row.memberId}`)}
+                    >
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.memberName}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {row.checkInTime ? formatDate(row.checkInTime) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{row.durationFormatted || '—'}</td>
+                      <td className="px-4 py-3">
+                        {row.hasOverduePayment ? (
+                          <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+                            Payment overdue
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                            Active
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {recentCollections.length > 0 && (
           <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg">
