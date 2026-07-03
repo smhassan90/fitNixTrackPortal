@@ -53,6 +53,10 @@ export interface PaymentReceiptData {
     price: number;
     discount?: number | null;
     features?: string[];
+    /** Installment coverage start (YYYY-MM-DD from receipt API). */
+    startDate?: string | null;
+    /** Installment coverage expiry (YYYY-MM-DD from receipt API). */
+    expiryDate?: string | null;
   } | null;
   trainers: { name: string; charges?: number | null }[];
   signupPayment?: SignupPaymentReceiptSection | null;
@@ -123,8 +127,43 @@ function receiptSection(title: string, rows: string): string {
   return `<div class="section"><div class="section-title">${escapeHtml(title)}</div>${rows}</div>`;
 }
 
+function receiptBoxRowOptional(label: string, rawDate: string | null | undefined): string {
+  if (rawDate == null || String(rawDate).trim() === '') return '';
+  return receiptBoxRow(label, formatReceiptDate(rawDate));
+}
+
+/** Coverage period from receipt API `package.startDate` / `package.expiryDate` (YYYY-MM-DD). */
+function buildPackageInformationRows(data: PaymentReceiptData): string {
+  let rows = receiptBoxRow('PACKAGE', data.package?.name || '—');
+  rows += receiptBoxRowOptional('COVERAGE START', data.package?.startDate);
+  rows += receiptBoxRowOptional('COVERAGE EXPIRY', data.package?.expiryDate);
+  return rows;
+}
+
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
+}
+
+function normalizePackageDate(raw: unknown): string | null {
+  if (raw == null || raw === '') return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  // Receipt API sends YYYY-MM-DD; ignore time portion if present.
+  const match = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
+function mergeReceiptPackageCoverage(
+  receiptPkg: PaymentReceiptData['package'],
+  catalogPkg: PaymentReceiptData['package']
+): PaymentReceiptData['package'] {
+  if (!catalogPkg) return receiptPkg;
+  if (!receiptPkg) return catalogPkg;
+  return {
+    ...catalogPkg,
+    startDate: receiptPkg.startDate ?? catalogPkg.startDate ?? null,
+    expiryDate: receiptPkg.expiryDate ?? catalogPkg.expiryDate ?? null,
+  };
 }
 
 function normalizePackage(pkgRaw: unknown): PaymentReceiptData['package'] {
@@ -147,6 +186,8 @@ function normalizePackage(pkgRaw: unknown): PaymentReceiptData['package'] {
     price: Number(p.price) || 0,
     discount: p.discount != null ? Number(p.discount) : null,
     features,
+    startDate: normalizePackageDate(p.startDate),
+    expiryDate: normalizePackageDate(p.expiryDate),
   };
 }
 
@@ -310,13 +351,15 @@ async function enrichReceiptFromMember(
           const pRes = await api.get(`/api/packages/${packageId}`);
           if (pRes.data?.success) {
             const full = normalizePackage(pRes.data.data?.package ?? pRes.data.data);
-            if (full) pkg = full;
+            if (full) pkg = mergeReceiptPackageCoverage(data.package, full);
           }
         } catch {
-          if (!pkg && m.package) pkg = normalizePackage(m.package);
+          if (!pkg && m.package) {
+            pkg = mergeReceiptPackageCoverage(data.package, normalizePackage(m.package));
+          }
         }
       } else if (!pkg && m.package) {
-        pkg = normalizePackage(m.package);
+        pkg = mergeReceiptPackageCoverage(data.package, normalizePackage(m.package));
       }
     }
 
@@ -400,10 +443,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
     receiptBoxRow('NAME', data.member.name) +
     receiptBoxRow('PHONE', data.member.phone);
 
-  const packageRows =
-    receiptBoxRow('PACKAGE', data.package?.name || '—') +
-    receiptBoxRow('START DATE', formatReceiptDate(data.member.membershipStart)) +
-    receiptBoxRow('EXPIRY DATE', formatReceiptDate(data.member.membershipEnd));
+  const packageRows = buildPackageInformationRows(data);
 
   const paymentRows = buildPaymentDetailsRows(data);
   const totalAmount = formatMoney(resolveReceiptPaymentAmount(data));
@@ -757,8 +797,7 @@ export function normalizeReceiptApiPayload(
   const payment = (raw.payment as Record<string, unknown>) || {};
   const apiPrintedBy = raw.printedBy as Record<string, unknown> | null | undefined;
   const signupPayment = normalizeSignupPayment(pickSignupPaymentRaw(raw));
-  const receiptTypeRaw =
-    raw.receiptType ?? raw.type ?? payment.type ?? (signupPayment ? 'one-time' : 'monthly');
+  const receiptTypeRaw = raw.receiptType ?? raw.type ?? payment.type ?? 'monthly';
   const receiptType = normalizeReceiptType(receiptTypeRaw);
   const paymentId = payment.id as string | number | undefined;
   const memberDiscount =
