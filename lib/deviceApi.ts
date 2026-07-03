@@ -77,3 +77,155 @@ export async function addAttendanceDevice(input: AddAttendanceDeviceInput): Prom
   if (!device) throw new Error('Invalid device response');
   return device;
 }
+
+export type MappingCandidate = {
+  deviceUserId: string;
+  deviceUserName: string | null;
+  deviceBadgeId: string | null;
+  pendingLogCount: number;
+  suggestedMember: { id: number; name: string } | null;
+  matchType: 'exact' | null;
+};
+
+export type UnmappedMember = {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+};
+
+export type MappingCandidatesResponse = {
+  unmappedDeviceUsers: MappingCandidate[];
+  unmappedMembers: UnmappedMember[];
+  mappedCount: number;
+  pendingLogCount: number;
+};
+
+export type ConfirmMappingsBody = {
+  mappings: Array<{ deviceUserId: string; memberId: number }>;
+};
+
+export type ConfirmMappingsResult = {
+  mapped: number;
+  attendanceSynced: number;
+  errors: string[];
+  message: string;
+};
+
+export type SyncUsersResult = {
+  unmappedCount: number;
+  message?: string;
+};
+
+export type SyncAttendanceResult = {
+  pending: number;
+  message?: string;
+};
+
+function devicePath(deviceId: number | string): string {
+  return `/api/device/${encodeURIComponent(String(deviceId))}`;
+}
+
+function normalizeSuggestedMember(raw: unknown): { id: number; name: string } | null {
+  const o = asObj(raw);
+  if (!o || o.id == null) return null;
+  const id = Number(o.id);
+  if (!Number.isFinite(id)) return null;
+  return { id, name: String(o.name ?? `Member ${id}`) };
+}
+
+function normalizeMappingCandidate(raw: unknown): MappingCandidate | null {
+  const o = asObj(raw);
+  if (!o || o.deviceUserId == null) return null;
+  const suggestedMember = normalizeSuggestedMember(o.suggestedMember);
+  const matchType = o.matchType === 'exact' && suggestedMember ? 'exact' : null;
+  return {
+    deviceUserId: String(o.deviceUserId),
+    deviceUserName: o.deviceUserName != null && o.deviceUserName !== '' ? String(o.deviceUserName) : null,
+    deviceBadgeId: o.deviceBadgeId != null && o.deviceBadgeId !== '' ? String(o.deviceBadgeId) : null,
+    pendingLogCount: Number(o.pendingLogCount ?? 0) || 0,
+    suggestedMember: matchType === 'exact' ? suggestedMember : null,
+    matchType,
+  };
+}
+
+function normalizeUnmappedMember(raw: unknown): UnmappedMember | null {
+  const o = asObj(raw);
+  if (!o || o.id == null) return null;
+  const id = Number(o.id);
+  if (!Number.isFinite(id)) return null;
+  return {
+    id,
+    name: String(o.name ?? `Member ${id}`),
+    email: o.email != null ? String(o.email) : null,
+    phone: o.phone != null ? String(o.phone) : null,
+  };
+}
+
+export function normalizeMappingCandidates(raw: unknown): MappingCandidatesResponse {
+  const o = asObj(raw) ?? {};
+  return {
+    unmappedDeviceUsers: (Array.isArray(o.unmappedDeviceUsers) ? o.unmappedDeviceUsers : [])
+      .map(normalizeMappingCandidate)
+      .filter((c): c is MappingCandidate => c != null),
+    unmappedMembers: (Array.isArray(o.unmappedMembers) ? o.unmappedMembers : [])
+      .map(normalizeUnmappedMember)
+      .filter((m): m is UnmappedMember => m != null),
+    mappedCount: Number(o.mappedCount ?? 0) || 0,
+    pendingLogCount: Number(o.pendingLogCount ?? 0) || 0,
+  };
+}
+
+export async function fetchMappingCandidates(
+  deviceId: number | string
+): Promise<MappingCandidatesResponse> {
+  const res = await api.get(`${devicePath(deviceId)}/mapping-candidates`);
+  if (!res.data?.success) {
+    throw new Error(res.data?.error?.message || 'Failed to load mapping candidates');
+  }
+  return normalizeMappingCandidates(res.data.data);
+}
+
+export async function confirmDeviceMappings(
+  deviceId: number | string,
+  mappings: ConfirmMappingsBody['mappings']
+): Promise<ConfirmMappingsResult> {
+  const res = await api.post(`${devicePath(deviceId)}/mappings/confirm`, { mappings });
+  if (!res.data?.success) {
+    throw new Error(res.data?.error?.message || 'Failed to confirm mappings');
+  }
+  const o = asObj(res.data.data) ?? {};
+  const errors = Array.isArray(o.errors)
+    ? o.errors.map((e) => String(e))
+    : [];
+  return {
+    mapped: Number(o.mapped ?? 0) || 0,
+    attendanceSynced: Number(o.attendanceSynced ?? 0) || 0,
+    errors,
+    message: String(o.message ?? res.data.message ?? ''),
+  };
+}
+
+export async function syncDeviceUsers(deviceId: number | string): Promise<SyncUsersResult> {
+  const res = await api.post(`${devicePath(deviceId)}/sync-users`);
+  if (!res.data?.success) {
+    throw new Error(res.data?.error?.message || 'Failed to sync device users');
+  }
+  const o = asObj(res.data.data) ?? {};
+  return {
+    unmappedCount: Number(o.unmappedCount ?? 0) || 0,
+    message: typeof o.message === 'string' ? o.message : res.data.message,
+  };
+}
+
+export async function syncDeviceAttendance(deviceId: number | string): Promise<SyncAttendanceResult> {
+  const res = await api.post(`${devicePath(deviceId)}/sync-attendance`);
+  if (!res.data?.success) {
+    throw new Error(res.data?.error?.message || 'Failed to sync attendance');
+  }
+  const o = asObj(res.data.data) ?? {};
+  return {
+    pending: Number(o.pending ?? 0) || 0,
+    message: typeof o.message === 'string' ? o.message : res.data.message,
+  };
+}
