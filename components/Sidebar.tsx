@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -142,6 +142,29 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     };
   }, [isOpen, onToggle]);
 
+  const navRef = useRef<HTMLElement>(null);
+  const [scrollFades, setScrollFades] = useState({ top: false, bottom: false });
+
+  const updateScrollFades = useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const overflow = scrollHeight - clientHeight > 1;
+    setScrollFades({
+      top: overflow && scrollTop > 4,
+      bottom: overflow && scrollTop + clientHeight < scrollHeight - 4,
+    });
+  }, []);
+
+  useEffect(() => {
+    updateScrollFades();
+    const el = navRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(updateScrollFades);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [navItems, updateScrollFades]);
+
   return (
     <>
       {/* Mobile/Tablet Overlay */}
@@ -160,7 +183,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
       {/* Logo Section */}
-      <div className="p-6 border-b border-slate-700 border-opacity-50">
+      <div className="p-6 border-b border-slate-700 border-opacity-50 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="bg-gradient-to-br from-primary to-primary-dark p-2 rounded-lg">
@@ -189,43 +212,60 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 overflow-y-auto">
-        <ul className="space-y-1">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href;
-            return (
-              <li key={item.name}>
-                <Link
-                  href={item.href}
-                  onClick={(e) => {
-                    // Only close sidebar on mobile/tablet when navigating
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-                      onToggle();
-                    }
-                  }}
-                  className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${
-                    isActive
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-700 hover:text-white hover:translate-x-1'
-                  }`}
-                >
-                  <span className={`mr-3 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>
-                    {item.icon}
-                  </span>
-                  <span className="font-medium">{item.name}</span>
-                  {isActive && (
-                    <span className="ml-auto w-1 h-6 bg-primary rounded-full"></span>
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      {/* Navigation — fixed header/footer with scrollable middle */}
+      <div className="relative flex-1 min-h-0">
+        {scrollFades.top && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-slate-800 to-transparent"
+          />
+        )}
+        <nav
+          ref={navRef}
+          onScroll={updateScrollFades}
+          className="h-full overflow-y-auto sidebar-scroll p-4"
+        >
+          <ul className="space-y-1">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <li key={item.name}>
+                  <Link
+                    href={item.href}
+                    onClick={() => {
+                      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                        onToggle();
+                      }
+                    }}
+                    className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${
+                      isActive
+                        ? 'bg-slate-700 text-white'
+                        : 'text-slate-300 hover:bg-slate-700 hover:text-white hover:translate-x-1'
+                    }`}
+                  >
+                    <span className={`mr-3 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>
+                      {item.icon}
+                    </span>
+                    <span className="font-medium">{item.name}</span>
+                    {isActive && (
+                      <span className="ml-auto w-1 h-6 bg-primary rounded-full"></span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+        {scrollFades.bottom && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-5 bg-gradient-to-t from-slate-900 to-transparent"
+          />
+        )}
+      </div>
 
       {/* User Section */}
-      <div className="p-4 border-t border-slate-700 border-opacity-50 bg-slate-900">
+      <div className="p-4 border-t border-slate-700 border-opacity-50 bg-slate-900 shrink-0">
         <div className="mb-4 p-3 bg-slate-800 rounded-xl">
           <div className="flex items-center space-x-3 mb-2">
             <div className="bg-gradient-to-br from-primary to-primary-dark w-10 h-10 rounded-full flex items-center justify-center">

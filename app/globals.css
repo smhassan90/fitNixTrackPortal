@@ -20,6 +20,18 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Hide scrollbar in side drawers; scroll fades indicate overflow */
+  .sidebar-scroll {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 
