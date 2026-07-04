@@ -4,6 +4,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { usePlatformAuth, useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
+import FitNixLogo from '@/components/FitNixLogo';
 
 const links = [
   { href: '/platform', label: 'Home' },
@@ -43,9 +44,12 @@ export default function PlatformSidebar() {
   return (
     <aside className="w-64 shrink-0 border-r border-dark-gray-light/20 bg-dark-gray text-white min-h-screen flex flex-col overflow-hidden">
       <div className="p-6 border-b border-white/10 shrink-0">
-        <p className="text-xs uppercase tracking-wider text-white/60">FitNix</p>
-        <h1 className="text-lg font-semibold">Platform</h1>
-        <p className="text-xs text-white/50 mt-1">Operator console</p>
+        <FitNixLogo
+          size="sm"
+          subtitle="Platform · Operator console"
+          titleClassName="text-white"
+          subtitleClassName="text-white/50"
+        />
       </div>
       <div className="relative flex-1 min-h-0">
         {scrollFades.top && (

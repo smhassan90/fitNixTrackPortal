@@ -5,23 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Loading from '@/components/Loading';
-
-function BrandMark({ className = 'h-10 w-10' }: { className?: string }) {
-  return (
-    <div
-      className={`flex items-center justify-center rounded-2xl bg-white/15 shadow-lg ring-1 ring-white/20 backdrop-blur-sm ${className}`}
-    >
-      <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M6.5 6.5h2v11h-2v-11zm9 0h2v11h-2v-11zM8.5 12h7"
-        />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 8.5h3m13 0h3M4 15.5h3m13 0h3" />
-      </svg>
-    </div>
-  );
-}
+import FitNixLogo from '@/components/FitNixLogo';
 
 const highlights = [
   {
@@ -97,12 +81,14 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-dark-gray/20 blur-3xl" />
         <div className="pointer-events-none absolute right-12 top-1/3 h-40 w-40 rounded-full bg-white/5 ring-1 ring-white/10" />
 
-        <div className="relative z-10 flex items-center gap-3">
-          <BrandMark />
-          <div>
-            <p className="text-lg font-bold tracking-tight">Fit Nix Track</p>
-            <p className="text-sm text-white/75">Gym management platform</p>
-          </div>
+        <div className="relative z-10">
+          <FitNixLogo
+            tone="onBrand"
+            size="lg"
+            subtitle="Gym management platform"
+            titleClassName="text-white text-xl"
+            subtitleClassName="text-white/75 text-sm"
+          />
         </div>
 
         <div className="relative z-10 my-12">
@@ -138,17 +124,8 @@ export default function LoginPage() {
 
         <div className="relative w-full max-w-md">
           {/* Mobile brand */}
-          <div className="mb-8 flex items-center justify-center gap-3 lg:hidden">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-white shadow-lg shadow-primary/25">
-              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.5 6.5h2v11h-2v-11zm9 0h2v11h-2v-11zM8.5 12h7" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 8.5h3m13 0h3M4 15.5h3m13 0h3" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-lg font-bold text-dark-gray">Fit Nix Track</p>
-              <p className="text-sm text-dark-gray-light">Admin Portal</p>
-            </div>
+          <div className="mb-8 flex justify-center lg:hidden">
+            <FitNixLogo size="md" subtitle="Admin Portal" />
           </div>
 
           <div className="rounded-2xl border border-light-gray-dark/60 bg-white p-8 shadow-xl shadow-dark-gray/5 sm:p-10">

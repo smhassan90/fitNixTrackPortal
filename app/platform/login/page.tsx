@@ -9,6 +9,7 @@ import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
 import { sanitizePlatformReturnTo } from '@/lib/platform/sessionRedirect';
 import Loading from '@/components/Loading';
 import Alert from '@/components/Alert';
+import FitNixLogo from '@/components/FitNixLogo';
 import { useAlert } from '@/hooks/useAlert';
 
 export default function PlatformLoginPage() {
@@ -100,8 +101,8 @@ export default function PlatformLoginPage() {
       />
       <div className="min-h-screen flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-light-gray-dark p-8">
-          <p className="text-xs font-semibold uppercase tracking-wide text-purple">FitNix Platform</p>
-          <h1 className="mt-1 text-2xl font-bold text-dark-gray">Operator sign-in</h1>
+          <FitNixLogo size="md" subtitle="Platform operator console" />
+          <h1 className="mt-6 text-2xl font-bold text-dark-gray">Operator sign-in</h1>
           <p className="mt-2 text-sm text-dark-gray-light">
             This login is separate from gym staff accounts. Use platform credentials only.
           </p>

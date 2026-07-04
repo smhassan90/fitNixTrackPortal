@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import FitNixLogo from '@/components/FitNixLogo';
 
 const teamNavItem = {
   name: 'Team',
@@ -185,17 +186,12 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       {/* Logo Section */}
       <div className="p-6 border-b border-slate-700 border-opacity-50 shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="bg-gradient-to-br from-primary to-primary-dark p-2 rounded-lg">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">FitNixTrack</h1>
-              <p className="text-xs text-gray-400">Admin Portal</p>
-            </div>
-          </div>
+          <FitNixLogo
+            size="sm"
+            subtitle="Admin Portal"
+            titleClassName="text-white"
+            subtitleClassName="text-gray-400"
+          />
           {/* Close/Toggle button */}
           <button
             onClick={(e) => {

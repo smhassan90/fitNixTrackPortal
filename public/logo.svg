@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="FitNix Track">
+  <defs>
+    <linearGradient id="fn-bg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#48C9B0"/>
+      <stop offset="1" stop-color="#0E8F7A"/>
+    </linearGradient>
+    <linearGradient id="fn-shine" x1="32" y1="2" x2="32" y2="34" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#fn-bg)"/>
+  <rect width="64" height="64" rx="18" fill="url(#fn-shine)"/>
+  <!-- Tracking ring -->
+  <circle cx="32" cy="32" r="23" stroke="#fff" stroke-opacity=".22" stroke-width="2.75"/>
+  <path
+    d="M32 9a23 23 0 1 1-16.26 6.74"
+    stroke="#fff"
+    stroke-width="2.75"
+    stroke-linecap="round"
+  />
+  <!-- Dumbbell -->
+  <g fill="#fff">
+    <rect x="14" y="23.5" width="6.5" height="17" rx="2.25"/>
+    <rect x="19.5" y="26.5" width="4" height="11" rx="1.25"/>
+    <rect x="22.5" y="30" width="19" height="4" rx="2"/>
+    <rect x="40.5" y="26.5" width="4" height="11" rx="1.25"/>
+    <rect x="43.5" y="23.5" width="6.5" height="17" rx="2.25"/>
+  </g>
+</svg>
