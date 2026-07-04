@@ -580,8 +580,7 @@ export default function ReportsPage() {
               </p>
               {displayCollected == null && (
                 <p className="mt-1 text-[11px] leading-snug text-emerald-900/75">
-                  Connect daily payments received (see chart below) or have your API return a period total on financial
-                  summary (e.g. <code className="rounded bg-white/80 px-0.5 text-[10px]">amountCollectedInRange</code>).
+                  Total for this period isn’t available yet—check the day-by-day chart below when it has data.
                 </p>
               )}
               {displayCollected != null && (
@@ -652,12 +651,6 @@ export default function ReportsPage() {
               )}
             </div>
           </div>
-          <p className="mt-3 text-[11px] text-gray-500">
-            When amounts come from <strong>GET /api/reports/financial-summary</strong>, member counts must use the same
-            definition (<code className="rounded bg-gray-100 px-0.5 text-[10px]">*MemberCount</code> fields). Otherwise
-            the portal only shows counts derived from <strong>GET /api/payments/member-summaries</strong> when the rupee
-            total is also computed from that list (no server total).
-          </p>
           {paymentsError && <p className="mt-2 text-sm text-amber-700">{paymentsError}</p>}
         </section>
 
@@ -748,8 +741,7 @@ export default function ReportsPage() {
             <div>
               <h2 className="text-lg font-semibold text-dark-gray">Payments collected (ledger)</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Fee collection history from <code className="text-xs">GET /api/reports/fee-collections</code> — cash
-                actually received in the selected date range.
+                Cash actually received in the selected date range.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
