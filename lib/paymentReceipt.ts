@@ -143,8 +143,8 @@ function receiptBoxRowOptional(label: string, rawDate: string | null | undefined
 /** Coverage period from receipt API `package.startDate` / `package.expiryDate` (YYYY-MM-DD). */
 function buildPackageInformationRows(data: PaymentReceiptData): string {
   let rows = receiptBoxRow('PACKAGE', data.package?.name || '—');
-  rows += receiptBoxRowOptional('COVERAGE START', data.package?.startDate);
-  rows += receiptBoxRowOptional('COVERAGE EXPIRY', data.package?.expiryDate);
+  rows += receiptBoxRowOptional('START', data.package?.startDate);
+  rows += receiptBoxRowOptional('EXPIRY', data.package?.expiryDate);
   return rows;
 }
 
@@ -397,12 +397,15 @@ function buildPaymentDetailsRows(data: PaymentReceiptData): string {
 
   if (isSignupReceipt(data)) {
     const signup = data.signupPayment!;
-    rows += receiptBoxRow('PAYMENT TYPE', 'Signup / one-time');
+    rows += receiptBoxRow('TYPE', 'Signup / one-time');
     if (signup.admissionFee) {
       rows += receiptBoxRow('ADMISSION FEE', formatMoney(signup.admissionFee));
     }
     if (signup.packageFee) {
-      rows += receiptBoxRow('PACKAGE (1ST MONTH)', formatMoney(signup.packageFee));
+      // API stores the package fee already net of the member discount. Show the
+      // gross package price here so the separate DISCOUNT line isn't double-counted.
+      const grossPackageFee = signup.packageFee + (memberDiscount > 0 ? memberDiscount : 0);
+      rows += receiptBoxRow('PACKAGE', formatMoney(grossPackageFee));
     }
     if (signup.trainerFee) {
       rows += receiptBoxRow('TRAINER', formatMoney(signup.trainerFee));
