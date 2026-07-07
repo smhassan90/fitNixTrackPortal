@@ -490,7 +490,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         margin-bottom: 10px;
       }
       .doc-type {
-        font-size: 15px;
+        font-size: 30px;
         font-weight: 400;
         letter-spacing: 0.04em;
         text-transform: uppercase;
@@ -500,14 +500,14 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         text-align: right;
       }
       .receipt-no {
-        font-size: 22px;
+        font-size: 44px;
         font-weight: 800;
         letter-spacing: 0.02em;
         text-transform: uppercase;
         line-height: 1.2;
       }
       .receipt-date {
-        font-size: 16px;
+        font-size: 32px;
         font-weight: 400;
         letter-spacing: 0.03em;
         text-transform: uppercase;
@@ -532,7 +532,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         object-fit: contain;
       }
       .gym-name {
-        font-size: 42px;
+        font-size: 84px;
         font-weight: 800;
         line-height: 1.15;
         text-transform: uppercase;
@@ -563,7 +563,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         transform: translateX(-50%);
         background: #fff;
         padding: 0 12px;
-        font-size: 20px;
+        font-size: 40px;
         font-weight: 800;
         letter-spacing: 0.06em;
         text-transform: uppercase;
@@ -575,7 +575,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         align-items: baseline;
         gap: 10px;
         padding: 13px 2px;
-        font-size: 26px;
+        font-size: 52px;
         font-weight: 400;
         line-height: 1.3;
       }
@@ -587,7 +587,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
       }
       .val {
         flex: 1;
-        text-align: left;
+        text-align: right;
         font-weight: 700;
         word-break: break-word;
       }
@@ -599,14 +599,14 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         flex-shrink: 0;
       }
       .total-label {
-        font-size: 16px;
+        font-size: 32px;
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         margin-bottom: 10px;
       }
       .total-amount {
-        font-size: 56px;
+        font-size: 112px;
         font-weight: 900;
         line-height: 1.15;
         letter-spacing: 0.01em;
@@ -617,7 +617,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         padding: 14px 12px;
         margin-top: 18px;
         flex-shrink: 0;
-        font-size: 17px;
+        font-size: 34px;
         font-weight: 800;
         letter-spacing: 0.05em;
         text-transform: uppercase;
@@ -642,12 +642,12 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
           break-inside: avoid;
         }
         .top-bar { margin-bottom: 3mm; gap: 10px; }
-        .doc-type { font-size: 17pt; padding-top: 0; }
-        .receipt-no { font-size: 23pt; }
-        .receipt-date { font-size: 16pt; margin-top: 1mm; }
+        .doc-type { font-size: 34pt; padding-top: 0; }
+        .receipt-no { font-size: 46pt; }
+        .receipt-date { font-size: 32pt; margin-top: 1mm; }
         .brand { margin: 3mm 0 4mm; }
         .logo { max-height: 34mm; max-width: 92mm; }
-        .gym-name { font-size: 32pt; padding: 2mm 0; }
+        .gym-name { font-size: 64pt; padding: 2mm 0; }
         .divider { margin: 0 0 4.5mm; border-top-width: 3px; }
         .sections {
           display: block;
@@ -661,12 +661,12 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         }
         .section:last-child { margin-bottom: 0; }
         .section-title {
-          font-size: 17pt;
+          font-size: 34pt;
           top: -3.5mm;
           padding: 0 2.5mm;
         }
         .row {
-          font-size: 21pt;
+          font-size: 42pt;
           padding: 2.8mm 1px;
           gap: 6px;
           line-height: 1.35;
@@ -674,11 +674,11 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
           justify-content: flex-start;
         }
         .lbl { font-weight: 400; }
-        .val { font-weight: 700; text-align: left; flex: 1; }
+        .val { font-weight: 700; text-align: right; flex: 1; }
         .receipt-no { font-weight: 800; }
         .section-title { font-weight: 800; }
         .total-label { font-weight: 800; }
-        .total-amount { font-size: 46pt; line-height: 1.1; font-weight: 900; }
+        .total-amount { font-size: 92pt; line-height: 1.1; font-weight: 900; }
         .disclaimer { font-weight: 800; }
         .gym-name { font-weight: 800; }
         .total-box {
@@ -686,11 +686,11 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
           margin-top: 5mm;
           border-width: 2.5px;
         }
-        .total-label { font-size: 17pt; margin-bottom: 2.5mm; }
+        .total-label { font-size: 34pt; margin-bottom: 2.5mm; }
         .disclaimer {
           padding: 3.5mm 3mm;
           margin-top: 4.5mm;
-          font-size: 17pt;
+          font-size: 34pt;
           border-width: 2px;
         }
       }
