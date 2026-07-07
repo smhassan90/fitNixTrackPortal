@@ -642,12 +642,12 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
           break-inside: avoid;
         }
         .top-bar { margin-bottom: 3mm; gap: 10px; }
-        .doc-type { font-size: 13pt; padding-top: 0; }
-        .receipt-no { font-size: 18pt; }
-        .receipt-date { font-size: 12.5pt; margin-top: 1mm; }
+        .doc-type { font-size: 17pt; padding-top: 0; }
+        .receipt-no { font-size: 23pt; }
+        .receipt-date { font-size: 16pt; margin-top: 1mm; }
         .brand { margin: 3mm 0 4mm; }
-        .logo { max-height: 30mm; max-width: 84mm; }
-        .gym-name { font-size: 26pt; padding: 2mm 0; }
+        .logo { max-height: 34mm; max-width: 92mm; }
+        .gym-name { font-size: 32pt; padding: 2mm 0; }
         .divider { margin: 0 0 4.5mm; border-top-width: 3px; }
         .sections {
           display: block;
@@ -661,13 +661,13 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         }
         .section:last-child { margin-bottom: 0; }
         .section-title {
-          font-size: 13.5pt;
-          top: -3mm;
+          font-size: 17pt;
+          top: -3.5mm;
           padding: 0 2.5mm;
         }
         .row {
-          font-size: 16pt;
-          padding: 2.4mm 1px;
+          font-size: 21pt;
+          padding: 2.8mm 1px;
           gap: 6px;
           line-height: 1.35;
           font-weight: 400;
@@ -678,7 +678,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         .receipt-no { font-weight: 800; }
         .section-title { font-weight: 800; }
         .total-label { font-weight: 800; }
-        .total-amount { font-size: 38pt; line-height: 1.1; font-weight: 900; }
+        .total-amount { font-size: 46pt; line-height: 1.1; font-weight: 900; }
         .disclaimer { font-weight: 800; }
         .gym-name { font-weight: 800; }
         .total-box {
@@ -686,11 +686,11 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
           margin-top: 5mm;
           border-width: 2.5px;
         }
-        .total-label { font-size: 13pt; margin-bottom: 2.5mm; }
+        .total-label { font-size: 17pt; margin-bottom: 2.5mm; }
         .disclaimer {
           padding: 3.5mm 3mm;
           margin-top: 4.5mm;
-          font-size: 13pt;
+          font-size: 17pt;
           border-width: 2px;
         }
       }
