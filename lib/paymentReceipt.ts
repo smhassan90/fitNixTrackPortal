@@ -81,8 +81,14 @@ function escapeHtml(value: unknown): string {
 
 function formatMoney(amount: number | null | undefined): string {
   const n = Number(amount);
-  if (Number.isNaN(n)) return 'Rs. 0.00';
-  return `Rs. ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (Number.isNaN(n)) return 'Rs.\u00a00';
+  const hasFraction = Math.abs(n % 1) > 1e-9;
+  const formatted = n.toLocaleString('en-US', {
+    minimumFractionDigits: hasFraction ? 2 : 0,
+    maximumFractionDigits: hasFraction ? 2 : 0,
+  });
+  // Non-breaking space keeps "Rs." and the amount on one line.
+  return `Rs.\u00a0${formatted}`;
 }
 
 function formatReceiptDate(dateInput: string | null | undefined): string {
@@ -573,11 +579,12 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
       }
       .row {
         display: flex;
-        justify-content: flex-start;
+        flex-wrap: wrap;
+        justify-content: space-between;
         align-items: baseline;
-        gap: 10px;
+        gap: 4px 10px;
         padding: 13px 2px;
-        font-size: 52px;
+        font-size: 46px;
         font-weight: 400;
         line-height: 1.3;
       }
@@ -588,10 +595,12 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         font-weight: 400;
       }
       .val {
-        flex: 1;
+        flex: 1 1 auto;
         text-align: right;
         font-weight: 700;
-        word-break: break-word;
+        /* Keep the amount together; if it can't fit beside the label it
+           wraps to its own line as a whole instead of breaking per character. */
+        white-space: nowrap;
       }
       .total-box {
         border: 3px solid #000;
@@ -608,10 +617,11 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         margin-bottom: 10px;
       }
       .total-amount {
-        font-size: 112px;
+        font-size: 88px;
         font-weight: 900;
-        line-height: 1.15;
+        line-height: 1.1;
         letter-spacing: 0.01em;
+        white-space: nowrap;
       }
       .disclaimer {
         border: 2px solid #000;
@@ -677,19 +687,20 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
           padding: 0 2.5mm;
         }
         .row {
-          font-size: 42pt;
+          font-size: 34pt;
           padding: 2.8mm 1px;
-          gap: 6px;
-          line-height: 1.35;
+          gap: 3px 6px;
+          line-height: 1.3;
           font-weight: 400;
-          justify-content: flex-start;
+          flex-wrap: wrap;
+          justify-content: space-between;
         }
         .lbl { font-weight: 400; }
-        .val { font-weight: 700; text-align: right; flex: 1; }
+        .val { font-weight: 700; text-align: right; flex: 1 1 auto; white-space: nowrap; }
         .receipt-no { font-weight: 800; }
         .section-title { font-weight: 800; }
         .total-label { font-weight: 800; }
-        .total-amount { font-size: 92pt; line-height: 1.1; font-weight: 900; }
+        .total-amount { font-size: 72pt; line-height: 1.05; font-weight: 900; white-space: nowrap; }
         .disclaimer { font-weight: 800; }
         .gym-name { font-weight: 800; }
         .total-box {
