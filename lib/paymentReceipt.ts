@@ -623,7 +623,8 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         text-transform: uppercase;
       }
       @media print {
-        @page { size: A4 portrait; margin: 4mm; }
+        /* Single continuous long page so the receipt never splits across sheets. */
+        @page { size: 210mm 700mm; margin: 6mm; }
         html, body {
           width: 100%;
           height: auto;
@@ -658,8 +659,16 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
           padding: 5mm 4mm 3.5mm;
           border-width: 2px;
           margin-bottom: 5.5mm;
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
         .section:last-child { margin-bottom: 0; }
+        .total-box,
+        .disclaimer,
+        .row {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
         .section-title {
           font-size: 34pt;
           top: -3.5mm;
