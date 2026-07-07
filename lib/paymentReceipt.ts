@@ -101,7 +101,9 @@ function formatReceiptMonthFull(monthKey: string): string {
   const [y, m] = monthKey.split('-').map((x) => parseInt(x, 10));
   if (!y || !m) return monthKey;
   const d = new Date(y, m - 1, 1);
-  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  // Abbreviated month keeps the value on a single line in the receipt column (e.g. "Feb, 2026").
+  const month = d.toLocaleDateString('en-US', { month: 'short' });
+  return `${month}, ${y}`;
 }
 
 export function resolveGymLogoUrl(logoUrl?: string | null): string | null {
@@ -408,7 +410,7 @@ function buildPaymentDetailsRows(data: PaymentReceiptData): string {
 
   // Regular monthly receipt — signupPayment is null; total comes from payment.amount
   if (data.payment.month) {
-    rows += receiptBoxRow('PAYMENT MONTH', formatReceiptMonthFull(data.payment.month));
+    rows += receiptBoxRow('MONTH', formatReceiptMonthFull(data.payment.month));
   }
 
   const pkg = data.package;
