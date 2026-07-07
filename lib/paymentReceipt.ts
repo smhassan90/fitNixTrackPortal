@@ -547,23 +547,23 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
       .sections {
         display: flex;
         flex-direction: column;
-        gap: 20px;
-        margin-bottom: 20px;
+        gap: 26px;
+        margin-bottom: 26px;
       }
       .section {
         position: relative;
         border: 2px solid #000;
-        padding: 22px 14px 14px;
+        padding: 28px 16px 18px;
         flex-shrink: 0;
       }
       .section-title {
         position: absolute;
-        top: -13px;
+        top: -14px;
         left: 50%;
         transform: translateX(-50%);
         background: #fff;
         padding: 0 12px;
-        font-size: 17px;
+        font-size: 20px;
         font-weight: 800;
         letter-spacing: 0.06em;
         text-transform: uppercase;
@@ -571,13 +571,13 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
       }
       .row {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-start;
         align-items: baseline;
-        gap: 12px;
-        padding: 12px 2px;
-        font-size: 23px;
+        gap: 10px;
+        padding: 13px 2px;
+        font-size: 26px;
         font-weight: 400;
-        line-height: 1.25;
+        line-height: 1.3;
       }
       .lbl {
         flex-shrink: 0;
@@ -586,11 +586,10 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
         font-weight: 400;
       }
       .val {
-        flex-shrink: 0;
-        text-align: right;
-        font-weight: 400;
+        flex: 1;
+        text-align: left;
+        font-weight: 700;
         word-break: break-word;
-        max-width: 58%;
       }
       .total-box {
         border: 3px solid #000;
@@ -642,54 +641,56 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
           page-break-inside: avoid;
           break-inside: avoid;
         }
-        .top-bar { margin-bottom: 2mm; gap: 10px; }
-        .doc-type { font-size: 11pt; padding-top: 0; }
-        .receipt-no { font-size: 15pt; }
-        .receipt-date { font-size: 10.5pt; margin-top: 0.5mm; }
-        .brand { margin: 2mm 0 2.5mm; }
-        .logo { max-height: 24mm; max-width: 72mm; }
-        .gym-name { font-size: 22pt; padding: 1.5mm 0; }
-        .divider { margin: 0 0 3mm; border-top-width: 3px; }
+        .top-bar { margin-bottom: 3mm; gap: 10px; }
+        .doc-type { font-size: 13pt; padding-top: 0; }
+        .receipt-no { font-size: 18pt; }
+        .receipt-date { font-size: 12.5pt; margin-top: 1mm; }
+        .brand { margin: 3mm 0 4mm; }
+        .logo { max-height: 30mm; max-width: 84mm; }
+        .gym-name { font-size: 26pt; padding: 2mm 0; }
+        .divider { margin: 0 0 4.5mm; border-top-width: 3px; }
         .sections {
           display: block;
           gap: 0;
-          margin-bottom: 3mm;
+          margin-bottom: 5mm;
         }
         .section {
-          padding: 3.5mm 3mm 2mm;
+          padding: 5mm 4mm 3.5mm;
           border-width: 2px;
-          margin-bottom: 3.5mm;
+          margin-bottom: 5.5mm;
         }
         .section:last-child { margin-bottom: 0; }
         .section-title {
-          font-size: 11pt;
-          top: -2.5mm;
-          padding: 0 2mm;
+          font-size: 13.5pt;
+          top: -3mm;
+          padding: 0 2.5mm;
         }
         .row {
-          font-size: 13pt;
-          padding: 1.4mm 1px;
-          gap: 8px;
-          line-height: 1.25;
+          font-size: 16pt;
+          padding: 2.4mm 1px;
+          gap: 6px;
+          line-height: 1.35;
           font-weight: 400;
+          justify-content: flex-start;
         }
-        .lbl, .val { font-weight: 400; }
+        .lbl { font-weight: 400; }
+        .val { font-weight: 700; text-align: left; flex: 1; }
         .receipt-no { font-weight: 800; }
         .section-title { font-weight: 800; }
         .total-label { font-weight: 800; }
-        .total-amount { font-size: 32pt; line-height: 1.1; font-weight: 900; }
+        .total-amount { font-size: 38pt; line-height: 1.1; font-weight: 900; }
         .disclaimer { font-weight: 800; }
         .gym-name { font-weight: 800; }
         .total-box {
-          padding: 3mm 3mm 3.5mm;
-          margin-top: 3.5mm;
+          padding: 4.5mm 3mm 5mm;
+          margin-top: 5mm;
           border-width: 2.5px;
         }
-        .total-label { font-size: 11pt; margin-bottom: 1.5mm; }
+        .total-label { font-size: 13pt; margin-bottom: 2.5mm; }
         .disclaimer {
-          padding: 2.5mm 3mm;
-          margin-top: 3mm;
-          font-size: 11pt;
+          padding: 3.5mm 3mm;
+          margin-top: 4.5mm;
+          font-size: 13pt;
           border-width: 2px;
         }
       }
