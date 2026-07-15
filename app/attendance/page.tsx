@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
+import DeviceSyncPanel from '@/components/DeviceSyncPanel';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
@@ -15,7 +17,9 @@ import {
   type NoSignInReport,
 } from '@/lib/attendanceApi';
 
-type AttendanceTab = 'history' | 'no-sign-in';
+type AttendanceTab = 'history' | 'no-sign-in' | 'sync-users';
+
+const VALID_TABS: AttendanceTab[] = ['history', 'no-sign-in', 'sync-users'];
 
 interface MemberOption {
   id: number;
@@ -53,9 +57,21 @@ interface AttendanceFilters {
   limit?: number;
 }
 
-export default function AttendancePage() {
+function AttendancePageContent() {
   const { alert, showAlert, closeAlert } = useAlert();
-  const [activeTab, setActiveTab] = useState<AttendanceTab>('history');
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<AttendanceTab>(() =>
+    tabParam && VALID_TABS.includes(tabParam as AttendanceTab)
+      ? (tabParam as AttendanceTab)
+      : 'history'
+  );
+
+  useEffect(() => {
+    if (tabParam && VALID_TABS.includes(tabParam as AttendanceTab)) {
+      setActiveTab(tabParam as AttendanceTab);
+    }
+  }, [tabParam]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -301,12 +317,12 @@ export default function AttendancePage() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-dark-gray">Attendance</h1>
-            <p className="text-sm text-gray-500 mt-1">History and absence reports</p>
+            <p className="text-sm text-gray-500 mt-1">History, absence reports, and device sync</p>
           </div>
         </div>
 
         <div className="border-b border-gray-200">
-          <nav className="-mb-px flex gap-4">
+          <nav className="-mb-px flex flex-wrap gap-4">
             <button
               type="button"
               onClick={() => setActiveTab('history')}
@@ -329,8 +345,22 @@ export default function AttendancePage() {
             >
               No show / Absence
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('sync-users')}
+              className={`whitespace-nowrap px-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'sync-users'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Sync users
+            </button>
           </nav>
         </div>
+
+        {activeTab === 'sync-users' && <DeviceSyncPanel />}
+
 
         {activeTab === 'no-sign-in' && (
           <>
@@ -729,5 +759,19 @@ export default function AttendancePage() {
         )}
       </div>
     </Layout>
+  );
+}
+
+export default function AttendancePage() {
+  return (
+    <Suspense
+      fallback={
+        <Layout>
+          <Loading message="Loading attendance..." />
+        </Layout>
+      }
+    >
+      <AttendancePageContent />
+    </Suspense>
   );
 }

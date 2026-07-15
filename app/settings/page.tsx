@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
@@ -14,14 +15,10 @@ import {
   saveAttendanceSettings,
   type GymSettings,
 } from '@/lib/attendanceApi';
-import DeviceUserMappingModal from '@/components/DeviceUserMappingModal';
 import {
   addAttendanceDevice,
   fetchTabletSyncSetup,
   isValidDeviceIpAddress,
-  syncDeviceAttendance,
-  syncDeviceUsers,
-  type AttendanceDevice,
   type TabletSyncSetup,
 } from '@/lib/deviceApi';
 
@@ -55,13 +52,6 @@ export default function SettingsPage() {
   const [newDeviceName, setNewDeviceName] = useState('');
   const [newDeviceIp, setNewDeviceIp] = useState('');
   const [addingDevice, setAddingDevice] = useState(false);
-  const [mappingDevice, setMappingDevice] = useState<AttendanceDevice | null>(null);
-  const [syncingDeviceId, setSyncingDeviceId] = useState<string | null>(null);
-  const [mappingPrompt, setMappingPrompt] = useState<{
-    device: AttendanceDevice;
-    pending: number;
-    unmappedCount: number;
-  } | null>(null);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -267,62 +257,6 @@ export default function SettingsPage() {
     }
   };
 
-  const openMappingForDevice = (device: AttendanceDevice) => {
-    setMappingPrompt(null);
-    setMappingDevice(device);
-  };
-
-  const maybePromptMapping = (
-    device: AttendanceDevice,
-    opts: { pending?: number; unmappedCount?: number }
-  ) => {
-    const pending = opts.pending ?? 0;
-    const unmappedCount = opts.unmappedCount ?? 0;
-    if (pending > 0 || unmappedCount > 0) {
-      setMappingPrompt({ device, pending, unmappedCount });
-    }
-  };
-
-  const handleSyncUsers = async (device: AttendanceDevice) => {
-    try {
-      setSyncingDeviceId(`${device.id}:users`);
-      const result = await syncDeviceUsers(device.id);
-      showAlert(
-        'success',
-        'Users synced',
-        result.message ||
-          (result.unmappedCount > 0
-            ? `Synced device users. ${result.unmappedCount} still need mapping.`
-            : 'Device users synced.')
-      );
-      maybePromptMapping(device, { unmappedCount: result.unmappedCount });
-    } catch (error: unknown) {
-      showAlert('error', 'Sync failed', getErrorMessage(error));
-    } finally {
-      setSyncingDeviceId(null);
-    }
-  };
-
-  const handleSyncAttendance = async (device: AttendanceDevice) => {
-    try {
-      setSyncingDeviceId(`${device.id}:attendance`);
-      const result = await syncDeviceAttendance(device.id);
-      showAlert(
-        'success',
-        'Attendance synced',
-        result.message ||
-          (result.pending > 0
-            ? `Synced attendance. ${result.pending} pending punch(es) need user mapping.`
-            : 'Attendance synced.')
-      );
-      maybePromptMapping(device, { pending: result.pending });
-    } catch (error: unknown) {
-      showAlert('error', 'Sync failed', getErrorMessage(error));
-    } finally {
-      setSyncingDeviceId(null);
-    }
-  };
-
   if (loading) {
     return (
       <Layout>
@@ -340,28 +274,6 @@ export default function SettingsPage() {
         title={alert.title}
         message={alert.message}
       />
-      {mappingDevice && (
-        <DeviceUserMappingModal
-          isOpen={!!mappingDevice}
-          deviceId={mappingDevice.id}
-          deviceName={mappingDevice.name}
-          onClose={() => setMappingDevice(null)}
-          onSuccess={({ mapped, attendanceSynced, errors }) => {
-            const summary = `Mapped ${mapped} user${mapped === 1 ? '' : 's'}. Applied ${attendanceSynced} attendance punch${attendanceSynced === 1 ? '' : 'es'}.`;
-            if (errors.length > 0) {
-              showAlert(
-                'warning',
-                'Mappings partially confirmed',
-                `${summary}\n${errors.join('\n')}`
-              );
-            } else {
-              showAlert('success', 'Mappings confirmed', summary);
-            }
-            setMappingPrompt(null);
-          }}
-          onError={(message) => showAlert('error', 'Mapping', message)}
-        />
-      )}
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-dark-gray">Settings</h1>
@@ -525,7 +437,8 @@ export default function SettingsPage() {
                 <li>• Admission fee applies to all new members unless waived</li>
                 <li>• Maximum member discount caps flat PKR discounts on the Add Member screen</li>
                 <li>• Attendance automation controls auto checkout and absence rules</li>
-                <li>• Tablet setup provides the API key and device config for the attendance app</li>
+                <li>• Tablet setup is one-time: API key and device registration for the attendance app</li>
+                <li>• Sync users and map device users from Attendance → Sync users</li>
               </ul>
             </div>
           </div>
@@ -630,8 +543,7 @@ export default function SettingsPage() {
             <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
               <h2 className="text-xl font-bold text-dark-gray mb-2">Tablet API key</h2>
               <p className="text-sm text-gray-500 mb-4">
-                Use this key in the attendance Android app. The app pushes users and punches to the
-                cloud API — no manual sync from this portal. Keep the key confidential.
+                One-time setup: use this key in the attendance Android app. Keep the key confidential.
               </p>
               {devicesLoading ? (
                 <p className="text-sm text-gray-500">Loading device setup…</p>
@@ -658,7 +570,7 @@ export default function SettingsPage() {
                 <div>
                   <h2 className="text-xl font-bold text-dark-gray">Attendance devices</h2>
                   <p className="text-sm text-gray-500">
-                    Register devices to get a Device Config ID for the attendance Android app
+                    Register devices once to get a Device Config ID for the attendance Android app
                   </p>
                 </div>
                 {isAdmin && (
@@ -689,45 +601,6 @@ export default function SettingsPage() {
                 )}
               </div>
 
-              {mappingPrompt && (
-                <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                  <div className="text-sm text-amber-900">
-                    <span className="font-semibold">{mappingPrompt.device.name}</span>
-                    {' has '}
-                    {mappingPrompt.unmappedCount > 0 && (
-                      <span>
-                        {mappingPrompt.unmappedCount} unmapped user
-                        {mappingPrompt.unmappedCount === 1 ? '' : 's'}
-                      </span>
-                    )}
-                    {mappingPrompt.unmappedCount > 0 && mappingPrompt.pending > 0 && ' and '}
-                    {mappingPrompt.pending > 0 && (
-                      <span>
-                        {mappingPrompt.pending} pending punch
-                        {mappingPrompt.pending === 1 ? '' : 'es'}
-                      </span>
-                    )}
-                    . Map them so attendance can be applied.
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setMappingPrompt(null)}
-                      className="px-3 py-1.5 text-sm text-amber-800 hover:underline"
-                    >
-                      Dismiss
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openMappingForDevice(mappingPrompt.device)}
-                      className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium"
-                    >
-                      Map users now
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {devicesLoading ? (
                 <p className="text-sm text-gray-500">Loading devices…</p>
               ) : !deviceSetup?.devices.length ? (
@@ -740,66 +613,36 @@ export default function SettingsPage() {
                         <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Name</th>
                         <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">IP address</th>
                         <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Config ID</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Last push</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium uppercase text-dark-gray">Actions</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Last sync</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {deviceSetup.devices.map((device) => {
-                        const usersBusy = syncingDeviceId === `${device.id}:users`;
-                        const attendanceBusy = syncingDeviceId === `${device.id}:attendance`;
-                        const anyBusy = syncingDeviceId != null;
-                        return (
-                          <tr key={String(device.id)} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm font-medium">{device.name}</td>
-                            <td className="px-4 py-3 text-sm font-mono text-gray-600">
-                              {device.ipAddress || '—'}
-                            </td>
-                            <td className="px-4 py-3 text-sm font-mono text-gray-600">
-                              {device.deviceConfigId || device.id}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">
-                              {device.lastSyncAt
-                                ? new Date(device.lastSyncAt).toLocaleString()
-                                : 'Never'}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-right">
-                              <div className="flex flex-wrap justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => openMappingForDevice(device)}
-                                  className="px-3 py-1.5 border border-primary text-primary rounded-lg text-xs font-medium hover:bg-primary/5"
-                                >
-                                  Map users
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSyncUsers(device)}
-                                  disabled={anyBusy}
-                                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-                                >
-                                  {usersBusy ? 'Syncing…' : 'Sync users'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSyncAttendance(device)}
-                                  disabled={anyBusy}
-                                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-                                >
-                                  {attendanceBusy ? 'Syncing…' : 'Sync attendance'}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {deviceSetup.devices.map((device) => (
+                        <tr key={String(device.id)} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium">{device.name}</td>
+                          <td className="px-4 py-3 text-sm font-mono text-gray-600">
+                            {device.ipAddress || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-mono text-gray-600">
+                            {device.deviceConfigId || device.id}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {device.lastSyncAt
+                              ? new Date(device.lastSyncAt).toLocaleString()
+                              : 'Never'}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
               )}
               <p className="text-xs text-gray-500 mt-4">
-                Sync pulls users and punches from the device. Unmapped punches stay pending until you
-                map device users to members. Use Attendance automation for checkout and absence policies.
+                After devices are registered, sync users and map them from{' '}
+                <Link href="/attendance?tab=sync-users" className="text-primary font-medium hover:underline">
+                  Attendance → Sync users
+                </Link>
+                .
               </p>
             </div>
           </div>

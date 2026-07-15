@@ -16,6 +16,7 @@ import { computeSignupOneTimeFees } from '@/lib/signupFees';
 import { printOneTimePaymentReceipt } from '@/lib/signupReceipt';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
 import { DEFAULT_MAX_MEMBER_DISCOUNT, fetchGymSettings } from '@/lib/attendanceApi';
+import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
 
 interface Trainer {
   id: string;
@@ -86,6 +87,33 @@ function statusBadge(member: Member) {
     return <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Inactive</span>;
   }
   return <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">Active</span>;
+}
+
+function memberMonthlyPayment(
+  member: Member,
+  packages: Package[],
+  allTrainers: Trainer[]
+): number {
+  const memberPackage = packages.find((p) => String(p.id) === String(member.packageId));
+  const memberTrainer =
+    member.trainers.length > 0
+      ? allTrainers.find((t) => String(t.id) === String(member.trainers[0].id))
+      : null;
+  let monthlyTotal = 0;
+  if (memberPackage) {
+    const packagePrice =
+      memberPackage.discount && memberPackage.discount > 0
+        ? Math.max(0, memberPackage.price - memberPackage.discount)
+        : memberPackage.price;
+    monthlyTotal += memberPackage.duration.includes('12') ? packagePrice / 12 : packagePrice;
+  }
+  if (memberTrainer?.charges) {
+    monthlyTotal += memberTrainer.charges;
+  }
+  if (member.discount) {
+    monthlyTotal = Math.max(0, monthlyTotal - member.discount);
+  }
+  return monthlyTotal;
 }
 
 export default function MembersPage() {
@@ -401,6 +429,56 @@ export default function MembersPage() {
 
     return filtered;
   }, [members, searchQuery, sortConfig, availablePackages, trainers]);
+
+  const handleExportExcel = () => {
+    if (filteredMembers.length === 0) {
+      showAlert('info', 'Nothing to export', 'No members match the current search.');
+      return;
+    }
+    const headers = [
+      'ID',
+      'Name',
+      'Phone',
+      'Email',
+      'Gender',
+      'Date of Birth',
+      'CNIC',
+      'Package',
+      'Monthly Payment',
+      'Trainer',
+      'Status',
+      'Inactive From',
+      'Billing Resume From',
+    ];
+    const excelDate = (value: unknown) => {
+      const formatted = formatDate(value);
+      return formatted === 'N/A' ? '' : formatted;
+    };
+    const rows = filteredMembers.map((member) => {
+      const memberPackage = availablePackages.find((p) => String(p.id) === String(member.packageId));
+      const memberTrainer =
+        member.trainers.length > 0
+          ? trainers.find((t) => String(t.id) === String(member.trainers[0].id))
+          : null;
+      const monthlyTotal = memberMonthlyPayment(member, availablePackages, trainers);
+      return [
+        member.id,
+        member.name,
+        member.phone || '',
+        member.email || '',
+        member.gender || '',
+        excelDate(member.dateOfBirth),
+        member.cnic || '',
+        memberPackage?.name || '',
+        monthlyTotal > 0 ? Math.round(monthlyTotal) : 0,
+        memberTrainer?.name || '',
+        member.isActive === false ? 'Inactive' : 'Active',
+        excelDate(member.inactiveFrom),
+        excelDate(member.billingResumeFrom),
+      ];
+    });
+    downloadExcelCsv(excelExportFilename('members'), headers, rows);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -823,15 +901,26 @@ export default function MembersPage() {
         </div>
       )}
       <div className="space-y-6 overflow-x-hidden">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center gap-3">
             <h1 className="text-3xl font-bold text-dark-gray">Members</h1>
-            {canManage && !showAddForm && !editingMember && (
-              <button
-                onClick={openAddForm}
-                className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
-              >
-                + Add Member
-              </button>
+            {!showAddForm && !editingMember && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                >
+                  Export to Excel
+                </button>
+                {canManage && (
+                  <button
+                    onClick={openAddForm}
+                    className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+                  >
+                    + Add Member
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

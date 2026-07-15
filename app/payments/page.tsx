@@ -29,6 +29,7 @@ import {
   receiptPrintedByFromUser,
   tryPrintMonthlyReceiptAfterMarkPaid,
 } from '@/lib/paymentReceiptUrl';
+import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
 
 type SortByKey = 'name' | 'nextDueDate' | 'overdueCount';
 
@@ -142,6 +143,7 @@ function PaymentsPageContent() {
   const [confirmPayRow, setConfirmPayRow] = useState<MemberPaymentSummaryRow | null>(null);
   const [confirmOneTimeRow, setConfirmOneTimeRow] = useState<MemberPaymentSummaryRow | null>(null);
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const canPay = canManageGymPayments(user?.role);
 
@@ -436,6 +438,139 @@ function PaymentsPageContent() {
     });
   }, [rows, statusFilter]);
 
+  const applyStatusFilter = useCallback(
+    (list: MemberPaymentSummaryRow[]) => {
+      if (statusFilter === 'all') return list;
+      return list.filter((row) => {
+        if (statusFilter === 'paid') return !row.nextUnpaid && !row.nextOneTime;
+        if (!row.nextUnpaid) return false;
+        const b = uiBucketForNextUnpaid({
+          displayBucket: row.nextUnpaid.displayBucket,
+          dueDate: row.nextUnpaid.dueDate,
+          status: row.nextUnpaid.status,
+          isOverdue: row.nextUnpaid.isOverdue,
+        });
+        if (statusFilter === 'overdue') return b === 'overdue';
+        return b === 'pending' || b === 'advance';
+      });
+    },
+    [statusFilter]
+  );
+
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const out: MemberPaymentSummaryRow[] = [];
+      const openOnlyForFetch = statusFilter === 'paid' ? false : onlyWithOpenInstallments;
+
+      for (let page = 1; page <= 40; page++) {
+        const params = new URLSearchParams();
+        if (searchQuery.trim()) params.set('search', searchQuery.trim());
+        if (openOnlyForFetch) params.set('onlyWithOpenInstallments', 'true');
+        if (statusFilter === 'overdue' || statusFilter === 'pending') {
+          params.set('nextUnpaidBucket', statusFilter);
+        }
+        params.set('page', String(page));
+        params.set('limit', '200');
+        params.set('sortBy', sortBy);
+        params.set('sortOrder', sortOrder);
+
+        const response = await api.get(`/api/payments/member-summaries?${params.toString()}`);
+        if (!response.data?.success) {
+          throw new Error(response.data?.error?.message || 'Failed to load payment summaries');
+        }
+
+        const data = response.data.data || {};
+        const rawList = (data.members ?? data.memberSummaries ?? data.summaries ?? []) as Record<
+          string,
+          unknown
+        >[];
+        out.push(...rawList.map(normalizeMemberSummary));
+
+        const totalPages = Number(data.pagination?.totalPages) || 1;
+        if (page >= totalPages || rawList.length === 0) break;
+      }
+
+      const dataToExport = applyStatusFilter(out);
+      if (dataToExport.length === 0) {
+        showAlert('info', 'Nothing to export', 'No payment rows match the current filters.');
+        return;
+      }
+
+      const headers = [
+        'Member ID',
+        'Name',
+        'Phone',
+        'Email',
+        'Signup Due',
+        'Monthly Amount',
+        'Month',
+        'Due Date',
+        'Status',
+        'Overdue Months',
+        'Membership Start',
+        'Membership End',
+        'Monthly Package Amount',
+      ];
+
+      const exportRows = dataToExport.map((row) => {
+        const nextBucket = row.nextUnpaid
+          ? uiBucketForNextUnpaid({
+              displayBucket: row.nextUnpaid.displayBucket,
+              dueDate: row.nextUnpaid.dueDate,
+              status: row.nextUnpaid.status,
+              isOverdue: row.nextUnpaid.isOverdue,
+            })
+          : null;
+        const status = row.nextOneTime
+          ? 'SIGNUP'
+          : !row.nextUnpaid
+            ? 'PAID'
+            : nextBucket === 'overdue'
+              ? 'OVERDUE'
+              : nextBucket === 'pending'
+                ? 'PENDING'
+                : nextBucket === 'advance'
+                  ? 'ADVANCE'
+                  : nextBucket
+                    ? uiLabelForBucket(nextBucket).toUpperCase()
+                    : '';
+
+        return [
+          row.member.id,
+          row.member.name,
+          row.member.phone || '',
+          row.member.email || '',
+          row.nextOneTime ? row.nextOneTime.totalAmount.toFixed(2) : '',
+          row.nextUnpaid ? row.nextUnpaid.amount.toFixed(2) : '',
+          row.nextUnpaid?.month || '',
+          row.nextOneTime
+            ? 'At signup'
+            : row.nextUnpaid
+              ? formatDate(row.nextUnpaid.dueDate) === 'N/A'
+                ? ''
+                : formatDate(row.nextUnpaid.dueDate)
+              : '',
+          status,
+          row.overdueMonthCount,
+          formatDate(row.member.membershipStart) === 'N/A'
+            ? ''
+            : formatDate(row.member.membershipStart),
+          formatDate(row.member.membershipEnd) === 'N/A' ? '' : formatDate(row.member.membershipEnd),
+          row.member.monthlyPaymentAmount != null
+            ? Number(row.member.monthlyPaymentAmount).toFixed(2)
+            : '',
+        ];
+      });
+
+      downloadExcelCsv(excelExportFilename('payments'), headers, exportRows);
+    } catch (e: unknown) {
+      showAlert('error', 'Export failed', getErrorMessage(e));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const tableRows = useMemo(() => {
     if (statusFilter === 'all') return rows;
     const start = (pagination.page - 1) * pagination.limit;
@@ -534,6 +669,14 @@ function PaymentsPageContent() {
               )}
             </div>
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handleExportExcel()}
+                disabled={exporting}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exporting ? 'Exporting…' : 'Export to Excel'}
+              </button>
               {canPay && (
                 <button
                   type="button"
