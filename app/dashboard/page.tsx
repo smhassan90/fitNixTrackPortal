@@ -320,7 +320,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <div
             onClick={() => router.push('/reports')}
             className="transform cursor-pointer rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 p-6 text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
