@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { MemberInGym } from '@/lib/attendanceApi';
+import { displayMemberId } from '@/lib/displayMemberId';
 
 interface CurrentlyInGymModalProps {
   isOpen: boolean;
@@ -131,7 +132,7 @@ export default function CurrentlyInGymModal({
                           <div>
                             <div className="text-sm font-medium text-dark-gray">{member.memberName}</div>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-xs text-gray-500">ID: {member.memberId}</span>
+                              <span className="text-xs text-gray-500">ID: {displayMemberId(member)}</span>
                               {member.hasOverduePayment && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
                                   Payment overdue

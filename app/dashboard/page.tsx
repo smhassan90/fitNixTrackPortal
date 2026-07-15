@@ -23,6 +23,7 @@ import {
   parseTotalCollectedThisMonth,
   type FeeCollectionRow,
 } from '@/lib/feeCollections';
+import { displayMemberId } from '@/lib/displayMemberId';
 import { DASHBOARD_STATS_REFRESH_EVENT } from '@/lib/dashboardEvents';
 import { formatDate } from '@/lib/dateUtils';
 import {
@@ -559,7 +560,10 @@ export default function DashboardPage() {
                       className="cursor-pointer hover:bg-gray-50/80"
                       onClick={() => router.push(`/payments/members/${row.memberId}`)}
                     >
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.memberName}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                        <div>{row.memberName}</div>
+                        <div className="text-xs font-normal text-gray-500">ID: {displayMemberId(row)}</div>
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
                         Rs. {row.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>

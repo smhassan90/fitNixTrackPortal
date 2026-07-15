@@ -16,6 +16,7 @@ import {
   fetchNoSignInReport,
   type NoSignInReport,
 } from '@/lib/attendanceApi';
+import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 
 type AttendanceTab = 'history' | 'no-sign-in' | 'sync-users';
 
@@ -23,6 +24,7 @@ const VALID_TABS: AttendanceTab[] = ['history', 'no-sign-in', 'sync-users'];
 
 interface MemberOption {
   id: number;
+  memberNumber: string | null;
   name: string;
   label: string;
   contact: string;
@@ -32,6 +34,8 @@ interface AttendanceRecord {
   id: string;
   date: string;
   memberId: number;
+  memberNumber: string | null;
+  legacyMemberId: string | null;
   member: string;
   contact: string;
   checkIn: string | null;
@@ -107,9 +111,31 @@ function AttendancePageContent() {
       console.log('Members API Response:', response.data);
       
       if (response.data.success) {
-        const membersList = response.data.data?.members || [];
+        const membersList = (response.data.data?.members || []) as Record<string, unknown>[];
         console.log('Received members:', membersList.length);
-        setMembers(membersList);
+        setMembers(
+          membersList.map((m) => {
+            const nums = normalizeMemberNumberFields(m);
+            const id = Number(m.id);
+            const name = String(m.name ?? '');
+            const displayId = displayMemberId(nums);
+            const apiLabel = m.label != null ? String(m.label) : '';
+            // Prefer API label when it already uses the gym ID; otherwise compose one.
+            const label =
+              apiLabel && displayId !== '—' && !apiLabel.startsWith(`${id} `)
+                ? apiLabel
+                : displayId !== '—'
+                  ? `${displayId} — ${name}`
+                  : name || apiLabel || String(id);
+            return {
+              id,
+              memberNumber: nums.memberNumber,
+              name,
+              label,
+              contact: String(m.contact ?? m.phone ?? ''),
+            };
+          })
+        );
       } else {
         console.warn('Members API returned success=false:', response.data);
         setMembers([]);
@@ -151,9 +177,47 @@ function AttendancePageContent() {
       
       if (response.data.success) {
         const data = response.data.data;
-        const recordsList = data?.records || [];
+        const recordsList = (data?.records || []) as Record<string, unknown>[];
         console.log('Received attendance records:', recordsList.length);
-        setRecords(recordsList);
+        setRecords(
+          recordsList.map((r) => {
+            const nested = r.member && typeof r.member === 'object' ? (r.member as Record<string, unknown>) : null;
+            const nums = normalizeMemberNumberFields({
+              memberNumber: r.memberNumber ?? nested?.memberNumber,
+              legacyMemberId: r.legacyMemberId ?? nested?.legacyMemberId,
+            });
+            const memberName =
+              typeof r.member === 'string'
+                ? r.member
+                : String(nested?.name ?? r.memberName ?? '');
+            return {
+              id: String(r.id ?? ''),
+              date: String(r.date ?? ''),
+              memberId: Number(r.memberId) || 0,
+              memberNumber: nums.memberNumber,
+              legacyMemberId: nums.legacyMemberId,
+              member: memberName,
+              contact: String(r.contact ?? ''),
+              checkIn: r.checkIn != null ? String(r.checkIn) : null,
+              checkOut: r.checkOut != null ? String(r.checkOut) : null,
+              checkInTime: r.checkInTime != null ? String(r.checkInTime) : null,
+              checkOutTime: r.checkOutTime != null ? String(r.checkOutTime) : null,
+              status: (r.status as AttendanceRecord['status']) || 'PRESENT',
+              duration: r.duration != null ? Number(r.duration) : null,
+              durationFormatted: r.durationFormatted != null ? String(r.durationFormatted) : null,
+              memberDetails: {
+                email:
+                  (r.memberDetails as { email?: string | null } | undefined)?.email != null
+                    ? String((r.memberDetails as { email?: string | null }).email)
+                    : null,
+                phone:
+                  (r.memberDetails as { phone?: string | null } | undefined)?.phone != null
+                    ? String((r.memberDetails as { phone?: string | null }).phone)
+                    : null,
+              },
+            } satisfies AttendanceRecord;
+          })
+        );
         setPagination({
           page: currentFilters.page || 1,
           limit: currentFilters.limit || 50,
@@ -425,6 +489,7 @@ function AttendancePageContent() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-light-gray">
                     <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Member ID</th>
                       <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Name</th>
                       <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Phone</th>
                       <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Last check-in</th>
@@ -436,6 +501,9 @@ function AttendancePageContent() {
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {noSignInReport.members.map((member) => (
                       <tr key={member.memberId} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-dark-gray">
+                          {displayMemberId(member)}
+                        </td>
                         <td className="px-6 py-4 text-sm font-medium text-dark-gray">{member.memberName}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{member.phone || '—'}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">
@@ -649,7 +717,7 @@ function AttendancePageContent() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-dark-gray">{record.memberId}</div>
+                      <div className="text-sm font-medium text-dark-gray">{displayMemberId(record)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-dark-gray">{record.member}</div>

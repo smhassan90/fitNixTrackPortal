@@ -8,6 +8,7 @@ import {
   type MappingCandidatesResponse,
   type UnmappedMember,
 } from '@/lib/deviceApi';
+import { displayMemberId } from '@/lib/displayMemberId';
 import { getErrorMessage } from '@/lib/errorHandler';
 
 type RowState = {
@@ -45,7 +46,8 @@ function buildInitialRows(candidates: MappingCandidate[]): Record<string, RowSta
 }
 
 function memberLabel(m: UnmappedMember): string {
-  const bits = [m.name];
+  const idPart = displayMemberId(m);
+  const bits = [idPart !== '—' ? `#${idPart} ${m.name}` : m.name];
   if (m.phone) bits.push(m.phone);
   else if (m.email) bits.push(m.email);
   return bits.join(' · ');
@@ -72,7 +74,7 @@ function MemberSearchSelect({
     const q = query.trim().toLowerCase();
     if (!q) return options;
     return options.filter((m) => {
-      const hay = `${m.name} ${m.email ?? ''} ${m.phone ?? ''}`.toLowerCase();
+      const hay = `${displayMemberId(m)} ${m.name} ${m.email ?? ''} ${m.phone ?? ''}`.toLowerCase();
       return hay.includes(q);
     });
   }, [options, query]);
@@ -226,6 +228,8 @@ export default function DeviceUserMappingModal({
         if (candidate?.suggestedMember?.id === currentMemberId) {
           extras.push({
             id: candidate.suggestedMember.id,
+            memberNumber: candidate.suggestedMember.memberNumber,
+            legacyMemberId: candidate.suggestedMember.legacyMemberId,
             name: candidate.suggestedMember.name,
             email: null,
             phone: null,
@@ -445,6 +449,11 @@ export default function DeviceUserMappingModal({
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-sm font-medium text-dark-gray">
                                       {candidate.suggestedMember!.name}
+                                      {displayMemberId(candidate.suggestedMember!) !== '—' && (
+                                        <span className="ml-1 text-xs font-normal text-gray-500">
+                                          (ID: {displayMemberId(candidate.suggestedMember!)})
+                                        </span>
+                                      )}
                                     </span>
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
                                       Exact name match

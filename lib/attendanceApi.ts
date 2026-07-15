@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 
 function asObj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
@@ -31,6 +32,8 @@ export interface GymSettings {
 
 export interface MemberInGym {
   memberId: number;
+  memberNumber: string | null;
+  legacyMemberId: string | null;
   memberName: string;
   contact: string;
   checkInTime?: string | null;
@@ -65,6 +68,8 @@ export interface DashboardAttendanceStats {
 
 export interface NoSignInMember {
   memberId: number;
+  memberNumber: string | null;
+  legacyMemberId: string | null;
   memberName: string;
   phone: string;
   lastCheckInDate: string | null;
@@ -146,10 +151,17 @@ export function normalizeGymSettings(raw: unknown): GymSettings {
 function normalizeMemberInGym(row: unknown): MemberInGym | null {
   const o = asObj(row);
   if (!o || o.memberId == null) return null;
+  const nested = asObj(o.member);
+  const nums = normalizeMemberNumberFields({
+    memberNumber: o.memberNumber ?? nested?.memberNumber,
+    legacyMemberId: o.legacyMemberId ?? nested?.legacyMemberId,
+  });
   return {
     memberId: Number(o.memberId),
-    memberName: String(o.memberName ?? ''),
-    contact: String(o.contact ?? o.phone ?? ''),
+    memberNumber: nums.memberNumber,
+    legacyMemberId: nums.legacyMemberId,
+    memberName: String(o.memberName ?? nested?.name ?? ''),
+    contact: String(o.contact ?? o.phone ?? nested?.phone ?? ''),
     checkInTime: o.checkInTime != null ? String(o.checkInTime) : null,
     checkInFormatted: o.checkInFormatted != null ? String(o.checkInFormatted) : null,
     durationMinutes: o.durationMinutes != null ? Number(o.durationMinutes) : null,
@@ -210,10 +222,17 @@ export function normalizeDashboardAttendanceStats(raw: Record<string, unknown>):
 function normalizeNoSignInMember(row: unknown): NoSignInMember | null {
   const o = asObj(row);
   if (!o || o.memberId == null) return null;
+  const nested = asObj(o.member);
+  const nums = normalizeMemberNumberFields({
+    memberNumber: o.memberNumber ?? nested?.memberNumber,
+    legacyMemberId: o.legacyMemberId ?? nested?.legacyMemberId,
+  });
   return {
     memberId: Number(o.memberId),
-    memberName: String(o.memberName ?? ''),
-    phone: String(o.phone ?? o.contact ?? ''),
+    memberNumber: nums.memberNumber,
+    legacyMemberId: nums.legacyMemberId,
+    memberName: String(o.memberName ?? nested?.name ?? ''),
+    phone: String(o.phone ?? o.contact ?? nested?.phone ?? ''),
     lastCheckInDate: o.lastCheckInDate != null ? String(o.lastCheckInDate) : null,
     daysSinceLastSignIn: Number(o.daysSinceLastSignIn) || 0,
     hasOverduePayment: o.hasOverduePayment === true,
@@ -288,8 +307,9 @@ export async function applyAttendancePolicies(): Promise<ApplyPoliciesResult> {
 }
 
 export function exportNoSignInCsv(report: NoSignInReport): void {
-  const headers = ['Name', 'Phone', 'Last check-in', 'Days absent', 'Payment overdue'];
+  const headers = ['Member ID', 'Name', 'Phone', 'Last check-in', 'Days absent', 'Payment overdue'];
   const rows = report.members.map((m) => [
+    displayMemberId(m) === '—' ? '' : displayMemberId(m),
     m.memberName,
     m.phone,
     m.lastCheckInDate ?? '',

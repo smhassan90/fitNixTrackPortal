@@ -17,6 +17,7 @@ import { printOneTimePaymentReceipt } from '@/lib/signupReceipt';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
 import { DEFAULT_MAX_MEMBER_DISCOUNT, fetchGymSettings } from '@/lib/attendanceApi';
 import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
+import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 
 interface Trainer {
   id: string;
@@ -40,6 +41,9 @@ interface Package {
 
 interface Member {
   id: string;
+  /** Gym-facing Member ID (same as legacyMemberId). */
+  memberNumber: string | null;
+  legacyMemberId: string | null;
   name: string;
   phone: string | null;
   email: string | null;
@@ -137,6 +141,8 @@ export default function MembersPage() {
   });
   const [formData, setFormData] = useState({
     name: '',
+    /** Optional gym Member ID on create → API `legacyMemberId`. */
+    legacyMemberId: '',
     phone: '',
     email: '',
     gender: '',
@@ -170,6 +176,7 @@ export default function MembersPage() {
     const firstTrainer = editingMember.trainers?.[0];
     setFormData({
       name: safeText(editingMember.name),
+      legacyMemberId: displayMemberId(editingMember) === '—' ? '' : displayMemberId(editingMember),
       phone: safeText(editingMember.phone),
       email: safeText(editingMember.email),
       gender: safeText(editingMember.gender),
@@ -207,7 +214,10 @@ export default function MembersPage() {
       console.log('🔵 Fetching members from API...');
       const params = new URLSearchParams();
       if (search) params.append('search', search);
-      if (sort?.key) params.append('sortBy', sort.key);
+      if (sort?.key) {
+        const apiSortKey = sort.key === 'id' ? 'memberNumber' : sort.key;
+        params.append('sortBy', apiSortKey);
+      }
       if (sort?.direction) params.append('sortOrder', sort.direction);
       params.append('limit', '1000');
 
@@ -217,23 +227,28 @@ export default function MembersPage() {
       if (response.data.success) {
         const membersList = response.data.data.members || [];
         // Transform API response to match Member interface
-        const transformedMembers: Member[] = membersList.map((m: any) => ({
-          id: m.id,
-          name: m.name,
-          phone: m.phone,
-          email: m.email,
-          gender: m.gender,
-          dateOfBirth: m.dateOfBirth,
-          cnic: m.cnic,
-          comments: m.comments,
-          packageId: m.packageId,
-          discount: m.discount,
-          admissionAmount: m.admissionAmount,
-          trainers: m.trainers || [],
-          isActive: m.isActive !== false,
-          inactiveFrom: m.inactiveFrom ?? null,
-          billingResumeFrom: m.billingResumeFrom ?? null,
-        }));
+        const transformedMembers: Member[] = membersList.map((m: any) => {
+          const nums = normalizeMemberNumberFields(m as Record<string, unknown>);
+          return {
+            id: m.id,
+            memberNumber: nums.memberNumber,
+            legacyMemberId: nums.legacyMemberId,
+            name: m.name,
+            phone: m.phone,
+            email: m.email,
+            gender: m.gender,
+            dateOfBirth: m.dateOfBirth,
+            cnic: m.cnic,
+            comments: m.comments,
+            packageId: m.packageId,
+            discount: m.discount,
+            admissionAmount: m.admissionAmount,
+            trainers: m.trainers || [],
+            isActive: m.isActive !== false,
+            inactiveFrom: m.inactiveFrom ?? null,
+            billingResumeFrom: m.billingResumeFrom ?? null,
+          };
+        });
         setMembers(transformedMembers);
         console.log('✅ Members loaded:', transformedMembers.length);
       }
@@ -324,13 +339,13 @@ export default function MembersPage() {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(member => {
         try {
-          const idStr = member.id ? String(member.id).toLowerCase() : '';
+          const memberNumStr = displayMemberId(member).toLowerCase();
           const nameStr = member.name ? member.name.toLowerCase() : '';
           const phoneStr = member.phone ? member.phone.toLowerCase() : '';
           const emailStr = member.email ? member.email.toLowerCase() : '';
           const cnicStr = member.cnic ? member.cnic.toLowerCase() : '';
           
-          return idStr.includes(query) ||
+          return (memberNumStr !== '—' && memberNumStr.includes(query)) ||
             nameStr.includes(query) ||
             phoneStr.includes(query) ||
             emailStr.includes(query) ||
@@ -350,9 +365,20 @@ export default function MembersPage() {
 
         switch (sortConfig.key) {
           case 'id':
-            aValue = String(a.id || '').toLowerCase();
-            bValue = String(b.id || '').toLowerCase();
+          case 'memberNumber': {
+            const aNum = displayMemberId(a);
+            const bNum = displayMemberId(b);
+            const aN = Number(aNum);
+            const bN = Number(bNum);
+            if (Number.isFinite(aN) && Number.isFinite(bN) && aNum !== '—' && bNum !== '—') {
+              aValue = aN;
+              bValue = bN;
+            } else {
+              aValue = aNum.toLowerCase();
+              bValue = bNum.toLowerCase();
+            }
             break;
+          }
           case 'name':
             aValue = a.name.toLowerCase();
             bValue = b.name.toLowerCase();
@@ -436,7 +462,7 @@ export default function MembersPage() {
       return;
     }
     const headers = [
-      'ID',
+      'Member ID',
       'Name',
       'Phone',
       'Email',
@@ -462,7 +488,7 @@ export default function MembersPage() {
           : null;
       const monthlyTotal = memberMonthlyPayment(member, availablePackages, trainers);
       return [
-        member.id,
+        displayMemberId(member) === '—' ? '' : displayMemberId(member),
         member.name,
         member.phone || '',
         member.email || '',
@@ -520,6 +546,13 @@ export default function MembersPage() {
           : []; // Empty array to remove all trainers
       } else {
         memberData.admissionFeeWaived = formData.admissionFeeWaived;
+        const optionalMemberId = formData.legacyMemberId.trim();
+        if (optionalMemberId) {
+          // Backend expects gym-facing number as legacyMemberId; auto-assigns if omitted.
+          memberData.legacyMemberId = /^\d+$/.test(optionalMemberId)
+            ? Number(optionalMemberId)
+            : optionalMemberId;
+        }
         // When creating: only include trainerIds if a trainer is selected
         if (formData.requiresTrainer && formData.trainerId) {
           memberData.trainerIds = [normalizeId(formData.trainerId)].filter(Boolean);
@@ -558,7 +591,20 @@ export default function MembersPage() {
         
         if (response.data.success) {
           const created = response.data.data;
-          showAlert('success', 'Member Added', 'Member added successfully!');
+          const createdMember =
+            created?.member && typeof created.member === 'object' ? created.member : created;
+          const assignedNumber = displayMemberId(
+            normalizeMemberNumberFields(
+              (createdMember ?? {}) as Record<string, unknown>
+            )
+          );
+          showAlert(
+            'success',
+            'Member Added',
+            assignedNumber !== '—'
+              ? `Member added successfully. Member ID: ${assignedNumber}`
+              : 'Member added successfully!'
+          );
           notifyDashboardStatsRefresh();
           setShowAddForm(false);
           
@@ -693,6 +739,7 @@ export default function MembersPage() {
   const resetForm = () => {
     setFormData({
       name: '',
+      legacyMemberId: '',
       phone: '',
       email: '',
       gender: '',
@@ -931,7 +978,7 @@ export default function MembersPage() {
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Search members by name, phone, or email... (Press Enter or click Go)"
+                    placeholder="Search by member ID / name, phone, or email… (Press Enter or click Go)"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     onKeyDown={handleSearchKeyDown}
@@ -968,9 +1015,17 @@ export default function MembersPage() {
           {(showAddForm || editingMember) && (
             <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-dark-gray">
-                {editingMember ? 'Edit Member' : 'Add New Member'}
-              </h2>
+                <div>
+                  <h2 className="text-2xl font-bold text-dark-gray">
+                    {editingMember ? 'Edit Member' : 'Add New Member'}
+                  </h2>
+                  {editingMember && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      Member ID:{' '}
+                      <span className="font-medium text-dark-gray">{displayMemberId(editingMember)}</span>
+                    </p>
+                  )}
+                </div>
               <button
                 onClick={handleCancel}
                 className="text-gray-500 hover:text-gray-700"
@@ -996,6 +1051,29 @@ export default function MembersPage() {
                     {formData.name.length}/100 characters
                   </p>
                 </div>
+                {!editingMember && (
+                  <div>
+                    <label className="block text-sm font-medium text-dark-gray mb-1">
+                      Member ID <span className="font-normal text-gray-400">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formData.legacyMemberId}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          legacyMemberId: e.target.value.replace(/[^\d]/g, ''),
+                        })
+                      }
+                      placeholder="Leave blank to auto-assign"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Gym-facing ID. If empty, the next number is assigned automatically.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-dark-gray mb-1">Phone</label>
                   <input
@@ -1419,7 +1497,7 @@ export default function MembersPage() {
                     onClick={() => handleSort('id')}
                   >
                     <div className="flex items-center space-x-1">
-                      <span>ID</span>
+                      <span>Member ID</span>
                       {sortConfig?.key === 'id' && (
                         <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                       )}
@@ -1558,11 +1636,11 @@ export default function MembersPage() {
                   return (
                     <tr key={member.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div 
-                          className="text-xs font-mono text-gray-600 truncate max-w-[120px]" 
-                          title={member.id}
+                        <div
+                          className="text-sm font-medium text-dark-gray"
+                          title={displayMemberId(member)}
                         >
-                          {member.id}
+                          {displayMemberId(member)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

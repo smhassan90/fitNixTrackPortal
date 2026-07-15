@@ -1,9 +1,14 @@
 import { formatDate } from '@/lib/dateUtils';
 import type { PendingOneTimePayment } from '@/lib/signupFees';
+import { displayMemberId } from '@/lib/displayMemberId';
 
 export interface SignupReceiptContext {
   memberName: string;
+  /** Internal PK — not shown on the receipt. */
   memberId?: string | number;
+  /** Gym-facing Member ID for receipt number / display. */
+  memberNumber?: string | number | null;
+  legacyMemberId?: string | number | null;
   gymName?: string;
   printedBy?: string;
   oneTime: Pick<
@@ -27,7 +32,8 @@ export function buildSignupReceiptHtml(ctx: SignupReceiptContext): string {
     oneTime.admissionFee > 0
       ? oneTime.admissionFee
       : Math.max(0, oneTime.totalAmount - oneTime.packageFee - oneTime.trainerFee);
-  const receiptNo = ctx.memberId != null ? `SIGNUP-${ctx.memberId}` : 'SIGNUP';
+  const gymMemberId = displayMemberId(ctx);
+  const receiptNo = gymMemberId !== '—' ? `SIGNUP-${gymMemberId}` : 'SIGNUP';
   const gymTitle = ctx.gymName?.trim() || 'FitNixTrack Gym';
   const printedBy = ctx.printedBy?.trim() || 'Staff';
   const generatedAt = new Date().toISOString();
@@ -160,6 +166,7 @@ export function buildSignupReceiptHtml(ctx: SignupReceiptContext): string {
     <div class="meta">
       <div><span>Receipt</span><span>${escapeHtml(receiptNo)}</span></div>
       <div><span>Date</span><span>${escapeHtml(formatDate(generatedAt))}</span></div>
+      <div><span>Member ID</span><span>${escapeHtml(gymMemberId)}</span></div>
       <div><span>Member</span><span>${escapeHtml(ctx.memberName)}</span></div>
     </div>
     <div class="amt">

@@ -1,6 +1,7 @@
 /** Fee collection ledger rows from GET /api/dashboard/stats and fee-collections endpoints. */
 
 import type { AxiosInstance } from 'axios';
+import { normalizeMemberNumberFields } from '@/lib/displayMemberId';
 
 export type FeeCollectionCategory = 'MONTHLY_FEE' | 'SIGNUP_FEE' | 'ADMISSION_ONLY';
 export type FeeCollectionSourceType = 'MONTHLY_PAYMENT' | 'ONE_TIME_PAYMENT';
@@ -8,6 +9,8 @@ export type FeeCollectionSourceType = 'MONTHLY_PAYMENT' | 'ONE_TIME_PAYMENT';
 export interface FeeCollectionRow {
   id: number;
   memberId: number;
+  memberNumber: string | null;
+  legacyMemberId: string | null;
   memberName: string;
   amount: number;
   collectedAt: string;
@@ -73,10 +76,17 @@ export function normalizeFeeCollectionRow(raw: unknown): FeeCollectionRow | null
   if (!id || Number.isNaN(id)) return null;
   const category = String(row.category ?? 'MONTHLY_FEE') as FeeCollectionCategory;
   const sourceType = String(row.sourceType ?? 'MONTHLY_PAYMENT') as FeeCollectionSourceType;
+  const nestedMember = asRecord(row.member);
+  const nums = normalizeMemberNumberFields({
+    memberNumber: row.memberNumber ?? nestedMember?.memberNumber,
+    legacyMemberId: row.legacyMemberId ?? nestedMember?.legacyMemberId,
+  });
   return {
     id,
     memberId: Number.isNaN(memberId) ? 0 : memberId,
-    memberName: String(row.memberName ?? ''),
+    memberNumber: nums.memberNumber,
+    legacyMemberId: nums.legacyMemberId,
+    memberName: String(row.memberName ?? nestedMember?.name ?? ''),
     amount: Number(row.amount) || 0,
     collectedAt: String(row.collectedAt ?? ''),
     billingMonth: row.billingMonth != null ? String(row.billingMonth) : null,

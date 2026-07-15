@@ -30,6 +30,7 @@ import {
   tryPrintMonthlyReceiptAfterMarkPaid,
 } from '@/lib/paymentReceiptUrl';
 import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
+import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 
 type SortByKey = 'name' | 'nextDueDate' | 'overdueCount';
 
@@ -38,6 +39,8 @@ type PaymentStatusFilter = 'all' | 'overdue' | 'pending' | 'paid';
 
 interface MemberSummaryMember {
   id: string;
+  memberNumber: string | null;
+  legacyMemberId: string | null;
   name: string;
   email: string | null;
   phone: string | null;
@@ -74,8 +77,11 @@ interface PaginationState {
 
 function normalizeMemberSummary(raw: Record<string, unknown>): MemberPaymentSummaryRow {
   const m = raw.member as Record<string, unknown> | undefined;
+  const nums = normalizeMemberNumberFields(m);
   const member: MemberSummaryMember = {
     id: String(m?.id ?? ''),
+    memberNumber: nums.memberNumber,
+    legacyMemberId: nums.legacyMemberId,
     name: String(m?.name ?? ''),
     email: m?.email != null ? String(m.email) : null,
     phone: m?.phone != null ? String(m.phone) : null,
@@ -537,7 +543,7 @@ function PaymentsPageContent() {
                     : '';
 
         return [
-          row.member.id,
+          displayMemberId(row.member) === '—' ? '' : displayMemberId(row.member),
           row.member.name,
           row.member.phone || '',
           row.member.email || '',
@@ -711,7 +717,7 @@ function PaymentsPageContent() {
                   <div className="relative min-w-0 flex-1">
                     <input
                       type="text"
-                      placeholder="Name, email, phone, or member ID…"
+                      placeholder="Search by member ID / name, email, or phone…"
                       value={searchInput}
                       onChange={(e) => setSearchInput(e.target.value)}
                       onKeyDown={(e) => {
@@ -866,7 +872,15 @@ function PaymentsPageContent() {
                         >
                           <td className="whitespace-nowrap px-6 py-4">
                             <div className="text-sm font-medium text-dark-gray">{row.member.name}</div>
-                            <div className="text-sm text-gray-500">{row.member.phone || row.member.email || '—'}</div>
+                            <div className="text-xs text-gray-500">
+                              ID: {displayMemberId(row.member)}
+                              {(row.member.phone || row.member.email) && (
+                                <span>
+                                  {' · '}
+                                  {row.member.phone || row.member.email}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
                             {row.nextOneTime ? (

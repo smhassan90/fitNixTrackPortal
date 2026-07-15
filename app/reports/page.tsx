@@ -16,6 +16,7 @@ import {
   type FeeCollectionRow,
   type FeeCollectionsPagination,
 } from '@/lib/feeCollections';
+import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 import { fetchAllMemberSummaries } from '@/lib/fetchAllMemberSummaries';
 import {
   fetchFinancialSummaryResult,
@@ -54,6 +55,8 @@ interface NextUnpaidLite {
 
 interface PaymentRow {
   memberId: string;
+  memberNumber: string | null;
+  legacyMemberId: string | null;
   memberName: string;
   overdueMonthCount: number;
   nextUnpaid: NextUnpaidLite | null;
@@ -127,6 +130,7 @@ function normalizePaymentRow(raw: Record<string, unknown>): PaymentRow | null {
   const memberId = m?.id != null ? String(m.id) : '';
   const memberName = m?.name != null ? String(m.name) : '';
   if (!memberId) return null;
+  const nums = normalizeMemberNumberFields(m);
   const nu = raw.nextUnpaid as Record<string, unknown> | null | undefined;
   let nextUnpaid: NextUnpaidLite | null = null;
   if (nu && typeof nu === 'object') {
@@ -142,6 +146,8 @@ function normalizePaymentRow(raw: Record<string, unknown>): PaymentRow | null {
   const lastPaidDay = extractLastPaidDayFromSummaryRaw(raw);
   return {
     memberId,
+    memberNumber: nums.memberNumber,
+    legacyMemberId: nums.legacyMemberId,
     memberName,
     overdueMonthCount: Number(raw.overdueMonthCount) || 0,
     nextUnpaid,
@@ -797,6 +803,7 @@ export default function ReportsPage() {
                         >
                           {row.memberName}
                         </Link>
+                        <div className="text-xs text-gray-500">ID: {displayMemberId(row)}</div>
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 font-medium">
                         {moneyPrefix}
@@ -859,9 +866,12 @@ export default function ReportsPage() {
             <ul className="mt-3 divide-y divide-gray-100 text-sm">
               {topOverdue.map((r) => (
                 <li key={r.memberId} className="flex items-center justify-between gap-2 py-2">
-                  <Link href={`/payments/members/${r.memberId}`} className="font-medium text-primary hover:underline">
-                    {r.memberName}
-                  </Link>
+                  <div>
+                    <Link href={`/payments/members/${r.memberId}`} className="font-medium text-primary hover:underline">
+                      {r.memberName}
+                    </Link>
+                    <div className="text-xs text-gray-500">ID: {displayMemberId(r)}</div>
+                  </div>
                   <span className="shrink-0 text-gray-600">
                     {r.overdueMonthCount} mo · {moneyPrefix}
                     {(r.nextUnpaid?.amount ?? 0).toLocaleString()}

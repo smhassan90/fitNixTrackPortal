@@ -1,5 +1,6 @@
 import api from '@/lib/api';
 import { formatDate } from '@/lib/dateUtils';
+import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 
 export interface PaymentReceiptPrintedBy {
   name: string;
@@ -36,7 +37,11 @@ export interface PaymentReceiptData {
     email?: string | null;
   };
   member: {
+    /** Internal PK — used only for API enrichment when still present. */
     id?: string | number;
+    /** Gym-facing Member ID for receipts. */
+    memberNumber?: string | number | null;
+    legacyMemberId?: string | number | null;
     name: string;
     email?: string | null;
     phone?: string | null;
@@ -333,13 +338,19 @@ async function enrichReceiptFromMember(
     isSignupReceipt(data)
       ? !data.signupPayment?.memberDiscount
       : data.member.memberDiscount == null;
+  const needsMemberNumber =
+    data.member.memberNumber == null ||
+    data.member.memberNumber === '' ||
+    data.member.legacyMemberId == null ||
+    data.member.legacyMemberId === '';
 
   if (
     !needsPackage &&
     !needsTrainers &&
     !needsTrainerCharges &&
     !needsPackageFeatures &&
-    !needsMemberDiscount
+    !needsMemberDiscount &&
+    !needsMemberNumber
   ) {
     return data;
   }
@@ -377,6 +388,20 @@ async function enrichReceiptFromMember(
         : normalizeTrainers(m.trainers);
 
     let enriched: PaymentReceiptData = { ...data, package: pkg, trainers };
+    const nums = normalizeMemberNumberFields(m);
+    if (
+      (enriched.member.memberNumber == null || enriched.member.memberNumber === '') &&
+      nums.memberNumber
+    ) {
+      enriched = {
+        ...enriched,
+        member: {
+          ...enriched.member,
+          memberNumber: nums.memberNumber,
+          legacyMemberId: nums.legacyMemberId,
+        },
+      };
+    }
     const fetchedDiscount = resolveMemberDiscount(m, null);
     if (fetchedDiscount != null && fetchedDiscount > 0) {
       if (isSignupReceipt(enriched) && !enriched.signupPayment?.memberDiscount) {
@@ -450,7 +475,7 @@ export function buildPaymentReceiptHtml(data: PaymentReceiptData): string {
   );
 
   const memberRows =
-    receiptBoxRow('MEMBER ID', data.member.id) +
+    receiptBoxRow('MEMBER ID', displayMemberId(data.member)) +
     receiptBoxRow('NAME', data.member.name) +
     receiptBoxRow('PHONE', data.member.phone);
 
@@ -836,6 +861,7 @@ export function normalizeReceiptApiPayload(
     receiptType === 'one-time' && signupPayment
       ? Number(signupPayment.totalAmount) || Number(payment.amount) || 0
       : Number(payment.amount) || Number(payment.monthlyInstallmentAmount) || 0;
+  const nums = normalizeMemberNumberFields(member);
 
   return {
     receiptNumber: String(raw.receiptNumber ?? (paymentId != null ? `PAY-${paymentId}` : 'RECEIPT')),
@@ -859,6 +885,8 @@ export function normalizeReceiptApiPayload(
     },
     member: {
       id: member.id as string | number | undefined,
+      memberNumber: nums.memberNumber,
+      legacyMemberId: nums.legacyMemberId,
       name: String(member.name ?? ''),
       email: member.email != null ? String(member.email) : null,
       phone: member.phone != null ? String(member.phone) : null,

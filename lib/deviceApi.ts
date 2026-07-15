@@ -1,4 +1,5 @@
 import api from '@/lib/api';
+import { normalizeMemberNumberFields } from '@/lib/displayMemberId';
 
 function asObj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
@@ -83,12 +84,14 @@ export type MappingCandidate = {
   deviceUserName: string | null;
   deviceBadgeId: string | null;
   pendingLogCount: number;
-  suggestedMember: { id: number; name: string } | null;
+  suggestedMember: { id: number; name: string; memberNumber: string | null; legacyMemberId: string | null } | null;
   matchType: 'exact' | null;
 };
 
 export type UnmappedMember = {
   id: number;
+  memberNumber: string | null;
+  legacyMemberId: string | null;
   name: string;
   email: string | null;
   phone: string | null;
@@ -126,12 +129,20 @@ function devicePath(deviceId: number | string): string {
   return `/api/device/${encodeURIComponent(String(deviceId))}`;
 }
 
-function normalizeSuggestedMember(raw: unknown): { id: number; name: string } | null {
+function normalizeSuggestedMember(
+  raw: unknown
+): { id: number; name: string; memberNumber: string | null; legacyMemberId: string | null } | null {
   const o = asObj(raw);
   if (!o || o.id == null) return null;
   const id = Number(o.id);
   if (!Number.isFinite(id)) return null;
-  return { id, name: String(o.name ?? `Member ${id}`) };
+  const nums = normalizeMemberNumberFields(o);
+  return {
+    id,
+    name: String(o.name ?? `Member ${id}`),
+    memberNumber: nums.memberNumber,
+    legacyMemberId: nums.legacyMemberId,
+  };
 }
 
 function firstNonEmptyString(...values: unknown[]): string | null {
@@ -169,8 +180,11 @@ function normalizeUnmappedMember(raw: unknown): UnmappedMember | null {
   if (!o || o.id == null) return null;
   const id = Number(o.id);
   if (!Number.isFinite(id)) return null;
+  const nums = normalizeMemberNumberFields(o);
   return {
     id,
+    memberNumber: nums.memberNumber,
+    legacyMemberId: nums.legacyMemberId,
     name: String(o.name ?? `Member ${id}`),
     email: o.email != null ? String(o.email) : null,
     phone: o.phone != null ? String(o.phone) : null,

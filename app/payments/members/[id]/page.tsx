@@ -14,6 +14,7 @@ import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 import { canManageGymPayments } from '@/lib/gymRoles';
 import { printPaymentReceipt } from '@/lib/paymentReceipt';
+import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 import {
   printReceiptForPaymentRecord,
   receiptPrintedByFromUser,
@@ -58,13 +59,22 @@ interface MonthlyInstallment {
   paidDate: string | null;
   /** Server-computed using GYM_TIMEZONE; prefer over client inference. */
   displayBucket?: string | null;
-  member?: { id: string; name: string; phone: string | null; email: string | null };
+  member?: {
+    id: string;
+    memberNumber?: string | null;
+    legacyMemberId?: string | null;
+    name: string;
+    phone: string | null;
+    email: string | null;
+  };
   /** Filled only by mergeWithProjectedAdvanceMonths when API omits future months. */
   isProjected?: boolean;
 }
 
 interface MemberStatusLite {
   id: string;
+  memberNumber: string | null;
+  legacyMemberId: string | null;
   name: string;
   isActive?: boolean;
   inactiveFrom?: string | null;
@@ -107,6 +117,7 @@ type DateMode = 'today' | 'custom';
 
 function normalizeInstallment(raw: Record<string, unknown>): MonthlyInstallment {
   const m = raw.member as MonthlyInstallment['member'] | undefined;
+  const nums = m ? normalizeMemberNumberFields(m as unknown as Record<string, unknown>) : null;
   return {
     ...raw,
     id: String(raw.id ?? ''),
@@ -121,6 +132,8 @@ function normalizeInstallment(raw: Record<string, unknown>): MonthlyInstallment 
       ? {
           ...m,
           id: String(m.id),
+          memberNumber: nums?.memberNumber ?? m.memberNumber ?? null,
+          legacyMemberId: nums?.legacyMemberId ?? m.legacyMemberId ?? null,
         }
       : m,
   } as MonthlyInstallment;
@@ -192,6 +205,7 @@ export default function MemberPaymentsDetailPage() {
             const m = mRes.data.data.member as Record<string, unknown>;
             setMemberStatus({
               id: String(m.id ?? memberId),
+              ...normalizeMemberNumberFields(m),
               name: String(m.name ?? ''),
               isActive: m.isActive !== false,
               inactiveFrom: m.inactiveFrom != null ? String(m.inactiveFrom) : null,
@@ -206,6 +220,7 @@ export default function MemberPaymentsDetailPage() {
         const m = data.member as Record<string, unknown>;
         setMemberStatus({
           id: String(m.id ?? memberId),
+          ...normalizeMemberNumberFields(m),
           name: String(m.name ?? nameFromPayload ?? ''),
           isActive: m.isActive !== false,
           inactiveFrom: m.inactiveFrom != null ? String(m.inactiveFrom) : null,
@@ -799,6 +814,11 @@ export default function MemberPaymentsDetailPage() {
               ← Back to payments
             </Link>
             <h1 className="mt-2 text-3xl font-bold text-dark-gray">{memberName || 'Member payments'}</h1>
+            {memberStatus && displayMemberId(memberStatus) !== '—' && (
+              <p className="mt-1 text-sm text-gray-500">
+                Member ID: <span className="font-medium text-dark-gray">{displayMemberId(memberStatus)}</span>
+              </p>
+            )}
             {memberStatus && (
               <div className="mt-2 space-y-1 text-sm">
                 <div>
