@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
@@ -9,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
-import { canManageGymCatalog } from '@/lib/gymRoles';
+import { canManageGymCatalog, isGymAdmin } from '@/lib/gymRoles';
 
 interface Feature {
   id: number;
@@ -70,6 +71,7 @@ function normalizeFeaturesPayload(payload: unknown): Feature[] {
 export default function PackagesPage() {
   const { user } = useAuth();
   const canManage = canManageGymCatalog(user?.role);
+  const canManageFeatures = isGymAdmin(user?.role);
   const { alert, showAlert, closeAlert } = useAlert();
   const [packages, setPackages] = useState<Package[]>([]);
   const [availableFeatures, setAvailableFeatures] = useState<Feature[]>([]);
@@ -109,13 +111,10 @@ export default function PackagesPage() {
       const response = await api.get('/api/packages/features');
       console.log('Features API response:', response.data);
       const normalized = normalizeFeaturesPayload(response.data);
+      setAvailableFeatures(normalized);
       if (normalized.length > 0) {
-        setAvailableFeatures(normalized);
         console.log('✅ Features loaded:', normalized.length);
-        return;
       }
-      setAvailableFeatures([]);
-      showAlert('warning', 'Features', 'No package features are configured on the server yet.');
     } catch (error: any) {
       console.error('Error fetching features:', error);
       const backendMsg =
@@ -657,8 +656,23 @@ export default function PackagesPage() {
                       <Loading inline size="sm" message="Loading features..." />
                     </div>
                   ) : availableFeatures.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      No features available
+                    <div className="text-center py-8 text-gray-500 space-y-2">
+                      <p>No package features are configured</p>
+                      {canManageFeatures ? (
+                        <p className="text-sm">
+                          <Link
+                            href="/packages/features"
+                            className="text-primary font-medium hover:underline"
+                          >
+                            Manage package features
+                          </Link>
+                          {' '}to add options for packages.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-400">
+                          Ask a gym administrator to add features.
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

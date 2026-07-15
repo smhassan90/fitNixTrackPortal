@@ -36,6 +36,7 @@ export const getErrorMessage = (error: any): string => {
 
   const errorMessages: Record<string, string> = {
     VALIDATION_ERROR: validationDetailMessage || 'Please check your input and try again',
+    FEATURE_IN_USE: 'Unassign this feature from packages first.',
     UNAUTHORIZED: rawMessage
       ? /invalid|expired|token/i.test(rawMessage)
         ? 'Your session has expired or is no longer valid. Please sign in again.'

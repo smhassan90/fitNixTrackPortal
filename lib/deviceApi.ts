@@ -134,6 +134,13 @@ function normalizeSuggestedMember(raw: unknown): { id: number; name: string } | 
   return { id, name: String(o.name ?? `Member ${id}`) };
 }
 
+function firstNonEmptyString(...values: unknown[]): string | null {
+  for (const v of values) {
+    if (v != null && v !== '') return String(v);
+  }
+  return null;
+}
+
 function normalizeMappingCandidate(raw: unknown): MappingCandidate | null {
   const o = asObj(raw);
   if (!o || o.deviceUserId == null) return null;
@@ -141,7 +148,15 @@ function normalizeMappingCandidate(raw: unknown): MappingCandidate | null {
   const matchType = o.matchType === 'exact' && suggestedMember ? 'exact' : null;
   return {
     deviceUserId: String(o.deviceUserId),
-    deviceUserName: o.deviceUserName != null && o.deviceUserName !== '' ? String(o.deviceUserName) : null,
+    // Backend field naming varies across device firmwares; accept common variants.
+    deviceUserName: firstNonEmptyString(
+      o.deviceUserName,
+      o.deviceUsername,
+      o.userName,
+      o.username,
+      o.name,
+      o.fullName
+    ),
     deviceBadgeId: o.deviceBadgeId != null && o.deviceBadgeId !== '' ? String(o.deviceBadgeId) : null,
     pendingLogCount: Number(o.pendingLogCount ?? 0) || 0,
     suggestedMember: matchType === 'exact' ? suggestedMember : null,

@@ -21,6 +21,21 @@ const teamNavItem = {
   ),
 } as const;
 
+const packageFeaturesNavItem = {
+  name: 'Package features',
+  href: '/packages/features',
+  icon: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+      />
+    </svg>
+  ),
+} as const;
+
 const navigation = [
   { 
     name: 'Dashboard', 
@@ -109,11 +124,15 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const navItems = useMemo(() => {
     if (user?.role === 'GYM_ADMIN') {
       const items = [...navigation];
+      const packagesIdx = items.findIndex((i) => i.href === '/packages');
+      if (packagesIdx >= 0) {
+        items.splice(packagesIdx + 1, 0, packageFeaturesNavItem);
+      }
       const settingsIdx = items.findIndex((i) => i.href === '/settings');
       if (settingsIdx >= 0) {
         items.splice(settingsIdx, 0, teamNavItem);
-        return items;
       }
+      return items;
     }
     return navigation;
   }, [user?.role]);
