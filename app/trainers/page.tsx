@@ -15,6 +15,7 @@ import { canManageGymCatalog } from '@/lib/gymRoles';
 interface Trainer {
   id: string;
   name: string;
+  phone?: string | null;
   gender: string | null;
   dateOfBirth: string | null;
   specialization: string | null;
@@ -23,6 +24,30 @@ interface Trainer {
   endTime?: string;
   _count?: {
     members: number;
+  };
+}
+
+const emptyForm = () => ({
+  name: '',
+  phone: '',
+  gender: '',
+  dateOfBirth: '',
+  specialization: '',
+  charges: '',
+  startTime: '',
+  endTime: '',
+});
+
+function trainerToForm(trainer: Trainer) {
+  return {
+    name: trainer.name || '',
+    phone: trainer.phone ?? '',
+    gender: trainer.gender || '',
+    dateOfBirth: trainer.dateOfBirth ? trainer.dateOfBirth.split('T')[0] : '',
+    specialization: trainer.specialization || '',
+    charges: trainer.charges?.toString() || '',
+    startTime: trainer.startTime || '',
+    endTime: trainer.endTime || '',
   };
 }
 
@@ -35,20 +60,14 @@ export default function TrainersPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingTrainer, setEditingTrainer] = useState<Trainer | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; trainerId: string | null; trainerName: string }>({
     isOpen: false,
     trainerId: null,
     trainerName: '',
   });
-  const [formData, setFormData] = useState({
-    name: '',
-    gender: '',
-    dateOfBirth: '',
-    specialization: '',
-    charges: '',
-    startTime: '',
-    endTime: '',
-  });
+  const [formData, setFormData] = useState(emptyForm);
 
   const specializationOptions = [
     'Strength Training',
@@ -71,6 +90,7 @@ export default function TrainersPage() {
       const params = new URLSearchParams();
       if (sortConfig?.key) params.append('sortBy', sortConfig.key);
       if (sortConfig?.direction) params.append('sortOrder', sortConfig.direction);
+      if (searchQuery.trim()) params.append('search', searchQuery.trim());
       params.append('limit', '1000');
 
       const response = await api.get(`/api/trainers?${params}`);
@@ -87,55 +107,100 @@ export default function TrainersPage() {
     } finally {
       setLoading(false);
     }
-  }, [sortConfig, showAlert]);
+  }, [sortConfig, searchQuery, showAlert]);
 
-  // Load trainers on mount and when sort changes
+  // Load trainers on mount and when sort/search changes
   useEffect(() => {
     fetchTrainers();
   }, [fetchTrainers]);
+
+  const buildCreatePayload = () => {
+    const phone = formData.phone.trim();
+    const trainerData: Record<string, unknown> = {
+      name: formData.name.trim(),
+    };
+    if (phone) trainerData.phone = phone;
+    if (formData.gender) trainerData.gender = formData.gender;
+    if (formData.dateOfBirth) trainerData.dateOfBirth = formData.dateOfBirth;
+    if (formData.specialization) trainerData.specialization = formData.specialization;
+    if (formData.charges) trainerData.charges = parseFloat(formData.charges);
+    if (formData.startTime) trainerData.startTime = formData.startTime;
+    if (formData.endTime) trainerData.endTime = formData.endTime;
+    return trainerData;
+  };
+
+  /** PUT body: only changed fields; empty phone clears as null. */
+  const buildUpdatePayload = (baseline: Trainer) => {
+    const payload: Record<string, unknown> = {};
+    const name = formData.name.trim();
+    if (name !== (baseline.name || '')) payload.name = name;
+
+    const nextPhone = formData.phone.trim() || null;
+    const prevPhone = baseline.phone?.trim() || null;
+    if (nextPhone !== prevPhone) payload.phone = nextPhone;
+
+    const nextGender = formData.gender || null;
+    const prevGender = baseline.gender || null;
+    if (nextGender !== prevGender) payload.gender = nextGender;
+
+    const nextDob = formData.dateOfBirth || null;
+    const prevDob = baseline.dateOfBirth ? baseline.dateOfBirth.split('T')[0] : null;
+    if (nextDob !== prevDob) payload.dateOfBirth = nextDob;
+
+    const nextSpec = formData.specialization || null;
+    const prevSpec = baseline.specialization || null;
+    if (nextSpec !== prevSpec) payload.specialization = nextSpec;
+
+    const nextCharges = formData.charges ? parseFloat(formData.charges) : null;
+    const prevCharges =
+      baseline.charges != null && Number.isFinite(Number(baseline.charges))
+        ? Number(baseline.charges)
+        : null;
+    if (nextCharges !== prevCharges) payload.charges = nextCharges;
+
+    const nextStart = formData.startTime || null;
+    const prevStart = baseline.startTime || null;
+    if (nextStart !== prevStart) payload.startTime = nextStart;
+
+    const nextEnd = formData.endTime || null;
+    const prevEnd = baseline.endTime || null;
+    if (nextEnd !== prevEnd) payload.endTime = nextEnd;
+
+    return payload;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setLoading(true);
-      
-      const trainerData: any = {
-        name: formData.name,
-        gender: formData.gender || undefined,
-        dateOfBirth: formData.dateOfBirth || undefined,
-        specialization: formData.specialization || undefined,
-        charges: formData.charges ? parseFloat(formData.charges) : undefined,
-        startTime: formData.startTime || undefined,
-        endTime: formData.endTime || undefined,
-      };
-
-      // Remove undefined fields
-      Object.keys(trainerData).forEach(key => 
-        trainerData[key] === undefined && delete trainerData[key]
-      );
 
       if (editingTrainer) {
-        // Update existing trainer
-        console.log('🔵 Updating trainer:', editingTrainer.id);
+        const trainerData = buildUpdatePayload(editingTrainer);
+        if (Object.keys(trainerData).length === 0) {
+          showAlert('info', 'No changes', 'Nothing to update.');
+          setLoading(false);
+          return;
+        }
+        console.log('🔵 Updating trainer:', editingTrainer.id, trainerData);
         const response = await api.put(`/api/trainers/${editingTrainer.id}`, trainerData);
         console.log('Update trainer response:', response.data);
-        
+
         if (response.data.success) {
           showAlert('success', 'Trainer Updated', 'Trainer updated successfully!');
-          await fetchTrainers(); // Refresh list
+          await fetchTrainers();
           setEditingTrainer(null);
           resetForm();
           setShowAddForm(false);
         }
       } else {
-        // Create new trainer
-        console.log('🔵 Creating new trainer');
+        const trainerData = buildCreatePayload();
+        console.log('🔵 Creating new trainer', trainerData);
         const response = await api.post('/api/trainers', trainerData);
         console.log('Create trainer response:', response.data);
-        
+
         if (response.data.success) {
           showAlert('success', 'Trainer Added', 'Trainer added successfully!');
-          await fetchTrainers(); // Refresh list
+          await fetchTrainers();
           setShowAddForm(false);
           resetForm();
         }
@@ -149,19 +214,27 @@ export default function TrainersPage() {
     }
   };
 
-  const handleEdit = (trainer: Trainer) => {
-    setEditingTrainer(trainer);
+  const handleEdit = async (trainer: Trainer) => {
     setShowAddForm(false);
-    setFormData({
-      name: trainer.name,
-      gender: trainer.gender || '',
-      dateOfBirth: trainer.dateOfBirth ? trainer.dateOfBirth.split('T')[0] : '',
-      specialization: trainer.specialization || '',
-      charges: trainer.charges?.toString() || '',
-      startTime: trainer.startTime || '',
-      endTime: trainer.endTime || '',
-    });
+    setEditingTrainer(trainer);
+    setFormData(trainerToForm(trainer));
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    try {
+      const response = await api.get(`/api/trainers/${trainer.id}`);
+      if (response.data?.success) {
+        const detail =
+          response.data.data?.trainer ?? response.data.data ?? null;
+        if (detail && typeof detail === 'object') {
+          const full = detail as Trainer;
+          setEditingTrainer(full);
+          setFormData(trainerToForm(full));
+        }
+      }
+    } catch (error: unknown) {
+      // List row still usable if detail fetch fails
+      console.error('Error loading trainer detail:', error);
+    }
   };
 
   const handleDeleteClick = (id: string, name: string) => {
@@ -199,15 +272,18 @@ export default function TrainersPage() {
   };
 
   const resetForm = () => {
-    setFormData({
-      name: '',
-      gender: '',
-      dateOfBirth: '',
-      specialization: '',
-      charges: '',
-      startTime: '',
-      endTime: '',
-    });
+    setFormData(emptyForm());
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      setSearchQuery(searchInput);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput('');
+    setSearchQuery('');
   };
 
   // Handle sorting
@@ -231,6 +307,10 @@ export default function TrainersPage() {
         case 'name':
           aValue = a.name.toLowerCase();
           bValue = b.name.toLowerCase();
+          break;
+        case 'phone':
+          aValue = a.phone?.toLowerCase() || '';
+          bValue = b.phone?.toLowerCase() || '';
           break;
         case 'gender':
           aValue = a.gender?.toLowerCase() || '';
@@ -348,6 +428,22 @@ export default function TrainersPage() {
                   </p>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-dark-gray mb-1">
+                    Phone number
+                  </label>
+                  <input
+                    type="tel"
+                    maxLength={40}
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="03001234567"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Optional · {formData.phone.length}/40 characters
+                  </p>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-dark-gray mb-1">Gender</label>
                   <select
                     value={formData.gender}
@@ -456,6 +552,52 @@ export default function TrainersPage() {
           </div>
         )}
 
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="flex items-center space-x-4">
+            <div className="flex-1">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search name, phone…"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+                <svg
+                  className="absolute left-3 top-2.5 h-5 w-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSearchQuery(searchInput)}
+              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors"
+            >
+              Go
+            </button>
+            {(searchQuery || searchInput) && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="px-4 py-2 border border-gray-300 text-dark-gray rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-light-gray">
@@ -467,6 +609,17 @@ export default function TrainersPage() {
                   <div className="flex items-center space-x-1">
                     <span>Name</span>
                     {sortConfig?.key === 'name' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                  onClick={() => handleSort('phone')}
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>Phone</span>
+                    {sortConfig?.key === 'phone' && (
                       <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </div>
@@ -537,10 +690,27 @@ export default function TrainersPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {sortedTrainers.map((trainer) => (
+              {sortedTrainers.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={canManage ? 9 : 8}
+                    className="px-6 py-10 text-center text-sm text-gray-500"
+                  >
+                    {searchQuery
+                      ? 'No trainers found matching your search.'
+                      : 'No trainers found.'}
+                  </td>
+                </tr>
+              ) : (
+              sortedTrainers.map((trainer) => (
                 <tr key={trainer.id}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-dark-gray">{trainer.name}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">
+                      {trainer.phone?.trim() ? trainer.phone : '—'}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">
@@ -591,7 +761,8 @@ export default function TrainersPage() {
                     </td>
                   )}
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>
