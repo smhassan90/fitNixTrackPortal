@@ -327,7 +327,7 @@ export default function SettingsPage() {
                   <label className="block text-sm font-medium text-dark-gray mb-2">
                     Admission Fee Amount (Rs.)
                   </label>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <input
                       type="number"
                       min="0"
@@ -347,7 +347,7 @@ export default function SettingsPage() {
                     <button
                       onClick={handleSaveAdmission}
                       disabled={!isAdmin || saving}
-                      className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors font-medium disabled:opacity-50"
+                      className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 sm:w-auto"
                     >
                       Save
                     </button>
@@ -391,7 +391,7 @@ export default function SettingsPage() {
                   <label className="block text-sm font-medium text-dark-gray mb-2">
                     Max discount per member (Rs.)
                   </label>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <input
                       type="number"
                       min="0"
@@ -411,7 +411,7 @@ export default function SettingsPage() {
                     <button
                       onClick={handleSaveMaxMemberDiscount}
                       disabled={!isAdmin || saving}
-                      className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors font-medium disabled:opacity-50"
+                      className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 sm:w-auto"
                     >
                       Save
                     </button>
@@ -512,12 +512,12 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="lg:col-span-2 flex flex-wrap gap-3">
+            <div className="flex flex-col gap-3 lg:col-span-2 sm:flex-row sm:flex-wrap">
               <button
                 type="button"
                 onClick={handleSaveAttendance}
                 disabled={!isAdmin || saving}
-                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark font-medium disabled:opacity-50"
+                className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white hover:bg-primary-dark disabled:opacity-50 sm:w-auto"
               >
                 {saving ? 'Saving…' : 'Save attendance policies'}
               </button>
@@ -525,7 +525,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={handleApplyPolicies}
                 disabled={!isAdmin || applyingPolicies}
-                className="px-6 py-2 border border-gray-300 bg-white text-dark-gray rounded-lg hover:bg-gray-50 font-medium disabled:opacity-50"
+                className="w-full rounded-lg border border-gray-300 bg-white px-6 py-2 font-medium text-dark-gray hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
               >
                 {applyingPolicies ? 'Applying…' : 'Apply policies now'}
               </button>
@@ -548,7 +548,7 @@ export default function SettingsPage() {
               {devicesLoading ? (
                 <p className="text-sm text-gray-500">Loading device setup…</p>
               ) : deviceSetup?.apiKey ? (
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                   <code className="flex-1 min-w-0 px-4 py-2 bg-gray-100 rounded-lg text-sm font-mono break-all">
                     {deviceSetup.apiKey}
                   </code>
@@ -574,7 +574,7 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 {isAdmin && (
-                  <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
                     <input
                       type="text"
                       value={newDeviceName}
@@ -593,7 +593,7 @@ export default function SettingsPage() {
                       type="button"
                       onClick={handleAddDevice}
                       disabled={addingDevice}
-                      className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                      className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50 sm:w-auto"
                     >
                       {addingDevice ? 'Adding…' : 'Add device'}
                     </button>

@@ -674,12 +674,12 @@ function PaymentsPageContent() {
                 </p>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
               <button
                 type="button"
                 onClick={() => void handleExportExcel()}
                 disabled={exporting}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 {exporting ? 'Exporting…' : 'Export to Excel'}
               </button>
@@ -687,7 +687,7 @@ function PaymentsPageContent() {
                 <button
                   type="button"
                   onClick={handleCheckOverdue}
-                  className="rounded-lg bg-orange px-4 py-2 text-white transition-colors hover:bg-opacity-90"
+                  className="w-full rounded-lg bg-orange px-4 py-2 text-white transition-colors hover:bg-opacity-90 sm:w-auto"
                 >
                   Check overdue
                 </button>
@@ -713,7 +713,7 @@ function PaymentsPageContent() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
               <div className="relative min-w-0 flex-1">
                 <label className="mb-1 block text-sm font-medium text-dark-gray">Search</label>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <div className="relative min-w-0 flex-1">
                     <input
                       type="text"
@@ -737,13 +737,13 @@ function PaymentsPageContent() {
                   <button
                     type="button"
                     onClick={handleApplySearch}
-                    className="rounded-lg bg-primary px-5 py-2 font-medium text-white hover:bg-primary-dark"
+                    className="w-full rounded-lg bg-primary px-5 py-2 font-medium text-white hover:bg-primary-dark sm:w-auto"
                   >
                     Go
                   </button>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-dark-gray">Status</label>
                   <select
@@ -770,7 +770,7 @@ function PaymentsPageContent() {
                 <button
                   type="button"
                   onClick={handleApplyOpenFilter}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium hover:bg-gray-50 sm:w-auto"
                 >
                   Apply filter
                 </button>

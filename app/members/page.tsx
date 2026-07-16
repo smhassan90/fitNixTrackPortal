@@ -948,21 +948,21 @@ export default function MembersPage() {
         </div>
       )}
       <div className="space-y-6 overflow-x-hidden">
-          <div className="flex justify-between items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-3xl font-bold text-dark-gray">Members</h1>
             {!showAddForm && !editingMember && (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                 <button
                   type="button"
                   onClick={handleExportExcel}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 sm:w-auto"
                 >
                   Export to Excel
                 </button>
                 {canManage && (
                   <button
                     onClick={openAddForm}
-                    className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+                    className="w-full rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-opacity-90 sm:w-auto"
                   >
                     + Add Member
                   </button>
@@ -973,7 +973,7 @@ export default function MembersPage() {
 
           {/* Search/Filter */}
           <div className="bg-white p-4 rounded-lg shadow">
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
               <div className="flex-1">
                 <div className="relative">
                   <input
@@ -996,14 +996,14 @@ export default function MembersPage() {
               </div>
               <button
                 onClick={() => setSearchQuery(searchInput)}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors"
+                className="w-full rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-opacity-90 sm:w-auto"
               >
                 Go
               </button>
               {(searchQuery || searchInput) && (
                 <button
                   onClick={handleClearSearch}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                  className="w-full px-4 py-2 text-left text-gray-600 hover:text-gray-800 sm:w-auto sm:text-center"
                 >
                   Clear
                 </button>
@@ -1014,7 +1014,7 @@ export default function MembersPage() {
           {/* Add/Edit Form */}
           {(showAddForm || editingMember) && (
             <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
-              <div className="flex justify-between items-center mb-6">
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-dark-gray">
                     {editingMember ? 'Edit Member' : 'Add New Member'}
@@ -1182,7 +1182,7 @@ export default function MembersPage() {
                   )}
                 </div>
                 <div className="md:col-span-2">
-                  <div className="flex items-center space-x-3 mb-4">
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
                     <label className="flex items-center space-x-2 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1244,7 +1244,7 @@ export default function MembersPage() {
                 {/* Admission Amount Field */}
                 <div className="md:col-span-2">
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <label className="block text-sm font-medium text-dark-gray mb-1">
                           Admission Fee
@@ -1256,7 +1256,7 @@ export default function MembersPage() {
                           </span>
                         </p>
                       </div>
-                      <div className="flex items-center space-x-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
                         <label className="flex items-center space-x-2 cursor-pointer">
                           <input
                             type="checkbox"
@@ -1327,7 +1327,7 @@ export default function MembersPage() {
                 {/* Payment Summary */}
                 <div className="md:col-span-2">
                   <div className="bg-gradient-to-r from-primary to-primary-dark rounded-lg p-5 text-white">
-                    <div className="flex justify-between items-start">
+                    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                       <div className="flex-1">
                         <p className="text-sm font-medium text-white opacity-90 mb-2">Payment Summary</p>
                         <div className="space-y-1 text-xs text-white opacity-80">
@@ -1417,7 +1417,7 @@ export default function MembersPage() {
                           </div>
                         </div>
                       </div>
-                      <div className="text-right border-l border-white border-opacity-30 pl-5 ml-5">
+                      <div className="border-t border-white border-opacity-30 pt-5 text-left sm:text-right lg:ml-5 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
                         {/* One-Time Payment */}
                         <div className="mb-4 pb-4 border-b border-white border-opacity-20">
                           <p className="text-xs text-white opacity-80 mb-1">One-Time Payment</p>
@@ -1468,17 +1468,17 @@ export default function MembersPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-4 pt-4">
+              <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:gap-4">
                 <button
                   type="submit"
-                  className="bg-primary text-white py-2 px-6 rounded-lg hover:bg-opacity-90 transition-colors font-medium"
+                  className="rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-opacity-90"
                 >
                   {editingMember ? 'Update Member' : 'Add Member'}
                 </button>
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="bg-gray-300 text-dark-gray py-2 px-6 rounded-lg hover:bg-gray-400 transition-colors font-medium"
+                  className="rounded-lg bg-gray-300 px-6 py-2 font-medium text-dark-gray transition-colors hover:bg-gray-400"
                 >
                   Cancel
                 </button>

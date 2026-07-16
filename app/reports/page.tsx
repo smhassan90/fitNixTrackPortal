@@ -528,7 +528,7 @@ export default function ReportsPage() {
               <strong>{reportMonthDayRange.lastLabel}</strong>.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <input
               type="date"
               value={dateRange.startDate}
@@ -750,7 +750,7 @@ export default function ReportsPage() {
                 Cash actually received in the selected date range.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <label className="text-xs text-gray-500">
                 Category
                 <select

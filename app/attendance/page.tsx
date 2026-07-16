@@ -378,7 +378,7 @@ function AttendancePageContent() {
         message={alert.message}
       />
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-dark-gray">Attendance</h1>
             <p className="text-sm text-gray-500 mt-1">History, absence reports, and device sync</p>
@@ -428,8 +428,8 @@ function AttendancePageContent() {
 
         {activeTab === 'no-sign-in' && (
           <>
-            <div className="bg-white p-4 rounded-lg shadow flex flex-wrap items-end gap-4">
-              <div>
+            <div className="flex flex-col gap-4 rounded-lg bg-white p-4 shadow sm:flex-row sm:flex-wrap sm:items-end">
+              <div className="w-full sm:w-auto">
                 <label className="block text-sm font-medium text-dark-gray mb-1">
                   No check-in for at least (days)
                 </label>
@@ -445,7 +445,7 @@ function AttendancePageContent() {
               <button
                 type="button"
                 onClick={handleNoSignInDaysApply}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90"
+                className="w-full rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90 sm:w-auto"
               >
                 Apply
               </button>
@@ -540,7 +540,7 @@ function AttendancePageContent() {
           <>
         {/* Filters */}
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div>
               <label className="block text-sm font-medium text-dark-gray mb-1">Member</label>
               <select
@@ -777,7 +777,7 @@ function AttendancePageContent() {
                   </p>
                 </div>
                 <div>
-                  <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                  <nav className="relative z-0 flex flex-wrap rounded-md shadow-sm sm:inline-flex sm:flex-nowrap sm:-space-x-px" aria-label="Pagination">
                     <button
                       onClick={() => handlePageChange(Math.max(1, pagination.page - 1))}
                       disabled={pagination.page === 1}

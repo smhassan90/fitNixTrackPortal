@@ -62,14 +62,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-[#ECF0F1]">
       <Sidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
       
       {/* Toggle Button - Always visible when sidebar is closed */}
       {!sidebarOpen && (
         <button
           onClick={toggleSidebar}
-          className="sidebar-toggle fixed top-6 left-4 z-30 bg-primary text-white p-2 rounded-lg shadow-lg hover:bg-opacity-90 transition-colors"
+          className="sidebar-toggle fixed left-4 top-4 z-30 rounded-xl bg-primary p-2.5 text-white shadow-lg transition-colors hover:bg-opacity-90 lg:top-6"
           title="Open sidebar"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,7 +78,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </button>
       )}
       
-      <main className={`flex-1 transition-all duration-300 overflow-x-hidden ${sidebarOpen ? 'md:ml-64' : 'md:ml-0'} ${!sidebarOpen ? 'pl-14 pt-20 md:pl-8 md:pt-8' : 'p-4 md:p-8'}`}>
+      <main
+        className={`flex-1 min-w-0 overflow-x-hidden transition-all duration-300 ${
+          sidebarOpen ? 'lg:ml-64' : 'lg:ml-0'
+        } ${sidebarOpen ? 'px-4 pb-6 pt-4 sm:px-5 sm:pb-8 sm:pt-5 lg:p-8' : 'px-4 pb-6 pt-20 sm:px-5 sm:pb-8 sm:pt-20 lg:px-8 lg:pb-8 lg:pt-8'}`}
+      >
         {children}
       </main>
     </div>

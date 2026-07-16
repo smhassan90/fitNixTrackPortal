@@ -283,12 +283,12 @@ export default function DashboardPage() {
         loading={inGymLoading}
       />
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-dark-gray">Dashboard</h1>
+            <h1 className="text-3xl font-bold text-dark-gray sm:text-4xl">Dashboard</h1>
             <p className="mt-1 text-gray-500">Welcome back! Here&apos;s what&apos;s happening today.</p>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-gray-500 sm:text-right">
             {new Date().toLocaleDateString('en-US', {
               weekday: 'long',
               year: 'numeric',

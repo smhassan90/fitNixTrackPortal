@@ -13,7 +13,13 @@ const links = [
   { href: '/platform/reports', label: 'Reports' },
 ];
 
-export default function PlatformSidebar() {
+export default function PlatformSidebar({
+  isOpen,
+  onToggle,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
   const pathname = usePathname();
   const { user, logout } = usePlatformAuth();
   const isSuper = useIsPlatformSuperAdmin();
@@ -41,15 +47,51 @@ export default function PlatformSidebar() {
     return () => observer.disconnect();
   }, [isSuper, updateScrollFades]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (window.innerWidth >= 1024 || !isOpen) return;
+      const target = event.target as HTMLElement;
+      if (!target.closest('.platform-sidebar-container') && !target.closest('.platform-sidebar-toggle')) {
+        onToggle();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside as EventListener);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as EventListener);
+    };
+  }, [isOpen, onToggle]);
+
   return (
-    <aside className="w-64 shrink-0 border-r border-dark-gray-light/20 bg-dark-gray text-white min-h-screen flex flex-col overflow-hidden">
-      <div className="p-6 border-b border-white/10 shrink-0">
+    <>
+      {isOpen && <div className="fixed inset-0 z-40 bg-black/45 lg:hidden" onClick={onToggle} />}
+      <aside
+        className={`platform-sidebar-container fixed left-0 top-0 z-50 flex h-screen w-64 flex-col overflow-hidden border-r border-dark-gray-light/20 bg-dark-gray text-white shadow-2xl transition-transform duration-300 lg:shadow-none ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+      <div className="border-b border-white/10 p-6 shrink-0">
         <FitNixLogo
           size="sm"
           subtitle="Platform · Operator console"
           titleClassName="text-white"
           subtitleClassName="text-white/50"
         />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="platform-sidebar-toggle absolute right-4 top-5 rounded-lg p-1 text-white/70 hover:bg-white/10 hover:text-white lg:hidden"
+          aria-label="Close platform sidebar"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
       <div className="relative flex-1 min-h-0">
         {scrollFades.top && (
@@ -69,6 +111,9 @@ export default function PlatformSidebar() {
               <Link
                 key={l.href}
                 href={l.href}
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();
+                }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                   active ? 'bg-primary text-white' : 'text-white/80 hover:bg-white/10'
                 }`}
@@ -81,6 +126,9 @@ export default function PlatformSidebar() {
             <>
               <Link
                 href="/platform/catalog"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();
+                }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                   pathname.startsWith('/platform/catalog')
                     ? 'bg-primary text-white'
@@ -91,6 +139,9 @@ export default function PlatformSidebar() {
               </Link>
               <Link
                 href="/platform/users"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();
+                }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                   pathname.startsWith('/platform/users')
                     ? 'bg-primary text-white'
@@ -101,6 +152,9 @@ export default function PlatformSidebar() {
               </Link>
               <Link
                 href="/platform/audit"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();
+                }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                   pathname.startsWith('/platform/audit')
                     ? 'bg-primary text-white'
@@ -138,5 +192,6 @@ export default function PlatformSidebar() {
         </Link>
       </div>
     </aside>
+    </>
   );
 }

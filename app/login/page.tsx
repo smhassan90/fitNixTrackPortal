@@ -119,7 +119,7 @@ export default function LoginPage() {
       </div>
 
       {/* Form panel */}
-      <div className="relative flex flex-1 flex-col items-center justify-center bg-light-gray-light px-6 py-12 sm:px-10">
+      <div className="relative flex flex-1 flex-col items-center justify-center bg-light-gray-light px-4 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent" />
 
         <div className="relative w-full max-w-md">
@@ -128,7 +128,7 @@ export default function LoginPage() {
             <FitNixLogo size="md" subtitle="Admin Portal" />
           </div>
 
-          <div className="rounded-2xl border border-light-gray-dark/60 bg-white p-8 shadow-xl shadow-dark-gray/5 sm:p-10">
+          <div className="rounded-2xl border border-light-gray-dark/60 bg-white p-5 shadow-xl shadow-dark-gray/5 sm:p-8 lg:p-10">
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-dark-gray">Welcome back</h2>
               <p className="mt-2 text-sm text-dark-gray-light">
