@@ -674,7 +674,7 @@ function PaymentsPageContent() {
                 </p>
               )}
             </div>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+            <div className="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
               <button
                 type="button"
                 onClick={() => void handleExportExcel()}
