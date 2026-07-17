@@ -44,15 +44,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    // Dynamic key avoids build-time inlining of an empty value; trim guards pasted secrets.
+    const blobToken = process.env['BLOB_READ_WRITE_TOKEN']?.trim();
     if (process.env.VERCEL && !blobToken) {
+      const relatedKeys = Object.keys(process.env)
+        .filter((k) => /BLOB|READ_WRITE_TOKEN/i.test(k))
+        .sort();
       return NextResponse.json(
         {
           success: false,
           error: {
             code: 'CONFIG_ERROR',
             message:
-              'Logo uploads on Vercel require a Blob store on this project. In Vercel → Storage → create Blob, connect it to this frontend project, then redeploy.',
+              relatedKeys.length > 0
+                ? `BLOB_READ_WRITE_TOKEN is missing on this deployment. Related env keys found: ${relatedKeys.join(', ')}. Rename/add exactly BLOB_READ_WRITE_TOKEN, then redeploy without build cache.`
+                : 'BLOB_READ_WRITE_TOKEN is missing on this deployment. In Vercel → Settings → Environment Variables, add exactly BLOB_READ_WRITE_TOKEN (from Storage → Blob), then Redeploy with “Use existing Build Cache” turned OFF.',
           },
         },
         { status: 503 }
@@ -125,7 +131,7 @@ export async function POST(request: NextRequest) {
     const detail = e instanceof Error ? e.message : '';
     const missingBlob =
       Boolean(process.env.VERCEL) &&
-      !process.env.BLOB_READ_WRITE_TOKEN &&
+      !process.env['BLOB_READ_WRITE_TOKEN']?.trim() &&
       /no token found/i.test(detail);
     return NextResponse.json(
       {
