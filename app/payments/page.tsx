@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
+import Loading from '@/components/Loading';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
@@ -73,7 +74,10 @@ interface PaginationState {
   limit: number;
   total: number;
   totalPages: number;
+  hasMore: boolean;
 }
+
+const PAGE_LIMIT = 25;
 
 function normalizeMemberSummary(raw: Record<string, unknown>): MemberPaymentSummaryRow {
   const m = raw.member as Record<string, unknown> | undefined;
@@ -129,12 +133,18 @@ function PaymentsPageContent() {
   const [rows, setRows] = useState<MemberPaymentSummaryRow[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     page: 1,
-    limit: 20,
+    limit: PAGE_LIMIT,
     total: 0,
     totalPages: 0,
+    hasMore: false,
   });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const loadMoreLockRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const paginationRef = useRef(pagination);
+  paginationRef.current = pagination;
 
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -150,6 +160,7 @@ function PaymentsPageContent() {
   const [confirmOneTimeRow, setConfirmOneTimeRow] = useState<MemberPaymentSummaryRow | null>(null);
   const [markingPaid, setMarkingPaid] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [checkingOverdue, setCheckingOverdue] = useState(false);
 
   const canPay = canManageGymPayments(user?.role);
 
@@ -187,86 +198,153 @@ function PaymentsPageContent() {
     syncFromUrl();
   }, [syncFromUrl]);
 
-  useEffect(() => {
-    setPagination((p) => ({ ...p, page: 1 }));
-  }, [statusFilter]);
-
-  const fetchSummaries = useCallback(async () => {
-    try {
-      setLoading(true);
-      setListError(null);
+  const buildSummariesParams = useCallback(
+    (page: number) => {
       const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(PAGE_LIMIT));
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
 
-      const openOnlyForFetch =
-        statusFilter === 'paid' ? false : onlyWithOpenInstallments;
+      const openOnlyForFetch = statusFilter === 'paid' ? false : onlyWithOpenInstallments;
       if (openOnlyForFetch) params.set('onlyWithOpenInstallments', 'true');
 
       if (statusFilter === 'overdue' || statusFilter === 'pending') {
         params.set('nextUnpaidBucket', statusFilter);
-        params.set('limit', '500');
-        params.set('page', '1');
       } else if (statusFilter === 'paid') {
-        params.set('limit', '500');
-        params.set('page', '1');
-      } else {
-        params.set('page', String(pagination.page));
-        params.set('limit', String(pagination.limit));
+        params.set('status', 'paid');
       }
+
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
+      return params;
+    },
+    [searchQuery, onlyWithOpenInstallments, sortBy, sortOrder, statusFilter]
+  );
 
-      const response = await api.get(`/api/payments/member-summaries?${params.toString()}`);
-
-      if (!response.data?.success) {
-        throw new Error(response.data?.error?.message || 'Failed to load payment summaries');
-      }
-
-      const data = response.data.data || {};
-      const rawList = data.members ?? data.memberSummaries ?? data.summaries ?? [];
-      const normalized = (rawList as Record<string, unknown>[]).map(normalizeMemberSummary);
-      setRows(normalized);
-
-      const p = data.pagination;
-      if (p && typeof p === 'object') {
-        setPagination((prev) => ({
-          page: p.page != null && !Number.isNaN(Number(p.page)) ? Number(p.page) : prev.page,
-          limit: p.limit != null && !Number.isNaN(Number(p.limit)) ? Number(p.limit) : prev.limit,
-          total: p.total != null && !Number.isNaN(Number(p.total)) ? Number(p.total) : normalized.length,
-          totalPages:
-            p.totalPages != null && !Number.isNaN(Number(p.totalPages))
-              ? Number(p.totalPages)
-              : Math.max(1, Math.ceil((Number(p.total) || normalized.length) / prev.limit)),
-        }));
+  const fetchPage = useCallback(
+    async (page: number, append: boolean) => {
+      if (append) {
+        if (loadMoreLockRef.current) return;
+        loadMoreLockRef.current = true;
+        setLoadingMore(true);
       } else {
-        setPagination((prev) => ({
-          ...prev,
-          total: normalized.length,
-          totalPages: Math.max(1, Math.ceil(normalized.length / prev.limit)),
-        }));
+        setLoading(true);
+        setListError(null);
       }
-    } catch (e: unknown) {
-      const msg = getErrorMessage(e);
-      setListError(msg);
-      setRows([]);
-      showAlert('error', 'Error', msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    searchQuery,
-    onlyWithOpenInstallments,
-    sortBy,
-    sortOrder,
-    pagination.page,
-    pagination.limit,
-    statusFilter,
-    showAlert,
-  ]);
+
+      try {
+        const response = await api.get(
+          `/api/payments/member-summaries?${buildSummariesParams(page).toString()}`
+        );
+
+        if (!response.data?.success) {
+          throw new Error(response.data?.error?.message || 'Failed to load payment summaries');
+        }
+
+        const data = response.data.data || {};
+        const rawList = data.members ?? data.memberSummaries ?? data.summaries ?? [];
+        const normalized = (rawList as Record<string, unknown>[]).map(normalizeMemberSummary);
+
+        setRows((prev) => {
+          if (!append) return normalized;
+          const seen = new Set(prev.map((r) => r.member.id));
+          const added = normalized.filter((r) => !seen.has(r.member.id));
+          return [...prev, ...added];
+        });
+
+        const p = data.pagination;
+        const limit = p?.limit != null && !Number.isNaN(Number(p.limit)) ? Number(p.limit) : PAGE_LIMIT;
+        const total =
+          p?.total != null && !Number.isNaN(Number(p.total)) ? Number(p.total) : normalized.length;
+        const totalPages =
+          p?.totalPages != null && !Number.isNaN(Number(p.totalPages))
+            ? Number(p.totalPages)
+            : Math.max(1, Math.ceil(total / limit));
+        const currentPage =
+          p?.page != null && !Number.isNaN(Number(p.page)) ? Number(p.page) : page;
+        const hasMore =
+          p?.hasMore === true ||
+          (p?.hasMore === false
+            ? false
+            : currentPage < totalPages);
+
+        setPagination({
+          page: currentPage,
+          limit,
+          total,
+          totalPages,
+          hasMore,
+        });
+      } catch (e: unknown) {
+        const msg = getErrorMessage(e);
+        if (!append) {
+          setListError(msg);
+          setRows([]);
+          setPagination({
+            page: 1,
+            limit: PAGE_LIMIT,
+            total: 0,
+            totalPages: 0,
+            hasMore: false,
+          });
+          showAlert('error', 'Error', msg);
+        }
+      } finally {
+        if (append) {
+          setLoadingMore(false);
+          loadMoreLockRef.current = false;
+        } else {
+          setLoading(false);
+        }
+      }
+    },
+    [buildSummariesParams, showAlert]
+  );
+
+  const refreshList = useCallback(() => fetchPage(1, false), [fetchPage]);
+
+  const listQueryKey = useMemo(
+    () =>
+      JSON.stringify({
+        searchQuery,
+        onlyWithOpenInstallments,
+        sortBy,
+        sortOrder,
+        statusFilter,
+      }),
+    [searchQuery, onlyWithOpenInstallments, sortBy, sortOrder, statusFilter]
+  );
 
   useEffect(() => {
-    fetchSummaries();
-  }, [fetchSummaries]);
+    setRows([]);
+    setPagination({
+      page: 1,
+      limit: PAGE_LIMIT,
+      total: 0,
+      totalPages: 0,
+      hasMore: false,
+    });
+    void fetchPage(1, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset list when query key changes
+  }, [listQueryKey]);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !pagination.hasMore || loading || loadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const pg = paginationRef.current;
+        if (entries[0]?.isIntersecting && pg.hasMore && !loading && !loadingMore) {
+          void fetchPage(pg.page + 1, true);
+        }
+      },
+      { rootMargin: '240px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pagination.hasMore, pagination.page, loading, loadingMore, fetchPage]);
 
   const handleSort = (key: SortByKey) => {
     if (sortBy === key) {
@@ -275,17 +353,14 @@ function PaymentsPageContent() {
       setSortBy(key);
       setSortOrder(key === 'overdueCount' ? 'desc' : 'asc');
     }
-    setPagination((p) => ({ ...p, page: 1 }));
   };
 
   const handleApplySearch = () => {
     setSearchQuery(searchInput);
-    setPagination((p) => ({ ...p, page: 1 }));
   };
 
   const handleApplyOpenFilter = () => {
     setOnlyWithOpenInstallments(onlyOpenInput);
-    setPagination((p) => ({ ...p, page: 1 }));
   };
 
   const handleMarkOneTimePaid = async (row: MemberPaymentSummaryRow) => {
@@ -308,7 +383,7 @@ function PaymentsPageContent() {
       );
       setConfirmOneTimeRow(null);
       notifyDashboardStatsRefresh();
-      await fetchSummaries();
+      await refreshList();
       try {
         await printOneTimePaymentReceipt(
           oneTimeId,
@@ -370,7 +445,7 @@ function PaymentsPageContent() {
       );
       setConfirmPayRow(null);
       notifyDashboardStatsRefresh();
-      await fetchSummaries();
+      await refreshList();
       try {
         await tryPrintMonthlyReceiptAfterMarkPaid({
           paymentId,
@@ -394,7 +469,7 @@ function PaymentsPageContent() {
 
   const handleCheckOverdue = async () => {
     try {
-      setLoading(true);
+      setCheckingOverdue(true);
       const response = await api.post('/api/payments/generate-overdue');
       if (response.data?.success) {
         const updatedCount = response.data.data?.updated ?? 0;
@@ -403,12 +478,12 @@ function PaymentsPageContent() {
         } else {
           showAlert('info', 'Up to date', 'No new overdue installments.');
         }
-        await fetchSummaries();
+        await refreshList();
       }
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {
-      setLoading(false);
+      setCheckingOverdue(false);
     }
   };
 
@@ -428,59 +503,18 @@ function PaymentsPageContent() {
     return 'No members found.';
   }, [searchQuery, onlyWithOpenInstallments, statusFilter]);
 
-  const filteredRows = useMemo(() => {
-    if (statusFilter === 'all') return rows;
-    return rows.filter((row) => {
-      if (statusFilter === 'paid') return !row.nextUnpaid && !row.nextOneTime;
-      if (!row.nextUnpaid) return false;
-      const b = uiBucketForNextUnpaid({
-        displayBucket: row.nextUnpaid.displayBucket,
-        dueDate: row.nextUnpaid.dueDate,
-        status: row.nextUnpaid.status,
-        isOverdue: row.nextUnpaid.isOverdue,
-      });
-      if (statusFilter === 'overdue') return b === 'overdue';
-      return b === 'pending' || b === 'advance';
-    });
+  const tableRows = useMemo(() => {
+    if (statusFilter !== 'paid') return rows;
+    return rows.filter((row) => !row.nextUnpaid && !row.nextOneTime);
   }, [rows, statusFilter]);
-
-  const applyStatusFilter = useCallback(
-    (list: MemberPaymentSummaryRow[]) => {
-      if (statusFilter === 'all') return list;
-      return list.filter((row) => {
-        if (statusFilter === 'paid') return !row.nextUnpaid && !row.nextOneTime;
-        if (!row.nextUnpaid) return false;
-        const b = uiBucketForNextUnpaid({
-          displayBucket: row.nextUnpaid.displayBucket,
-          dueDate: row.nextUnpaid.dueDate,
-          status: row.nextUnpaid.status,
-          isOverdue: row.nextUnpaid.isOverdue,
-        });
-        if (statusFilter === 'overdue') return b === 'overdue';
-        return b === 'pending' || b === 'advance';
-      });
-    },
-    [statusFilter]
-  );
 
   const handleExportExcel = async () => {
     try {
       setExporting(true);
       const out: MemberPaymentSummaryRow[] = [];
-      const openOnlyForFetch = statusFilter === 'paid' ? false : onlyWithOpenInstallments;
 
-      for (let page = 1; page <= 40; page++) {
-        const params = new URLSearchParams();
-        if (searchQuery.trim()) params.set('search', searchQuery.trim());
-        if (openOnlyForFetch) params.set('onlyWithOpenInstallments', 'true');
-        if (statusFilter === 'overdue' || statusFilter === 'pending') {
-          params.set('nextUnpaidBucket', statusFilter);
-        }
-        params.set('page', String(page));
-        params.set('limit', '200');
-        params.set('sortBy', sortBy);
-        params.set('sortOrder', sortOrder);
-
+      for (let page = 1; page <= 200; page++) {
+        const params = buildSummariesParams(page);
         const response = await api.get(`/api/payments/member-summaries?${params.toString()}`);
         if (!response.data?.success) {
           throw new Error(response.data?.error?.message || 'Failed to load payment summaries');
@@ -493,11 +527,19 @@ function PaymentsPageContent() {
         >[];
         out.push(...rawList.map(normalizeMemberSummary));
 
-        const totalPages = Number(data.pagination?.totalPages) || 1;
-        if (page >= totalPages || rawList.length === 0) break;
+        const p = data.pagination;
+        const hasMore =
+          p?.hasMore === true ||
+          (p?.hasMore === false
+            ? false
+            : page < (Number(p?.totalPages) || 1));
+        if (!hasMore || rawList.length === 0) break;
       }
 
-      const dataToExport = applyStatusFilter(out);
+      const dataToExport =
+        statusFilter === 'paid'
+          ? out.filter((row) => !row.nextUnpaid && !row.nextOneTime)
+          : out;
       if (dataToExport.length === 0) {
         showAlert('info', 'Nothing to export', 'No payment rows match the current filters.');
         return;
@@ -577,22 +619,9 @@ function PaymentsPageContent() {
     }
   };
 
-  const tableRows = useMemo(() => {
-    if (statusFilter === 'all') return rows;
-    const start = (pagination.page - 1) * pagination.limit;
-    return filteredRows.slice(start, start + pagination.limit);
-  }, [statusFilter, rows, filteredRows, pagination.page, pagination.limit]);
-
-  const effectiveTotal = statusFilter !== 'all' ? filteredRows.length : pagination.total;
-  const effectiveTotalPages =
-    statusFilter !== 'all'
-      ? Math.max(1, Math.ceil(filteredRows.length / pagination.limit))
-      : pagination.totalPages;
-
   const setStatusFilterAndUrl = useCallback(
     (next: PaymentStatusFilter) => {
       setStatusFilter(next);
-      setPagination((p) => ({ ...p, page: 1 }));
       if (next === 'paid') {
         setOnlyOpenInput(false);
         setOnlyWithOpenInstallments(false);
@@ -699,9 +728,10 @@ function PaymentsPageContent() {
                 <button
                   type="button"
                   onClick={handleCheckOverdue}
-                  className="w-full rounded-lg bg-orange px-4 py-2 text-white transition-colors hover:bg-opacity-90 sm:w-auto"
+                  disabled={checkingOverdue}
+                  className="w-full rounded-lg bg-orange px-4 py-2 text-white transition-colors hover:bg-opacity-90 disabled:opacity-60 sm:w-auto"
                 >
-                  Check overdue
+                  {checkingOverdue ? 'Checking…' : 'Check overdue'}
                 </button>
               )}
             </div>
@@ -713,7 +743,7 @@ function PaymentsPageContent() {
               <p className="text-sm">{listError}</p>
               <button
                 type="button"
-                onClick={() => fetchSummaries()}
+                onClick={() => refreshList()}
                 className="mt-3 rounded-lg bg-red-700 px-3 py-1.5 text-sm text-white hover:bg-red-800"
               >
                 Retry
@@ -797,7 +827,6 @@ function PaymentsPageContent() {
                       setStatusFilter('all');
                       setSortBy('nextDueDate');
                       setSortOrder('asc');
-                      setPagination((p) => ({ ...p, page: 1 }));
                       router.push('/payments');
                     }}
                     className="text-sm text-gray-600 hover:text-gray-900"
@@ -810,9 +839,6 @@ function PaymentsPageContent() {
           </div>
 
           <div className="overflow-hidden rounded-lg bg-white shadow">
-            {loading && rows.length > 0 && (
-              <div className="border-b border-gray-100 bg-gray-50 px-4 py-2 text-sm text-gray-500">Updating…</div>
-            )}
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-light-gray">
@@ -1017,35 +1043,21 @@ function PaymentsPageContent() {
               </table>
             </div>
 
-            {effectiveTotalPages > 1 && (
-              <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row">
-                <p className="text-sm text-gray-600">
-                  Page {pagination.page} of {effectiveTotalPages} ({effectiveTotal} members
-                  {statusFilter !== 'all' ? ' after filter' : ''})
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={pagination.page <= 1 || loading}
-                    onClick={() => setPagination((p) => ({ ...p, page: Math.max(1, p.page - 1) }))}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm disabled:opacity-40"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    disabled={pagination.page >= effectiveTotalPages || loading}
-                    onClick={() =>
-                      setPagination((p) => ({
-                        ...p,
-                        page: Math.min(effectiveTotalPages, p.page + 1),
-                      }))
-                    }
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm disabled:opacity-40"
-                  >
-                    Next
-                  </button>
-                </div>
+            {(tableRows.length > 0 || loadingMore) && (
+              <div
+                ref={sentinelRef}
+                className="flex flex-col items-center justify-center gap-2 border-t border-gray-100 px-4 py-4"
+              >
+                {loadingMore && <Loading inline size="sm" message="Loading more…" />}
+                {!loadingMore && tableRows.length > 0 && (
+                  <p className="text-sm text-gray-500">
+                    {pagination.hasMore
+                      ? `Showing ${tableRows.length} of ${pagination.total} members`
+                      : pagination.total > 0
+                        ? `All ${pagination.total} members loaded`
+                        : `${tableRows.length} members`}
+                  </p>
+                )}
               </div>
             )}
           </div>
