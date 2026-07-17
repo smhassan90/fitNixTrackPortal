@@ -10,6 +10,8 @@ type Props = {
   onCancel: () => void;
   onConfirm: (blob: Blob) => void;
   busy?: boolean;
+  /** Upload/API error from parent — shown inside the dialog so it is never hidden behind it. */
+  submitError?: string | null;
 };
 
 export default function MemberPhotoCropModal({
@@ -18,6 +20,7 @@ export default function MemberPhotoCropModal({
   onCancel,
   onConfirm,
   busy = false,
+  submitError = null,
 }: Props) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -165,7 +168,11 @@ export default function MemberPhotoCropModal({
             )}
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {(error || submitError) && (
+            <p className="text-sm text-red-600" role="alert">
+              {error || submitError}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-gray-100 px-5 py-4 sm:flex-row sm:justify-end">

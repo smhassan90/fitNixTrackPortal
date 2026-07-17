@@ -18,7 +18,13 @@ import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
 import { DEFAULT_MAX_MEMBER_DISCOUNT, fetchGymSettings } from '@/lib/attendanceApi';
 import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
-import { memberInitials, resolveMemberPhotoUrl } from '@/lib/memberPhoto';
+import {
+  deleteMemberPhoto,
+  memberInitials,
+  memberPhotoErrorMessage,
+  resolveMemberPhotoUrl,
+  uploadMemberPhoto,
+} from '@/lib/memberPhoto';
 import MemberPhotoEditor from '@/components/MemberPhotoEditor';
 
 interface Trainer {
@@ -160,6 +166,8 @@ export default function MembersPage() {
     discount: '',
     admissionFeeWaived: false, // Changed from waiveAdmissionFee to match API
   });
+  /** Cropped JPEG held until create succeeds, then uploaded via /photo. */
+  const [pendingPhotoBlob, setPendingPhotoBlob] = useState<Blob | null>(null);
   
   const [globalAdmissionAmount, setGlobalAdmissionAmount] = useState<number>(0);
   const [maxMemberDiscount, setMaxMemberDiscount] = useState<number>(DEFAULT_MAX_MEMBER_DISCOUNT);
@@ -615,16 +623,45 @@ export default function MembersPage() {
           const newId = String(
             (createdMember as { id?: string | number } | null | undefined)?.id ?? ''
           );
-          showAlert(
-            'success',
-            'Member Added',
-            assignedNumber !== '—'
-              ? `Member added successfully. Member ID: ${assignedNumber}. You can add a photo below.`
-              : 'Member added successfully! You can add a photo below.'
-          );
+
+          let uploadedPhotoUrl: string | null =
+            typeof (createdMember as { photoUrl?: string | null })?.photoUrl === 'string'
+              ? (createdMember as { photoUrl: string }).photoUrl
+              : null;
+          let photoUploadFailed = false;
+
+          if (newId && pendingPhotoBlob) {
+            try {
+              const photoResult = await uploadMemberPhoto(newId, pendingPhotoBlob, 'photo.jpg');
+              uploadedPhotoUrl = photoResult.photoUrl;
+            } catch (photoError) {
+              console.warn('Member created but photo upload failed:', photoError);
+              photoUploadFailed = true;
+              showAlert(
+                'error',
+                'Photo',
+                memberPhotoErrorMessage(photoError) ||
+                  'Member was saved, but the photo could not be uploaded. You can try again below.'
+              );
+            }
+          }
+
+          if (!photoUploadFailed) {
+            const photoHint = pendingPhotoBlob
+              ? ''
+              : ' You can still add or change a photo below.';
+            showAlert(
+              'success',
+              'Member Added',
+              assignedNumber !== '—'
+                ? `Member added successfully. Member ID: ${assignedNumber}.${photoHint}`
+                : `Member added successfully!${photoHint}`
+            );
+          }
+          setPendingPhotoBlob(null);
           notifyDashboardStatsRefresh();
 
-          // Stay on the form in edit mode so staff can upload a portrait (needs member id).
+          // Stay on the form in edit mode so staff can manage the portrait (needs member id).
           if (newId) {
             const trainerFromForm =
               formData.requiresTrainer && formData.trainerId
@@ -672,10 +709,7 @@ export default function MembersPage() {
               isActive: (createdMember as { isActive?: boolean })?.isActive !== false,
               inactiveFrom: null,
               billingResumeFrom: null,
-              photoUrl:
-                typeof (createdMember as { photoUrl?: string | null })?.photoUrl === 'string'
-                  ? (createdMember as { photoUrl: string }).photoUrl
-                  : null,
+              photoUrl: uploadedPhotoUrl,
             };
             setEditingMember(forEdit);
             setShowAddForm(true);
@@ -739,6 +773,20 @@ export default function MembersPage() {
       try {
         setLoading(true);
         console.log('🔵 Deleting member:', deleteDialog.memberId);
+
+        // Best-effort: clear portrait from storage before the member row goes away
+        // (backend also cleans up on member delete; this covers older API deploys).
+        const memberToDelete = members.find(
+          (m) => String(m.id) === String(deleteDialog.memberId)
+        );
+        if (memberToDelete?.photoUrl) {
+          try {
+            await deleteMemberPhoto(deleteDialog.memberId);
+          } catch (photoError) {
+            console.warn('Photo cleanup before member delete failed:', photoError);
+          }
+        }
+
         const response = await api.delete(`/api/members/${deleteDialog.memberId}`);
         console.log('Delete member response:', response.data);
         
@@ -811,6 +859,7 @@ export default function MembersPage() {
   };
 
   const resetForm = () => {
+    setPendingPhotoBlob(null);
     setFormData({
       name: '',
       legacyMemberId: '',
@@ -1129,30 +1178,27 @@ export default function MembersPage() {
               </button>
             </div>
 
-            {editingMember ? (
-              <div className="mb-6">
-                <MemberPhotoEditor
-                  memberId={editingMember.id}
-                  memberName={formData.name || editingMember.name}
-                  photoUrl={editingMember.photoUrl}
-                  disabled={loading}
-                  onPhotoChange={(photoUrl) => {
-                    setEditingMember((prev) => (prev ? { ...prev, photoUrl } : prev));
-                    setMembers((prev) =>
-                      prev.map((m) =>
-                        String(m.id) === String(editingMember.id) ? { ...m, photoUrl } : m
-                      )
-                    );
-                  }}
-                  onError={(message) => showAlert('error', 'Photo', message)}
-                  onSuccess={(message) => showAlert('success', 'Photo', message)}
-                />
-              </div>
-            ) : (
-              <div className="mb-6 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 px-4 py-3 text-sm text-gray-600">
-                Save the member first, then you can add a portrait photo.
-              </div>
-            )}
+            <div className="mb-6">
+              <MemberPhotoEditor
+                key={editingMember ? String(editingMember.id) : 'new-member'}
+                memberId={editingMember?.id}
+                memberName={formData.name || editingMember?.name || ''}
+                photoUrl={editingMember?.photoUrl ?? null}
+                disabled={loading}
+                onPhotoChange={(photoUrl) => {
+                  if (!editingMember) return;
+                  setEditingMember((prev) => (prev ? { ...prev, photoUrl } : prev));
+                  setMembers((prev) =>
+                    prev.map((m) =>
+                      String(m.id) === String(editingMember.id) ? { ...m, photoUrl } : m
+                    )
+                  );
+                }}
+                onPendingPhotoChange={editingMember ? undefined : setPendingPhotoBlob}
+                onError={(message) => showAlert('error', 'Photo', message)}
+                onSuccess={(message) => showAlert('success', 'Photo', message)}
+              />
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

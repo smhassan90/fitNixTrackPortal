@@ -15,11 +15,14 @@ const ACCEPT = 'image/jpeg,image/png,image/webp';
 const MAX_PICK_BYTES = 8 * 1024 * 1024;
 
 type Props = {
-  memberId: string | number;
+  /** When set, crop confirms upload immediately. When omitted, crop is held as a pending blob. */
+  memberId?: string | number | null;
   memberName: string;
   photoUrl: string | null;
   disabled?: boolean;
   onPhotoChange: (photoUrl: string | null) => void;
+  /** Called when a photo is cropped before the member exists (create flow). */
+  onPendingPhotoChange?: (blob: Blob | null) => void;
   onError?: (message: string) => void;
   onSuccess?: (message: string) => void;
 };
@@ -37,16 +40,21 @@ export default function MemberPhotoEditor({
   photoUrl,
   disabled = false,
   onPhotoChange,
+  onPendingPhotoChange,
   onError,
   onSuccess,
 }: Props) {
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [localUrl, setLocalUrl] = useState(photoUrl);
+  const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropSubmitError, setCropSubmitError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [mobileSources, setMobileSources] = useState(false);
+
+  const canUpload = memberId != null && memberId !== '';
 
   useEffect(() => {
     setLocalUrl(photoUrl);
@@ -62,10 +70,24 @@ export default function MemberPhotoEditor({
     };
   }, [cropSrc]);
 
-  const displayUrl = useMemo(() => resolveMemberPhotoUrl(localUrl), [localUrl]);
+  useEffect(() => {
+    return () => {
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
+    };
+  }, [pendingPreviewUrl]);
+
+  const displayUrl = useMemo(() => {
+    if (pendingPreviewUrl) return pendingPreviewUrl;
+    return resolveMemberPhotoUrl(localUrl);
+  }, [localUrl, pendingPreviewUrl]);
   const initials = memberInitials(memberName);
   const hasPhoto = Boolean(displayUrl);
   const busy = disabled || uploading;
+
+  const clearPendingPreview = () => {
+    if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl);
+    setPendingPreviewUrl(null);
+  };
 
   const openPicker = (mode: 'gallery' | 'camera') => {
     if (busy) return;
@@ -90,6 +112,7 @@ export default function MemberPhotoEditor({
       return;
     }
     if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSubmitError(null);
     setCropSrc(URL.createObjectURL(file));
   };
 
@@ -97,29 +120,53 @@ export default function MemberPhotoEditor({
     if (uploading) return;
     if (cropSrc) URL.revokeObjectURL(cropSrc);
     setCropSrc(null);
+    setCropSubmitError(null);
   };
 
   const handleCropConfirm = async (blob: Blob) => {
+    if (!canUpload) {
+      clearPendingPreview();
+      setPendingPreviewUrl(URL.createObjectURL(blob));
+      onPendingPhotoChange?.(blob);
+      if (cropSrc) URL.revokeObjectURL(cropSrc);
+      setCropSrc(null);
+      setCropSubmitError(null);
+      onSuccess?.('Photo ready. It will upload when you save the member.');
+      return;
+    }
+
     try {
       setUploading(true);
-      const result = await uploadMemberPhoto(memberId, blob, 'photo.jpg');
+      setCropSubmitError(null);
+      const result = await uploadMemberPhoto(memberId!, blob, 'photo.jpg');
       const next = result.photoUrl;
+      clearPendingPreview();
       setLocalUrl(next);
       onPhotoChange(next);
       if (cropSrc) URL.revokeObjectURL(cropSrc);
       setCropSrc(null);
       onSuccess?.('Member photo updated.');
     } catch (e) {
-      onError?.(memberPhotoErrorMessage(e));
+      // Keep the crop dialog open and show the error inside it (Alert would sit behind / cover it awkwardly).
+      setCropSubmitError(memberPhotoErrorMessage(e));
     } finally {
       setUploading(false);
     }
   };
 
   const handleRemove = async () => {
+    if (!canUpload) {
+      clearPendingPreview();
+      onPendingPhotoChange?.(null);
+      setRemoveOpen(false);
+      onSuccess?.('Photo removed.');
+      return;
+    }
+
     try {
       setUploading(true);
-      await deleteMemberPhoto(memberId);
+      await deleteMemberPhoto(memberId!);
+      clearPendingPreview();
       setLocalUrl(null);
       onPhotoChange(null);
       onSuccess?.('Member photo removed.');
@@ -149,7 +196,9 @@ export default function MemberPhotoEditor({
 
         <div className="min-w-0 flex-1 space-y-2">
           <p className="text-xs text-gray-500">
-            Square face crop is required before upload. Photos are compressed on the server.
+            {canUpload
+              ? 'Square face crop is required before upload. Photos are compressed on the server.'
+              : 'Optional. Crop a square portrait now — it uploads automatically when you save the member.'}
           </p>
 
           <div className="flex flex-wrap gap-2">
@@ -235,6 +284,7 @@ export default function MemberPhotoEditor({
           open
           imageSrc={cropSrc}
           busy={uploading}
+          submitError={cropSubmitError}
           onCancel={closeCrop}
           onConfirm={(blob) => void handleCropConfirm(blob)}
         />
@@ -249,7 +299,11 @@ export default function MemberPhotoEditor({
           void handleRemove();
         }}
         title="Remove photo"
-        message="Remove this member’s portrait? You can add a new one later."
+        message={
+          canUpload
+            ? 'Remove this member’s portrait? You can add a new one later.'
+            : 'Remove the selected photo? You can choose another before saving.'
+        }
         confirmText="Remove"
         cancelText="Cancel"
         type="danger"
