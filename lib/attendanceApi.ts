@@ -1,5 +1,6 @@
 import api from '@/lib/api';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
+import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
 
 function asObj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
@@ -71,6 +72,7 @@ export interface NoSignInMember {
   memberNumber: string | null;
   legacyMemberId: string | null;
   memberName: string;
+  photoUrl: string | null;
   phone: string;
   lastCheckInDate: string | null;
   daysSinceLastSignIn: number;
@@ -232,6 +234,7 @@ function normalizeNoSignInMember(row: unknown): NoSignInMember | null {
     memberNumber: nums.memberNumber,
     legacyMemberId: nums.legacyMemberId,
     memberName: String(o.memberName ?? nested?.name ?? ''),
+    photoUrl: pickMemberPhotoUrl(nested) ?? pickMemberPhotoUrl(o),
     phone: String(o.phone ?? o.contact ?? nested?.phone ?? ''),
     lastCheckInDate: o.lastCheckInDate != null ? String(o.lastCheckInDate) : null,
     daysSinceLastSignIn: Number(o.daysSinceLastSignIn) || 0,

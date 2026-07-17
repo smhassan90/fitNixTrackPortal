@@ -15,6 +15,8 @@ import { getErrorMessage } from '@/lib/errorHandler';
 import { canManageGymPayments } from '@/lib/gymRoles';
 import { printPaymentReceipt } from '@/lib/paymentReceipt';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
+import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
+import MemberAvatar from '@/components/MemberAvatar';
 import {
   printReceiptForPaymentRecord,
   receiptPrintedByFromUser,
@@ -76,6 +78,7 @@ interface MemberStatusLite {
   memberNumber: string | null;
   legacyMemberId: string | null;
   name: string;
+  photoUrl?: string | null;
   isActive?: boolean;
   inactiveFrom?: string | null;
   billingResumeFrom?: string | null;
@@ -153,6 +156,7 @@ export default function MemberPaymentsDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [memberName, setMemberName] = useState<string>('');
+  const [memberPhotoUrl, setMemberPhotoUrl] = useState<string | null>(null);
   const [memberStatus, setMemberStatus] = useState<MemberStatusLite | null>(null);
   const [monthlyInstallments, setMonthlyInstallments] = useState<MonthlyInstallment[]>([]);
   const [pendingOneTime, setPendingOneTime] = useState<PendingOneTimePayment | null>(null);
@@ -197,35 +201,48 @@ export default function MemberPaymentsDetailPage() {
         (data.memberName as string) ||
         '';
       if (nameFromPayload) setMemberName(nameFromPayload);
-      else {
-        try {
-          const mRes = await api.get(`/api/members/${memberId}`);
-          if (mRes.data?.success && mRes.data.data?.member?.name) {
-            setMemberName(mRes.data.data.member.name);
-            const m = mRes.data.data.member as Record<string, unknown>;
-            setMemberStatus({
-              id: String(m.id ?? memberId),
-              ...normalizeMemberNumberFields(m),
-              name: String(m.name ?? ''),
-              isActive: m.isActive !== false,
-              inactiveFrom: m.inactiveFrom != null ? String(m.inactiveFrom) : null,
-              billingResumeFrom: m.billingResumeFrom != null ? String(m.billingResumeFrom) : null,
-            });
-          }
-        } catch {
-          /* optional */
-        }
-      }
+
+      let resolvedPhoto = pickMemberPhotoUrl(data.member);
       if (data.member) {
         const m = data.member as Record<string, unknown>;
         setMemberStatus({
           id: String(m.id ?? memberId),
           ...normalizeMemberNumberFields(m),
           name: String(m.name ?? nameFromPayload ?? ''),
+          photoUrl: resolvedPhoto,
           isActive: m.isActive !== false,
           inactiveFrom: m.inactiveFrom != null ? String(m.inactiveFrom) : null,
           billingResumeFrom: m.billingResumeFrom != null ? String(m.billingResumeFrom) : null,
         });
+      }
+
+      if (!nameFromPayload || !resolvedPhoto || !data.member) {
+        try {
+          const mRes = await api.get(`/api/members/${memberId}`);
+          if (mRes.data?.success && mRes.data.data?.member) {
+            const m = mRes.data.data.member as Record<string, unknown>;
+            if (!nameFromPayload && m.name) setMemberName(String(m.name));
+            const photoUrl = pickMemberPhotoUrl(m);
+            if (photoUrl) {
+              resolvedPhoto = photoUrl;
+              setMemberPhotoUrl(photoUrl);
+            }
+            setMemberStatus((prev) => ({
+              id: String(m.id ?? memberId),
+              ...normalizeMemberNumberFields(m),
+              name: String(m.name ?? prev?.name ?? nameFromPayload ?? ''),
+              photoUrl: photoUrl ?? prev?.photoUrl ?? null,
+              isActive: m.isActive !== false,
+              inactiveFrom: m.inactiveFrom != null ? String(m.inactiveFrom) : null,
+              billingResumeFrom:
+                m.billingResumeFrom != null ? String(m.billingResumeFrom) : null,
+            }));
+          }
+        } catch {
+          /* optional */
+        }
+      } else if (resolvedPhoto) {
+        setMemberPhotoUrl(resolvedPhoto);
       }
     } catch (e: unknown) {
       const msg = getErrorMessage(e);
@@ -238,6 +255,7 @@ export default function MemberPaymentsDetailPage() {
 
   useEffect(() => {
     setSelectedIds(new Set());
+    setMemberPhotoUrl(null);
     fetchDetail();
   }, [fetchDetail]);
 
@@ -811,12 +829,22 @@ export default function MemberPaymentsDetailPage() {
             <Link href="/payments" className="text-sm font-medium text-primary hover:underline">
               ← Back to payments
             </Link>
-            <h1 className="mt-2 text-3xl font-bold text-dark-gray">{memberName || 'Member payments'}</h1>
-            {memberStatus && displayMemberId(memberStatus) !== '—' && (
-              <p className="mt-1 text-sm text-gray-500">
-                Member ID: <span className="font-medium text-dark-gray">{displayMemberId(memberStatus)}</span>
-              </p>
-            )}
+            <div className="mt-2 flex items-center gap-3">
+              <MemberAvatar
+                name={memberName || 'Member'}
+                photoUrl={memberPhotoUrl ?? memberStatus?.photoUrl ?? null}
+                size="lg"
+              />
+              <div>
+                <h1 className="text-3xl font-bold text-dark-gray">{memberName || 'Member payments'}</h1>
+                {memberStatus && displayMemberId(memberStatus) !== '—' && (
+                  <p className="mt-1 text-sm text-gray-500">
+                    Member ID:{' '}
+                    <span className="font-medium text-dark-gray">{displayMemberId(memberStatus)}</span>
+                  </p>
+                )}
+              </div>
+            </div>
             {memberStatus && (
               <div className="mt-2 space-y-1 text-sm">
                 <div>

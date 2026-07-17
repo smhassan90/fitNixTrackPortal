@@ -32,6 +32,9 @@ import {
 } from '@/lib/paymentReceiptUrl';
 import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
+import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
+import MemberAvatar from '@/components/MemberAvatar';
+import { photoUrlFromMap, useMemberPhotoMap } from '@/hooks/useMemberPhotoMap';
 
 type SortByKey = 'name' | 'nextDueDate' | 'overdueCount';
 
@@ -49,6 +52,7 @@ interface MemberSummaryMember {
   membershipStart: string | null;
   membershipEnd: string | null;
   monthlyPaymentAmount: number | null;
+  photoUrl: string | null;
 }
 
 interface NextUnpaid {
@@ -94,6 +98,7 @@ function normalizeMemberSummary(raw: Record<string, unknown>): MemberPaymentSumm
     membershipEnd: m?.membershipEnd != null ? String(m.membershipEnd) : null,
     monthlyPaymentAmount:
       m?.monthlyPaymentAmount != null ? Number(m.monthlyPaymentAmount) : null,
+    photoUrl: pickMemberPhotoUrl(m),
   };
 
   const nu = raw.nextUnpaid as Record<string, unknown> | null | undefined;
@@ -161,6 +166,7 @@ function PaymentsPageContent() {
   const [markingPaid, setMarkingPaid] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [checkingOverdue, setCheckingOverdue] = useState(false);
+  const photoMap = useMemberPhotoMap();
 
   const canPay = canManageGymPayments(user?.role);
 
@@ -909,15 +915,28 @@ function PaymentsPageContent() {
                           className="cursor-pointer transition-colors hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
                         >
                           <td className="whitespace-nowrap px-6 py-4">
-                            <div className="text-sm font-medium text-dark-gray">{row.member.name}</div>
-                            <div className="text-xs text-gray-500">
-                              ID: {displayMemberId(row.member)}
-                              {(row.member.phone || row.member.email) && (
-                                <span>
-                                  {' · '}
-                                  {row.member.phone || row.member.email}
-                                </span>
-                              )}
+                            <div className="flex items-center gap-3">
+                              <MemberAvatar
+                                name={row.member.name}
+                                photoUrl={photoUrlFromMap(
+                                  photoMap,
+                                  row.member.id,
+                                  row.member.photoUrl
+                                )}
+                                size="sm"
+                              />
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-dark-gray">{row.member.name}</div>
+                                <div className="text-xs text-gray-500">
+                                  ID: {displayMemberId(row.member)}
+                                  {(row.member.phone || row.member.email) && (
+                                    <span>
+                                      {' · '}
+                                      {row.member.phone || row.member.email}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">

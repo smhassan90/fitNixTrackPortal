@@ -3,6 +3,19 @@ import { resolveMediaUrl } from '@/lib/resolveMediaUrl';
 
 export { resolveMediaUrl as resolveMemberPhotoUrl };
 
+/** Pull photoUrl from a member-like API object (top-level or nested `photo.url`). */
+export function pickMemberPhotoUrl(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Record<string, unknown>;
+  if (typeof data.photoUrl === 'string' && data.photoUrl.trim()) return data.photoUrl.trim();
+  const photo = data.photo;
+  if (photo && typeof photo === 'object') {
+    const url = (photo as { url?: unknown }).url;
+    if (typeof url === 'string' && url.trim()) return url.trim();
+  }
+  return null;
+}
+
 export type MemberPhotoUploadResult = {
   photoUrl: string | null;
   photo?: {

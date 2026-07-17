@@ -20,12 +20,12 @@ import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 import {
   deleteMemberPhoto,
-  memberInitials,
   memberPhotoErrorMessage,
-  resolveMemberPhotoUrl,
+  pickMemberPhotoUrl,
   uploadMemberPhoto,
 } from '@/lib/memberPhoto';
 import MemberPhotoEditor from '@/components/MemberPhotoEditor';
+import MemberAvatar from '@/components/MemberAvatar';
 
 interface Trainer {
   id: string;
@@ -260,7 +260,7 @@ export default function MembersPage() {
             isActive: m.isActive !== false,
             inactiveFrom: m.inactiveFrom ?? null,
             billingResumeFrom: m.billingResumeFrom ?? null,
-            photoUrl: typeof m.photoUrl === 'string' && m.photoUrl ? m.photoUrl : null,
+            photoUrl: pickMemberPhotoUrl(m),
           };
         });
         setMembers(transformedMembers);
@@ -1833,18 +1833,7 @@ export default function MembersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                            {resolveMemberPhotoUrl(member.photoUrl) ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={resolveMemberPhotoUrl(member.photoUrl)!}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              memberInitials(member.name)
-                            )}
-                          </div>
+                          <MemberAvatar name={member.name} photoUrl={member.photoUrl} />
                           <div className="text-sm font-medium text-dark-gray">{member.name}</div>
                         </div>
                       </td>
