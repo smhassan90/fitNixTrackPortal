@@ -115,7 +115,6 @@ function AttendancePageContent() {
   const [noSignInError, setNoSignInError] = useState<string | null>(null);
 
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
-  const [expandedOverdueId, setExpandedOverdueId] = useState<string | null>(null);
 
   const { toasts, pushAlerts, dismissToast } = useOverdueCheckinToasts();
   const overdueSinceRef = useRef<string | null>(null);
@@ -563,9 +562,13 @@ function AttendancePageContent() {
                         <td className="px-6 py-4 text-sm text-gray-900">{member.daysSinceLastSignIn}</td>
                         <td className="px-6 py-4">
                           {member.hasOverduePayment ? (
-                            <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+                            <Link
+                              href={`/payments/members/${member.memberId}`}
+                              title="View payment history"
+                              className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 hover:bg-red-200"
+                            >
                               Overdue
-                            </span>
+                            </Link>
                           ) : (
                             <span className="text-sm text-gray-400">—</span>
                           )}
@@ -802,32 +805,25 @@ function AttendancePageContent() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <span className="text-sm font-medium text-dark-gray">{record.member}</span>
-                        {record.hasOverduePayment && (
-                          <button
-                            type="button"
+                        {record.hasOverduePayment && record.memberId > 0 && (
+                          <Link
+                            href={`/payments/members/${record.memberId}`}
                             title={
                               record.overduePayment
-                                ? overdueDetailsText(record.overduePayment)
-                                : 'Member has overdue payments'
+                                ? `${overdueDetailsText(record.overduePayment)} — View payment history`
+                                : 'View payment history'
                             }
-                            onClick={() =>
-                              setExpandedOverdueId((prev) =>
-                                prev === record.id ? null : record.id
-                              )
-                            }
-                            className="inline-flex shrink-0 cursor-pointer rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 hover:bg-red-200"
+                            className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 hover:bg-red-200"
                           >
                             Overdue
-                          </button>
+                          </Link>
                         )}
                       </div>
-                      {record.hasOverduePayment &&
-                        expandedOverdueId === record.id &&
-                        record.overduePayment && (
-                          <p className="mt-1 max-w-xs whitespace-normal text-xs text-red-700">
-                            {overdueDetailsText(record.overduePayment)}
-                          </p>
-                        )}
+                      {record.hasOverduePayment && record.overduePayment && (
+                        <p className="mt-1 max-w-xs whitespace-normal text-xs text-red-700">
+                          {overdueDetailsText(record.overduePayment)}
+                        </p>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">{record.contact || 'N/A'}</div>

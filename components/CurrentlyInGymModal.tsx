@@ -136,9 +136,14 @@ export default function CurrentlyInGymModal({
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-xs text-gray-500">ID: {displayMemberId(member)}</span>
                               {member.hasOverduePayment && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                                <Link
+                                  href={`/payments/members/${member.memberId}`}
+                                  onClick={onClose}
+                                  title="View payment history"
+                                  className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200"
+                                >
                                   Payment overdue
-                                </span>
+                                </Link>
                               )}
                             </div>
                           </div>
