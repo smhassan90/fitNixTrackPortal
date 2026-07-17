@@ -36,7 +36,7 @@ import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
 import MemberAvatar from '@/components/MemberAvatar';
 import { photoUrlFromMap, useMemberPhotoMap } from '@/hooks/useMemberPhotoMap';
 
-type SortByKey = 'name' | 'nextDueDate' | 'overdueCount';
+type SortByKey = 'name' | 'nextDueDate' | 'overdueCount' | 'status';
 
 /** Next-unpaid bucket filter + PAID (no next unpaid on summary). */
 type PaymentStatusFilter = 'all' | 'overdue' | 'pending' | 'paid';
@@ -71,6 +71,30 @@ interface MemberPaymentSummaryRow {
   nextUnpaid: NextUnpaid | null;
   nextOneTime: PendingOneTimePayment | null;
   overdueMonthCount: number;
+}
+
+/** Urgency order for Status column: overdue first when ascending. */
+function rowStatusSortRank(row: MemberPaymentSummaryRow): number {
+  if (row.nextOneTime) return 1;
+  if (!row.nextUnpaid) return 4;
+  const bucket = uiBucketForNextUnpaid({
+    displayBucket: row.nextUnpaid.displayBucket,
+    dueDate: row.nextUnpaid.dueDate,
+    status: row.nextUnpaid.status,
+    isOverdue: row.nextUnpaid.isOverdue,
+  });
+  switch (bucket) {
+    case 'overdue':
+      return 0;
+    case 'pending':
+      return 2;
+    case 'advance':
+      return 3;
+    case 'paid':
+      return 4;
+    default:
+      return 2;
+  }
 }
 
 interface PaginationState {
@@ -192,7 +216,12 @@ function PaymentsPageContent() {
       setStatusFilter('all');
     }
 
-    if (sortByParam === 'name' || sortByParam === 'nextDueDate' || sortByParam === 'overdueCount') {
+    if (
+      sortByParam === 'name' ||
+      sortByParam === 'nextDueDate' ||
+      sortByParam === 'overdueCount' ||
+      sortByParam === 'status'
+    ) {
       setSortBy(sortByParam);
     }
     if (sortOrderParam === 'asc' || sortOrderParam === 'desc') {
@@ -220,7 +249,8 @@ function PaymentsPageContent() {
         params.set('status', 'paid');
       }
 
-      params.set('sortBy', sortBy);
+      // Status is sorted client-side; API only accepts name | nextDueDate | overdueCount
+      params.set('sortBy', sortBy === 'status' ? 'name' : sortBy);
       params.set('sortOrder', sortOrder);
       return params;
     },
@@ -510,9 +540,18 @@ function PaymentsPageContent() {
   }, [searchQuery, onlyWithOpenInstallments, statusFilter]);
 
   const tableRows = useMemo(() => {
-    if (statusFilter !== 'paid') return rows;
-    return rows.filter((row) => !row.nextUnpaid && !row.nextOneTime);
-  }, [rows, statusFilter]);
+    const base =
+      statusFilter === 'paid'
+        ? rows.filter((row) => !row.nextUnpaid && !row.nextOneTime)
+        : rows;
+    if (sortBy !== 'status') return base;
+    const dir = sortOrder === 'asc' ? 1 : -1;
+    return [...base].sort((a, b) => {
+      const diff = (rowStatusSortRank(a) - rowStatusSortRank(b)) * dir;
+      if (diff !== 0) return diff;
+      return a.member.name.localeCompare(b.member.name);
+    });
+  }, [rows, statusFilter, sortBy, sortOrder]);
 
   const handleExportExcel = async () => {
     try {
@@ -864,8 +903,11 @@ function PaymentsPageContent() {
                     >
                       Due date {sortBy === 'nextDueDate' && (sortOrder === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-dark-gray">
-                      Status
+                    <th
+                      className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-dark-gray hover:bg-gray-200"
+                      onClick={() => handleSort('status')}
+                    >
+                      Status {sortBy === 'status' && (sortOrder === 'asc' ? '↑' : '↓')}
                     </th>
                     <th
                       className="cursor-pointer px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-dark-gray hover:bg-gray-200"
