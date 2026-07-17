@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
-import Loading from '@/components/Loading';
+import { PageHeaderActionsSkeleton, SearchBarSkeleton, TableSkeleton } from '@/components/Skeleton';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
@@ -448,6 +448,11 @@ export default function MembersPage() {
             aValue = aTrainer2?.name?.toLowerCase() || '';
             bValue = bTrainer2?.name?.toLowerCase() || '';
             break;
+          case 'status':
+            // Active sorts before Inactive on ascending order.
+            aValue = a.isActive === false ? 1 : 0;
+            bValue = b.isActive === false ? 1 : 0;
+            break;
           default:
             return 0;
         }
@@ -881,13 +886,7 @@ export default function MembersPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <Loading message="Loading members..." />
-      </Layout>
-    );
-  }
+  const showPageSkeleton = loading && members.length === 0;
 
   return (
     <Layout>
@@ -970,26 +969,37 @@ export default function MembersPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-3xl font-bold text-dark-gray">Members</h1>
             {!showAddForm && !editingMember && (
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
-                <button
-                  type="button"
-                  onClick={handleExportExcel}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 sm:w-auto"
-                >
-                  Export to Excel
-                </button>
-                {canManage && (
+              showPageSkeleton ? (
+                <PageHeaderActionsSkeleton />
+              ) : (
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                   <button
-                    onClick={openAddForm}
-                    className="w-full rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-opacity-90 sm:w-auto"
+                    type="button"
+                    onClick={handleExportExcel}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 sm:w-auto"
                   >
-                    + Add Member
+                    Export to Excel
                   </button>
-                )}
-              </div>
+                  {canManage && (
+                    <button
+                      onClick={openAddForm}
+                      className="w-full rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-opacity-90 sm:w-auto"
+                    >
+                      + Add Member
+                    </button>
+                  )}
+                </div>
+              )
             )}
           </div>
 
+          {showPageSkeleton ? (
+            <>
+              <SearchBarSkeleton />
+              <TableSkeleton rows={10} columns={canManage ? 9 : 8} />
+            </>
+          ) : (
+            <>
           {/* Search/Filter */}
           <div className="bg-white p-4 rounded-lg shadow">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
@@ -1625,8 +1635,16 @@ export default function MembersPage() {
                       )}
                     </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
-                    Status
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                    onClick={() => handleSort('status')}
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Status</span>
+                      {sortConfig?.key === 'status' && (
+                        <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </div>
                   </th>
                   {canManage && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
@@ -1777,6 +1795,8 @@ export default function MembersPage() {
           </table>
           </div>
         </div>
+            </>
+          )}
       </div>
     </Layout>
   );

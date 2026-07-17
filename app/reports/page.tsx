@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Layout from '@/components/Layout';
-import Loading from '@/components/Loading';
+import { ReportsContentSkeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { formatDate } from '@/lib/dateUtils';
@@ -507,13 +507,7 @@ export default function ReportsPage() {
   const dailyChart = dailyReceived ?? [];
   const peakDay = maxAmountDay(dailyChart.filter((d) => d.amount > 0));
 
-  if (!hasLoadedOnce && loading) {
-    return (
-      <Layout>
-        <Loading message="Loading your reports…" />
-      </Layout>
-    );
-  }
+  const showPageSkeleton = !hasLoadedOnce && loading;
 
   return (
     <Layout>
@@ -557,6 +551,10 @@ export default function ReportsPage() {
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>
         )}
 
+        {showPageSkeleton ? (
+          <ReportsContentSkeleton />
+        ) : (
+          <>
         <section>
           <h2 className="mb-3 text-lg font-semibold text-dark-gray">Membership &amp; money overview</h2>
           <div className="flex w-full min-w-0 flex-nowrap gap-3 overflow-x-auto pb-1">
@@ -880,6 +878,8 @@ export default function ReportsPage() {
               ))}
             </ul>
           </section>
+        )}
+          </>
         )}
       </div>
     </Layout>

@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
-import Loading from '@/components/Loading';
+import { FilterBarSkeleton, Skeleton, TableSkeleton } from '@/components/Skeleton';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
@@ -407,13 +407,7 @@ export default function TrainersPage() {
     resetForm();
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <Loading message="Loading trainers..." />
-      </Layout>
-    );
-  }
+  const showPageSkeleton = loading && trainers.length === 0;
 
   return (
     <Layout>
@@ -438,12 +432,16 @@ export default function TrainersPage() {
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold text-dark-gray">Trainers</h1>
           {canManage && !showAddForm && !editingTrainer && (
+            showPageSkeleton ? (
+              <Skeleton className="h-10 w-32" />
+            ) : (
             <button
               onClick={openAddForm}
               className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
             >
               + Add Trainer
             </button>
+            )
           )}
         </div>
 
@@ -604,6 +602,13 @@ export default function TrainersPage() {
           </div>
         )}
 
+        {showPageSkeleton ? (
+          <>
+            <FilterBarSkeleton fields={2} />
+            <TableSkeleton rows={8} columns={canManage ? 8 : 7} />
+          </>
+        ) : (
+          <>
         <div className="bg-white p-4 rounded-lg shadow">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <div className="flex-1">
@@ -867,6 +872,8 @@ export default function TrainersPage() {
             </tbody>
           </table>
         </div>
+          </>
+        )}
       </div>
     </Layout>
   );

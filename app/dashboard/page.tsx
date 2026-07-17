@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
-import Loading from '@/components/Loading';
+import { DashboardContentSkeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
@@ -244,33 +244,6 @@ export default function DashboardPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <Loading message="Loading dashboard..." />
-      </Layout>
-    );
-  }
-
-  if (error || !stats) {
-    return (
-      <Layout>
-        <div className="py-12 text-center">
-          <div className="mx-auto max-w-md rounded-lg border border-red-200 bg-red-50 p-6">
-            <p className="mb-2 font-semibold text-red-600">Failed to load dashboard</p>
-            <p className="mb-4 text-sm text-red-500">{error || 'Unknown error'}</p>
-            <button
-              onClick={fetchDashboardStats}
-              className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
   return (
     <Layout>
       <CurrentlyInGymModal
@@ -298,6 +271,23 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {loading ? (
+          <DashboardContentSkeleton />
+        ) : error || !stats ? (
+          <div className="py-12 text-center">
+            <div className="mx-auto max-w-md rounded-lg border border-red-200 bg-red-50 p-6">
+              <p className="mb-2 font-semibold text-red-600">Failed to load dashboard</p>
+              <p className="mb-4 text-sm text-red-500">{error || 'Unknown error'}</p>
+              <button
+                onClick={fetchDashboardStats}
+                className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
         {gymMismatch && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             {gymMismatch}
@@ -742,6 +732,8 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
     </Layout>
   );

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
+import { Skeleton, TableSkeleton } from '@/components/Skeleton';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAlert } from '@/hooks/useAlert';
@@ -499,13 +500,7 @@ export default function PackagesPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (loading && packages.length === 0) {
-    return (
-      <Layout>
-        <Loading message="Loading packages..." />
-      </Layout>
-    );
-  }
+  const showPageSkeleton = loading && packages.length === 0;
 
   return (
     <Layout>
@@ -530,12 +525,16 @@ export default function PackagesPage() {
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold text-dark-gray">Packages</h1>
           {canManage && !showAddForm && !editingPackage && (
+            showPageSkeleton ? (
+              <Skeleton className="h-10 w-32" />
+            ) : (
             <button
               onClick={openAddForm}
               className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
             >
               + Add Package
             </button>
+            )
           )}
         </div>
 
@@ -785,6 +784,9 @@ export default function PackagesPage() {
           </div>
         )}
 
+        {showPageSkeleton ? (
+          <TableSkeleton rows={8} columns={canManage ? 7 : 6} />
+        ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-light-gray">
@@ -905,6 +907,7 @@ export default function PackagesPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </Layout>
   );

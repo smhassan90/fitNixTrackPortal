@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
-import Loading from '@/components/Loading';
+import { SettingsContentSkeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
@@ -257,14 +257,6 @@ export default function SettingsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <Loading message="Loading settings..." />
-      </Layout>
-    );
-  }
-
   return (
     <Layout>
       <Alert
@@ -283,6 +275,10 @@ export default function SettingsPage() {
           </p>
         </div>
 
+        {loading ? (
+          <SettingsContentSkeleton />
+        ) : (
+          <>
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex flex-wrap gap-2">
             {TABS.map((tab) => (
@@ -646,6 +642,8 @@ export default function SettingsPage() {
               </p>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </Layout>

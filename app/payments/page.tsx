@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
-import Loading from '@/components/Loading';
+import { FilterBarSkeleton, PageHeaderActionsSkeleton, TableSkeleton } from '@/components/Skeleton';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
@@ -648,7 +648,19 @@ function PaymentsPageContent() {
       />
 
       {showInitialSpinner ? (
-        <Loading message="Loading payments…" />
+        <div className="space-y-6">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-dark-gray">Payments</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                One row per member — pay pending <span className="font-medium">signup</span> first, then monthly installments.
+              </p>
+            </div>
+            <PageHeaderActionsSkeleton />
+          </div>
+          <FilterBarSkeleton fields={2} />
+          <TableSkeleton rows={10} columns={tableColumnCount} />
+        </div>
       ) : (
         <div className="space-y-6">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -1048,8 +1060,15 @@ export default function PaymentsPage() {
     <Suspense
       fallback={
         <Layout>
-          <div className="p-6">
-            <Loading message="Loading payments…" size="lg" />
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-3xl font-bold text-dark-gray">Payments</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                One row per member — pay pending signup first, then monthly installments.
+              </p>
+            </div>
+            <FilterBarSkeleton fields={2} />
+            <TableSkeleton rows={10} columns={6} />
           </div>
         </Layout>
       }

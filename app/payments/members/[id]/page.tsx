@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
-import Loading from '@/components/Loading';
+import { MemberPaymentsSkeleton } from '@/components/Skeleton';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
@@ -707,13 +707,7 @@ export default function MemberPaymentsDetailPage() {
     );
   };
 
-  if (loading && monthlyInstallments.length === 0 && !error) {
-    return (
-      <Layout>
-        <Loading message="Loading member payments..." />
-      </Layout>
-    );
-  }
+  const showPageSkeleton = loading && monthlyInstallments.length === 0 && !error;
 
   return (
     <Layout>
@@ -808,6 +802,10 @@ export default function MemberPaymentsDetailPage() {
       )}
 
       <div className="space-y-6">
+        {showPageSkeleton ? (
+          <MemberPaymentsSkeleton />
+        ) : (
+          <>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <Link href="/payments" className="text-sm font-medium text-primary hover:underline">
@@ -1072,6 +1070,8 @@ export default function MemberPaymentsDetailPage() {
           </>
         )}
         </div>
+          </>
+        )}
       </div>
     </Layout>
   );

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
-import Loading from '@/components/Loading';
+import { FilterBarSkeleton, TableSkeleton } from '@/components/Skeleton';
 import DeviceSyncPanel from '@/components/DeviceSyncPanel';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
@@ -414,13 +414,7 @@ function AttendancePageContent() {
     ? records.filter((r) => r.hasOverduePayment)
     : records;
 
-  if (loading && records.length === 0 && activeTab === 'history') {
-    return (
-      <Layout>
-        <Loading message="Loading attendance..." />
-      </Layout>
-    );
-  }
+  const showHistorySkeleton = loading && records.length === 0 && activeTab === 'history';
 
   return (
     <Layout>
@@ -594,6 +588,12 @@ function AttendancePageContent() {
         )}
 
         {activeTab === 'history' && (
+          showHistorySkeleton ? (
+            <>
+              <FilterBarSkeleton fields={4} />
+              <TableSkeleton rows={8} columns={8} />
+            </>
+          ) : (
           <>
         {/* Filters */}
         <div className="bg-white p-4 rounded-lg shadow">
@@ -931,6 +931,7 @@ function AttendancePageContent() {
           )}
         </div>
           </>
+          )
         )}
       </div>
     </Layout>
@@ -942,7 +943,14 @@ export default function AttendancePage() {
     <Suspense
       fallback={
         <Layout>
-          <Loading message="Loading attendance..." />
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-3xl font-bold text-dark-gray">Attendance</h1>
+              <p className="text-sm text-gray-500 mt-1">History, absence reports, and device sync</p>
+            </div>
+            <FilterBarSkeleton fields={4} />
+            <TableSkeleton rows={8} columns={8} />
+          </div>
         </Layout>
       }
     >
