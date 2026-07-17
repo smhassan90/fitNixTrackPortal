@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Dynamic key avoids build-time inlining of an empty value; trim guards pasted secrets.
+    // Dynamic key  avoids build-time inlining of an empty value; trim guards pasted secrets.
     const blobToken = process.env['BLOB_READ_WRITE_TOKEN']?.trim();
     if (process.env.VERCEL && !blobToken) {
       const relatedKeys = Object.keys(process.env)
