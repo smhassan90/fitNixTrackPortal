@@ -240,7 +240,7 @@ function AttendancePageContent() {
             return {
               id: String(r.id ?? ''),
               date: String(r.date ?? ''),
-              memberId: Number(r.memberId) || 0,
+              memberId: Number(r.memberId ?? nested?.id) || 0,
               memberNumber: nums.memberNumber,
               legacyMemberId: nums.legacyMemberId,
               member: memberName,
@@ -803,26 +803,46 @@ function AttendancePageContent() {
                       <div className="text-sm font-medium text-dark-gray">{displayMemberId(record)}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 whitespace-nowrap">
-                        <span className="text-sm font-medium text-dark-gray">{record.member}</span>
-                        {record.hasOverduePayment && record.memberId > 0 && (
-                          <Link
-                            href={`/payments/members/${record.memberId}`}
-                            title={
-                              record.overduePayment
-                                ? `${overdueDetailsText(record.overduePayment)} — View payment history`
-                                : 'View payment history'
-                            }
-                            className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 hover:bg-red-200"
-                          >
-                            Overdue
-                          </Link>
-                        )}
-                      </div>
-                      {record.hasOverduePayment && record.overduePayment && (
-                        <p className="mt-1 max-w-xs whitespace-normal text-xs text-red-700">
-                          {overdueDetailsText(record.overduePayment)}
-                        </p>
+                      {record.hasOverduePayment && record.memberId > 0 ? (
+                        <Link
+                          href={`/payments/members/${record.memberId}`}
+                          title={
+                            record.overduePayment
+                              ? `${overdueDetailsText(record.overduePayment)} — View payment history`
+                              : 'View payment history'
+                          }
+                          className="group block max-w-xs"
+                        >
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <span className="text-sm font-medium text-dark-gray group-hover:text-primary group-hover:underline">
+                              {record.member}
+                            </span>
+                            <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 group-hover:bg-red-200">
+                              Overdue
+                            </span>
+                          </div>
+                          {record.overduePayment && (
+                            <p className="mt-1 whitespace-normal text-xs text-red-700">
+                              {overdueDetailsText(record.overduePayment)}
+                            </p>
+                          )}
+                        </Link>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <span className="text-sm font-medium text-dark-gray">{record.member}</span>
+                            {record.hasOverduePayment && (
+                              <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+                                Overdue
+                              </span>
+                            )}
+                          </div>
+                          {record.hasOverduePayment && record.overduePayment && (
+                            <p className="mt-1 max-w-xs whitespace-normal text-xs text-red-700">
+                              {overdueDetailsText(record.overduePayment)}
+                            </p>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
