@@ -1,5 +1,6 @@
 import api from '@/lib/api';
 import { normalizeMemberNumberFields } from '@/lib/displayMemberId';
+import { normalizeOverdueAlerts, type OverdueCheckinAlert } from '@/lib/overdueAlerts';
 
 function asObj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
@@ -123,6 +124,8 @@ export type SyncUsersResult = {
 export type SyncAttendanceResult = {
   pending: number;
   message?: string;
+  /** Members with overdue payments whose check-ins arrived in this sync. */
+  overdueAlerts: OverdueCheckinAlert[];
 };
 
 function devicePath(deviceId: number | string): string {
@@ -256,5 +259,6 @@ export async function syncDeviceAttendance(deviceId: number | string): Promise<S
   return {
     pending: Number(o.pending ?? 0) || 0,
     message: typeof o.message === 'string' ? o.message : res.data.message,
+    overdueAlerts: normalizeOverdueAlerts(o.overdueAlerts),
   };
 }

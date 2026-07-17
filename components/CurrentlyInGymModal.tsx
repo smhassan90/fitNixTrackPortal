@@ -118,8 +118,10 @@ export default function CurrentlyInGymModal({
                   {members.map((member) => (
                     <tr
                       key={member.memberId}
-                      className={`hover:bg-gray-50 transition-colors ${
-                        member.hasOverduePayment ? 'border-l-4 border-l-amber-500 bg-amber-50/40' : ''
+                      className={`transition-colors ${
+                        member.hasOverduePayment
+                          ? 'border-l-4 border-l-red-500 bg-red-50/40 hover:bg-red-50/70'
+                          : 'hover:bg-gray-50'
                       }`}
                     >
                       <td className="px-6 py-4 whitespace-nowrap">

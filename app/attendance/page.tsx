@@ -17,6 +17,15 @@ import {
   type NoSignInReport,
 } from '@/lib/attendanceApi';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
+import {
+  fetchOverdueCheckins,
+  normalizeOverduePaymentInfo,
+  overdueDetailsText,
+  type OverduePaymentInfo,
+} from '@/lib/overdueAlerts';
+import OverdueCheckinToasts, {
+  useOverdueCheckinToasts,
+} from '@/components/OverdueCheckinToasts';
 
 type AttendanceTab = 'history' | 'no-sign-in' | 'sync-users';
 
@@ -49,6 +58,8 @@ interface AttendanceRecord {
     email: string | null;
     phone: string | null;
   };
+  hasOverduePayment: boolean;
+  overduePayment: OverduePaymentInfo | null;
 }
 
 interface AttendanceFilters {
@@ -102,6 +113,43 @@ function AttendancePageContent() {
   const [noSignInReport, setNoSignInReport] = useState<NoSignInReport | null>(null);
   const [noSignInLoading, setNoSignInLoading] = useState(false);
   const [noSignInError, setNoSignInError] = useState<string | null>(null);
+
+  const [showOverdueOnly, setShowOverdueOnly] = useState(false);
+  const [expandedOverdueId, setExpandedOverdueId] = useState<string | null>(null);
+
+  const { toasts, pushAlerts, dismissToast } = useOverdueCheckinToasts();
+  const overdueSinceRef = useRef<string | null>(null);
+
+  // Background polling for overdue-member check-ins (catches syncs from the
+  // tablet agent that don't go through this portal). First call seeds state
+  // without toasting; subsequent calls toast new alerts.
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
+    const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const since = overdueSinceRef.current;
+        const result = await fetchOverdueCheckins(since ?? undefined);
+        if (cancelled) return;
+        overdueSinceRef.current = result.serverTime;
+        pushAlerts(result.alerts, { silent: since == null });
+      } catch {
+        /* best-effort polling; retry on next tick */
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void poll();
+    const intervalId = setInterval(() => void poll(), 45_000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [pushAlerts]);
 
   // Fetch members for filter dropdown
   const fetchMembers = useCallback(async () => {
@@ -215,6 +263,8 @@ function AttendancePageContent() {
                     ? String((r.memberDetails as { phone?: string | null }).phone)
                     : null,
               },
+              hasOverduePayment: Boolean(r.hasOverduePayment),
+              overduePayment: normalizeOverduePaymentInfo(r.overduePayment),
             } satisfies AttendanceRecord;
           })
         );
@@ -360,6 +410,10 @@ function AttendancePageContent() {
     }
   };
 
+  const visibleRecords = showOverdueOnly
+    ? records.filter((r) => r.hasOverduePayment)
+    : records;
+
   if (loading && records.length === 0 && activeTab === 'history') {
     return (
       <Layout>
@@ -377,6 +431,7 @@ function AttendancePageContent() {
         title={alert.title}
         message={alert.message}
       />
+      <OverdueCheckinToasts toasts={toasts} onDismiss={dismissToast} />
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -423,7 +478,9 @@ function AttendancePageContent() {
           </nav>
         </div>
 
-        {activeTab === 'sync-users' && <DeviceSyncPanel />}
+        {activeTab === 'sync-users' && (
+          <DeviceSyncPanel onOverdueAlerts={(alerts) => pushAlerts(alerts)} />
+        )}
 
 
         {activeTab === 'no-sign-in' && (
@@ -583,6 +640,7 @@ function AttendancePageContent() {
             <div className="flex items-end">
               <button
                 onClick={() => {
+                  setShowOverdueOnly(false);
                   setFilters({
                     memberId: undefined,
                     startDate: undefined,
@@ -599,6 +657,15 @@ function AttendancePageContent() {
               </button>
             </div>
           </div>
+          <label className="mt-3 flex w-fit cursor-pointer items-center gap-2 text-sm text-dark-gray">
+            <input
+              type="checkbox"
+              checked={showOverdueOnly}
+              onChange={(e) => setShowOverdueOnly(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+            />
+            Show overdue only
+          </label>
         </div>
 
         {/* Table */}
@@ -708,9 +775,22 @@ function AttendancePageContent() {
                     Loading attendance records from API...
                   </td>
                 </tr>
+              ) : visibleRecords.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                    No members with overdue payments in the current results.
+                  </td>
+                </tr>
               ) : (
-                records.map((record) => (
-                  <tr key={record.id} className="hover:bg-gray-50">
+                visibleRecords.map((record) => (
+                  <tr
+                    key={record.id}
+                    className={
+                      record.hasOverduePayment
+                        ? 'border-l-4 border-l-red-500 bg-red-50/40 hover:bg-red-50/70'
+                        : 'hover:bg-gray-50'
+                    }
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
                         {formatDate(record.date)}
@@ -719,8 +799,35 @@ function AttendancePageContent() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-dark-gray">{displayMemberId(record)}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-dark-gray">{record.member}</div>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2 whitespace-nowrap">
+                        <span className="text-sm font-medium text-dark-gray">{record.member}</span>
+                        {record.hasOverduePayment && (
+                          <button
+                            type="button"
+                            title={
+                              record.overduePayment
+                                ? overdueDetailsText(record.overduePayment)
+                                : 'Member has overdue payments'
+                            }
+                            onClick={() =>
+                              setExpandedOverdueId((prev) =>
+                                prev === record.id ? null : record.id
+                              )
+                            }
+                            className="inline-flex shrink-0 cursor-pointer rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 hover:bg-red-200"
+                          >
+                            Overdue
+                          </button>
+                        )}
+                      </div>
+                      {record.hasOverduePayment &&
+                        expandedOverdueId === record.id &&
+                        record.overduePayment && (
+                          <p className="mt-1 max-w-xs whitespace-normal text-xs text-red-700">
+                            {overdueDetailsText(record.overduePayment)}
+                          </p>
+                        )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">{record.contact || 'N/A'}</div>

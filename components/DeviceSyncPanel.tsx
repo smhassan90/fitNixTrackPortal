@@ -13,8 +13,14 @@ import {
   type TabletSyncSetup,
 } from '@/lib/deviceApi';
 import { getErrorMessage } from '@/lib/errorHandler';
+import type { OverdueCheckinAlert } from '@/lib/overdueAlerts';
 
-export default function DeviceSyncPanel() {
+export default function DeviceSyncPanel({
+  onOverdueAlerts,
+}: {
+  /** Called with overdue-member check-in alerts returned by a completed attendance sync. */
+  onOverdueAlerts?: (alerts: OverdueCheckinAlert[]) => void;
+} = {}) {
   const { alert, showAlert, closeAlert } = useAlert();
   const [deviceSetup, setDeviceSetup] = useState<TabletSyncSetup | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,6 +99,9 @@ export default function DeviceSyncPanel() {
             : 'Attendance synced.')
       );
       maybePromptMapping(device, { pending: result.pending });
+      if (result.overdueAlerts.length > 0) {
+        onOverdueAlerts?.(result.overdueAlerts);
+      }
       await fetchDevices();
     } catch (error: unknown) {
       showAlert('error', 'Sync failed', getErrorMessage(error));
