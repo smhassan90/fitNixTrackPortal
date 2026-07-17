@@ -1,6 +1,7 @@
 import api from '@/lib/api';
 import { formatDate } from '@/lib/dateUtils';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
+import { resolveMediaUrl } from '@/lib/resolveMediaUrl';
 
 export interface PaymentReceiptPrintedBy {
   name: string;
@@ -118,16 +119,7 @@ function formatReceiptMonthFull(monthKey: string): string {
 }
 
 export function resolveGymLogoUrl(logoUrl?: string | null): string | null {
-  if (!logoUrl?.trim()) return null;
-  const u = logoUrl.trim();
-  if (/^https?:\/\//i.test(u)) return u;
-  if (u.startsWith('/')) {
-    const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
-    if (apiBase) return `${apiBase}${u}`;
-    if (typeof window !== 'undefined') return `${window.location.origin}${u}`;
-    return u;
-  }
-  return u;
+  return resolveMediaUrl(logoUrl);
 }
 
 function receiptBoxRow(label: string, value: unknown): string {

@@ -69,27 +69,48 @@ async function handleRequest(
     const queryString = searchParams.toString();
     const fullUrl = queryString ? `${externalUrl}?${queryString}` : externalUrl;
 
-    // Get request body if present
-    let body = null;
+    const incomingContentType = request.headers.get('content-type') || '';
+    const isMultipart = incomingContentType.toLowerCase().includes('multipart/form-data');
+
+    // Get request body if present (JSON or raw multipart)
+    let body: BodyInit | undefined;
     if (method !== 'GET' && method !== 'DELETE') {
-      try {
-        body = await request.json();
-      } catch {
-        // No body or invalid JSON
+      if (isMultipart) {
+        body = await request.arrayBuffer();
+      } else {
+        try {
+          const json = await request.json();
+          body = JSON.stringify(json);
+        } catch {
+          // No body or invalid JSON
+        }
       }
     }
 
     if (isPlatformLogin) {
+      let email: string | undefined;
+      try {
+        email =
+          typeof body === 'string'
+            ? (JSON.parse(body) as { email?: string })?.email
+            : undefined;
+      } catch {
+        /* ignore */
+      }
       console.info('[api-proxy] platform login request', {
         targetUrl: fullUrl,
-        email: typeof body?.email === 'string' ? body.email : undefined,
+        email,
       });
     }
     
     // Get headers from request
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
+    const headers: HeadersInit = {};
+    if (isMultipart) {
+      // Preserve boundary from the client multipart request
+      headers['Content-Type'] = incomingContentType;
+    } else if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
     
     // Forward authorization header
     const authHeader = request.headers.get('authorization');
@@ -107,7 +128,7 @@ async function handleRequest(
     const response = await fetch(fullUrl, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      body,
     });
 
     const contentType = response.headers.get('content-type') || '';

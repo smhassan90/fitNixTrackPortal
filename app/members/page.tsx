@@ -18,6 +18,8 @@ import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
 import { DEFAULT_MAX_MEMBER_DISCOUNT, fetchGymSettings } from '@/lib/attendanceApi';
 import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
+import { memberInitials, resolveMemberPhotoUrl } from '@/lib/memberPhoto';
+import MemberPhotoEditor from '@/components/MemberPhotoEditor';
 
 interface Trainer {
   id: string;
@@ -59,6 +61,8 @@ interface Member {
   isActive?: boolean;
   inactiveFrom?: string | null;
   billingResumeFrom?: string | null;
+  /** Relative or absolute portrait URL from API; not sent on JSON create/update. */
+  photoUrl: string | null;
 }
 
 function safeText(value: unknown): string {
@@ -248,6 +252,7 @@ export default function MembersPage() {
             isActive: m.isActive !== false,
             inactiveFrom: m.inactiveFrom ?? null,
             billingResumeFrom: m.billingResumeFrom ?? null,
+            photoUrl: typeof m.photoUrl === 'string' && m.photoUrl ? m.photoUrl : null,
           };
         });
         setMembers(transformedMembers);
@@ -603,21 +608,82 @@ export default function MembersPage() {
           const created = response.data.data;
           const createdMember =
             created?.member && typeof created.member === 'object' ? created.member : created;
-          const assignedNumber = displayMemberId(
-            normalizeMemberNumberFields(
-              (createdMember ?? {}) as Record<string, unknown>
-            )
+          const nums = normalizeMemberNumberFields(
+            (createdMember ?? {}) as Record<string, unknown>
+          );
+          const assignedNumber = displayMemberId(nums);
+          const newId = String(
+            (createdMember as { id?: string | number } | null | undefined)?.id ?? ''
           );
           showAlert(
             'success',
             'Member Added',
             assignedNumber !== '—'
-              ? `Member added successfully. Member ID: ${assignedNumber}`
-              : 'Member added successfully!'
+              ? `Member added successfully. Member ID: ${assignedNumber}. You can add a photo below.`
+              : 'Member added successfully! You can add a photo below.'
           );
           notifyDashboardStatsRefresh();
-          setShowAddForm(false);
-          
+
+          // Stay on the form in edit mode so staff can upload a portrait (needs member id).
+          if (newId) {
+            const trainerFromForm =
+              formData.requiresTrainer && formData.trainerId
+                ? trainers.find((t) => String(t.id) === String(formData.trainerId))
+                : undefined;
+            const apiTrainers = Array.isArray((createdMember as { trainers?: Trainer[] })?.trainers)
+              ? (createdMember as { trainers: Trainer[] }).trainers
+              : [];
+            const forEdit: Member = {
+              id: newId,
+              memberNumber: nums.memberNumber,
+              legacyMemberId: nums.legacyMemberId,
+              name: String((createdMember as { name?: string })?.name ?? formData.name ?? ''),
+              phone:
+                (createdMember as { phone?: string | null })?.phone ??
+                (formData.phone || null),
+              email:
+                (createdMember as { email?: string | null })?.email ??
+                (formData.email || null),
+              gender:
+                (createdMember as { gender?: string | null })?.gender ??
+                (formData.gender || null),
+              dateOfBirth:
+                (createdMember as { dateOfBirth?: string | null })?.dateOfBirth ??
+                (formData.dateOfBirth || null),
+              cnic:
+                (createdMember as { cnic?: string | null })?.cnic ??
+                (formData.cnic || null),
+              comments:
+                (createdMember as { comments?: string | null })?.comments ??
+                (formData.comments || null),
+              packageId:
+                (createdMember as { packageId?: string | null })?.packageId != null
+                  ? String((createdMember as { packageId?: string | null }).packageId)
+                  : formData.packageId || null,
+              discount: (createdMember as { discount?: number })?.discount ??
+                (formData.discount ? Number(formData.discount) : undefined),
+              admissionAmount: (createdMember as { admissionAmount?: number | null })?.admissionAmount,
+              trainers:
+                apiTrainers.length > 0
+                  ? apiTrainers
+                  : trainerFromForm
+                    ? [trainerFromForm]
+                    : [],
+              isActive: (createdMember as { isActive?: boolean })?.isActive !== false,
+              inactiveFrom: null,
+              billingResumeFrom: null,
+              photoUrl:
+                typeof (createdMember as { photoUrl?: string | null })?.photoUrl === 'string'
+                  ? (createdMember as { photoUrl: string }).photoUrl
+                  : null,
+            };
+            setEditingMember(forEdit);
+            setShowAddForm(true);
+          } else {
+            setShowAddForm(false);
+            resetForm();
+          }
+
           // Try to refresh members list (don't block on error)
           try {
             await fetchMembers(); // Refresh list
@@ -633,8 +699,6 @@ export default function MembersPage() {
             console.warn('Failed to print receipt:', receiptError);
             // Don't show error - member was created successfully, receipt is optional
           }
-          
-          resetForm();
         }
       }
     } catch (error: any) {
@@ -1064,6 +1128,32 @@ export default function MembersPage() {
                 </svg>
               </button>
             </div>
+
+            {editingMember ? (
+              <div className="mb-6">
+                <MemberPhotoEditor
+                  memberId={editingMember.id}
+                  memberName={formData.name || editingMember.name}
+                  photoUrl={editingMember.photoUrl}
+                  disabled={loading}
+                  onPhotoChange={(photoUrl) => {
+                    setEditingMember((prev) => (prev ? { ...prev, photoUrl } : prev));
+                    setMembers((prev) =>
+                      prev.map((m) =>
+                        String(m.id) === String(editingMember.id) ? { ...m, photoUrl } : m
+                      )
+                    );
+                  }}
+                  onError={(message) => showAlert('error', 'Photo', message)}
+                  onSuccess={(message) => showAlert('success', 'Photo', message)}
+                />
+              </div>
+            ) : (
+              <div className="mb-6 rounded-lg border border-dashed border-gray-300 bg-gray-50/80 px-4 py-3 text-sm text-gray-600">
+                Save the member first, then you can add a portrait photo.
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -1696,7 +1786,21 @@ export default function MembersPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-dark-gray">{member.name}</div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                            {resolveMemberPhotoUrl(member.photoUrl) ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={resolveMemberPhotoUrl(member.photoUrl)!}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              memberInitials(member.name)
+                            )}
+                          </div>
+                          <div className="text-sm font-medium text-dark-gray">{member.name}</div>
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-500">{member.phone || 'N/A'}</div>
