@@ -22,9 +22,31 @@ interface Trainer {
   charges?: number;
   startTime?: string;
   endTime?: string;
+  isActive?: boolean;
   _count?: {
     members: number;
   };
+}
+
+type TrainerStatusFilter = 'all' | 'active' | 'inactive';
+
+function trainerIsActive(trainer: Trainer): boolean {
+  return trainer.isActive !== false;
+}
+
+function statusBadge(trainer: Trainer) {
+  if (!trainerIsActive(trainer)) {
+    return (
+      <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+        Inactive
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+      Active
+    </span>
+  );
 }
 
 const emptyForm = () => ({
@@ -62,6 +84,8 @@ export default function TrainersPage() {
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<TrainerStatusFilter>('all');
+  const [statusSubmittingId, setStatusSubmittingId] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; trainerId: string | null; trainerName: string }>({
     isOpen: false,
     trainerId: null,
@@ -83,21 +107,26 @@ export default function TrainersPage() {
   ];
 
   // Fetch trainers from API
-  const fetchTrainers = useCallback(async () => {
+  const fetchTrainers = useCallback(async (opts?: { silent?: boolean }) => {
     try {
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
       console.log('🔵 Fetching trainers from API...');
       const params = new URLSearchParams();
       if (sortConfig?.key) params.append('sortBy', sortConfig.key);
       if (sortConfig?.direction) params.append('sortOrder', sortConfig.direction);
       if (searchQuery.trim()) params.append('search', searchQuery.trim());
+      if (statusFilter === 'active') params.append('isActive', 'true');
+      if (statusFilter === 'inactive') params.append('isActive', 'false');
       params.append('limit', '1000');
 
       const response = await api.get(`/api/trainers?${params}`);
       console.log('Trainers API Response:', response.data);
 
       if (response.data.success) {
-        const trainersList = response.data.data.trainers || [];
+        const trainersList = (response.data.data.trainers || []).map((t: Trainer) => ({
+          ...t,
+          isActive: t.isActive !== false,
+        }));
         setTrainers(trainersList);
         console.log('✅ Trainers loaded:', trainersList.length);
       }
@@ -105,9 +134,9 @@ export default function TrainersPage() {
       console.error('Error fetching trainers:', error);
       showAlert('error', 'Error', getErrorMessage(error));
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
-  }, [sortConfig, searchQuery, showAlert]);
+  }, [sortConfig, searchQuery, statusFilter, showAlert]);
 
   // Load trainers on mount and when sort/search changes
   useEffect(() => {
@@ -271,6 +300,29 @@ export default function TrainersPage() {
     setDeleteDialog({ isOpen: false, trainerId: null, trainerName: '' });
   };
 
+  const handleToggleActive = async (trainer: Trainer) => {
+    if (statusSubmittingId) return;
+    const nextActive = !trainerIsActive(trainer);
+    const endpoint = nextActive ? 'activate' : 'deactivate';
+    try {
+      setStatusSubmittingId(trainer.id);
+      const response = await api.patch(`/api/trainers/${trainer.id}/${endpoint}`);
+      if (!response.data?.success) {
+        throw new Error(response.data?.error?.message || `Could not ${endpoint} trainer`);
+      }
+      showAlert(
+        'success',
+        nextActive ? 'Trainer activated' : 'Trainer deactivated',
+        `${trainer.name} is now ${nextActive ? 'active' : 'inactive'}.`
+      );
+      await fetchTrainers({ silent: true });
+    } catch (error: unknown) {
+      showAlert('error', 'Error', getErrorMessage(error));
+    } finally {
+      setStatusSubmittingId(null);
+    }
+  };
+
   const resetForm = () => {
     setFormData(emptyForm());
   };
@@ -377,7 +429,7 @@ export default function TrainersPage() {
         onClose={handleDeleteCancel}
         onConfirm={handleDeleteConfirm}
         title="Delete Trainer"
-        message={`Are you sure you want to delete "${deleteDialog.trainerName}"? This action cannot be undone.`}
+        message={`Are you sure you want to delete "${deleteDialog.trainerName}"? This action cannot be undone. Prefer Deactivate if you may need this trainer again.`}
         confirmText="Delete"
         cancelText="Cancel"
         type="danger"
@@ -553,7 +605,7 @@ export default function TrainersPage() {
         )}
 
         <div className="bg-white p-4 rounded-lg shadow">
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <div className="flex-1">
               <div className="relative">
                 <input
@@ -579,6 +631,18 @@ export default function TrainersPage() {
                 </svg>
               </div>
             </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-dark-gray sm:sr-only">Status</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as TrainerStatusFilter)}
+                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-3 pr-8 text-sm text-dark-gray focus:border-transparent focus:ring-2 focus:ring-primary sm:w-auto"
+              >
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
             <button
               type="button"
               onClick={() => setSearchQuery(searchInput)}
@@ -586,10 +650,13 @@ export default function TrainersPage() {
             >
               Go
             </button>
-            {(searchQuery || searchInput) && (
+            {(searchQuery || searchInput || statusFilter !== 'all') && (
               <button
                 type="button"
-                onClick={handleClearSearch}
+                onClick={() => {
+                  handleClearSearch();
+                  setStatusFilter('all');
+                }}
                 className="px-4 py-2 border border-gray-300 text-dark-gray rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Clear
@@ -682,6 +749,9 @@ export default function TrainersPage() {
                     )}
                   </div>
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
+                  Status
+                </th>
                 {canManage && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
                     Actions
@@ -693,19 +763,27 @@ export default function TrainersPage() {
               {sortedTrainers.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={canManage ? 9 : 8}
+                    colSpan={canManage ? 10 : 9}
                     className="px-6 py-10 text-center text-sm text-gray-500"
                   >
-                    {searchQuery
-                      ? 'No trainers found matching your search.'
+                    {searchQuery || statusFilter !== 'all'
+                      ? 'No trainers found matching your filters.'
                       : 'No trainers found.'}
                   </td>
                 </tr>
               ) : (
-              sortedTrainers.map((trainer) => (
-                <tr key={trainer.id}>
+              sortedTrainers.map((trainer) => {
+                const active = trainerIsActive(trainer);
+                const memberCount = trainer._count?.members || 0;
+                return (
+                <tr
+                  key={trainer.id}
+                  className={active ? 'hover:bg-gray-50' : 'bg-gray-50/80 text-gray-500 hover:bg-gray-100/80'}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-dark-gray">{trainer.name}</div>
+                    <div className={`text-sm font-medium ${active ? 'text-dark-gray' : 'text-gray-500'}`}>
+                      {trainer.name}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">
@@ -742,26 +820,49 @@ export default function TrainersPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{trainer._count?.members || 0}</div>
+                    <div className="text-sm text-gray-500">{memberCount}</div>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap">{statusBadge(trainer)}</td>
                   {canManage && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
                         onClick={() => handleEdit(trainer)}
-                        className="text-blue hover:text-blue-900 mr-4"
+                        className="text-blue hover:text-blue-900 mr-3"
                       >
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDeleteClick(trainer.id, trainer.name)}
-                        className="text-red-600 hover:text-red-900"
+                        type="button"
+                        onClick={() => void handleToggleActive(trainer)}
+                        disabled={statusSubmittingId === trainer.id}
+                        className="mr-3 text-primary hover:text-primary-dark disabled:opacity-50"
                       >
-                        Delete
+                        {statusSubmittingId === trainer.id
+                          ? 'Saving…'
+                          : active
+                            ? 'Deactivate'
+                            : 'Activate'}
                       </button>
+                      {memberCount === 0 ? (
+                        <button
+                          onClick={() => handleDeleteClick(trainer.id, trainer.name)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      ) : (
+                        <span
+                          className="text-xs text-gray-400"
+                          title="Delete is blocked while members are assigned. Use Deactivate instead."
+                        >
+                          —
+                        </span>
+                      )}
                     </td>
                   )}
                 </tr>
-              ))
+              );
+              })
               )}
             </tbody>
           </table>

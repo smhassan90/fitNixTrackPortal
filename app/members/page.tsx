@@ -28,6 +28,7 @@ interface Trainer {
   charges?: number;
   startTime?: string;
   endTime?: string;
+  isActive?: boolean;
 }
 
 interface Package {
@@ -260,15 +261,19 @@ export default function MembersPage() {
     }
   }, [showAlert]);
 
-  // Fetch trainers from API
+  // Fetch trainers from API (active only for the selection dropdown).
+  // When editing, any currently assigned inactive trainer is merged in below.
   const fetchTrainers = useCallback(async () => {
     try {
       console.log('🔵 Fetching trainers from API...');
-      const response = await api.get('/api/trainers?limit=1000');
+      const response = await api.get('/api/trainers?isActive=true&limit=1000');
       console.log('Trainers API Response:', response.data);
 
       if (response.data.success) {
-        const trainersList = response.data.data.trainers || [];
+        const trainersList = (response.data.data.trainers || []).map((t: Trainer) => ({
+          ...t,
+          isActive: t.isActive !== false,
+        }));
         setTrainers(trainersList);
         console.log('✅ Trainers loaded:', trainersList.length);
       }
@@ -779,8 +784,22 @@ export default function MembersPage() {
   const selectedPackage = availablePackages.find(p => 
     String(p.id) === String(formData.packageId)
   ) || null;
-  const selectedTrainer = trainers.find(t => 
+
+  /** Active trainers plus the currently assigned trainer when editing (even if inactive). */
+  const trainersForSelect = useMemo(() => {
+    const active = trainers.filter((t) => t.isActive !== false);
+    const assigned = editingMember?.trainers?.[0];
+    if (!assigned) return active;
+    if (active.some((t) => String(t.id) === String(assigned.id))) return active;
+    // Not in the active list → treat as inactive for display, but keep selectable.
+    return [{ ...assigned, isActive: false }, ...active];
+  }, [trainers, editingMember]);
+
+  const selectedTrainer = trainersForSelect.find(t => 
     String(t.id) === String(formData.trainerId)
+  );
+  const selectedTrainerIsInactive = Boolean(
+    selectedTrainer && selectedTrainer.isActive === false
   );
 
   const signupFees = useMemo(() => {
@@ -788,7 +807,7 @@ export default function MembersPage() {
       availablePackages.find((p) => String(p.id) === String(formData.packageId)) ?? null;
     const trainerList =
       formData.requiresTrainer && formData.trainerId
-        ? trainers.filter((t) => String(t.id) === String(formData.trainerId))
+        ? trainersForSelect.filter((t) => String(t.id) === String(formData.trainerId))
         : [];
     const admissionFeePaid = formData.admissionFeeWaived ? 0 : globalAdmissionAmount;
     const memberDiscount = parseFloat(formData.discount || '0') || 0;
@@ -806,7 +825,7 @@ export default function MembersPage() {
     formData.discount,
     globalAdmissionAmount,
     availablePackages,
-    trainers,
+    trainersForSelect,
   ]);
 
   const oneTimePayment = signupFees.totalAmount;
@@ -1211,12 +1230,22 @@ export default function MembersPage() {
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                         >
                           <option value="">Select a trainer</option>
-                          {trainers.map((trainer) => (
-                            <option key={trainer.id} value={trainer.id}>
-                              {trainer.name} {trainer.specialization ? `- ${trainer.specialization}` : ''}
-                            </option>
-                          ))}
+                          {trainersForSelect.map((trainer) => {
+                            const inactive = trainer.isActive === false;
+                            return (
+                              <option key={trainer.id} value={trainer.id}>
+                                {trainer.name}
+                                {trainer.specialization ? ` - ${trainer.specialization}` : ''}
+                                {inactive ? ' (Inactive)' : ''}
+                              </option>
+                            );
+                          })}
                         </select>
+                        {selectedTrainerIsInactive && (
+                          <p className="mt-1 text-xs text-amber-800">
+                            This member&apos;s current trainer is inactive. You can keep them, clear the trainer, or pick an active trainer.
+                          </p>
+                        )}
                       </div>
                       
                       {selectedTrainer && selectedTrainer.charges && (
@@ -1226,6 +1255,11 @@ export default function MembersPage() {
                               <p className="text-sm font-medium text-blue-900">Trainer Charges</p>
                               <p className="text-xs text-blue-700 mt-1">
                                 {selectedTrainer.name} - {selectedTrainer.specialization || 'General Training'}
+                                {selectedTrainerIsInactive && (
+                                  <span className="ml-2 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">
+                                    Inactive
+                                  </span>
+                                )}
                               </p>
                             </div>
                             <div className="text-right">
