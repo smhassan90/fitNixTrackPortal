@@ -11,7 +11,6 @@ import { useAlert } from '@/hooks/useAlert';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
-import { canManageGymCatalog } from '@/lib/gymRoles';
 import { computeSignupOneTimeFees } from '@/lib/signupFees';
 import { printOneTimePaymentReceipt } from '@/lib/signupReceipt';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
@@ -132,10 +131,12 @@ function memberMonthlyPayment(
 }
 
 export default function MembersPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const router = useRouter();
   const { alert, showAlert, closeAlert } = useAlert();
-  const canManage = canManageGymCatalog(user?.role);
+  const canManage = can('gym.members.manage');
+  const canDelete = can('gym.members.delete');
+  const showActions = canManage || canDelete;
   const [members, setMembers] = useState<Member[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [availablePackages, setAvailablePackages] = useState<Package[]>([]);
@@ -647,22 +648,19 @@ export default function MembersPage() {
           }
 
           if (!photoUploadFailed) {
-            const photoHint = pendingPhotoBlob
-              ? ''
-              : ' You can still add or change a photo below.';
             showAlert(
               'success',
               'Member Added',
               assignedNumber !== '—'
-                ? `Member added successfully. Member ID: ${assignedNumber}.${photoHint}`
-                : `Member added successfully!${photoHint}`
+                ? `Member added successfully. Member ID: ${assignedNumber}.`
+                : 'Member added successfully!'
             );
           }
           setPendingPhotoBlob(null);
           notifyDashboardStatsRefresh();
 
-          // Stay on the form in edit mode so staff can manage the portrait (needs member id).
-          if (newId) {
+          // Only stay on the form (in edit mode) when the photo upload failed, so staff can retry.
+          if (photoUploadFailed && newId) {
             const trainerFromForm =
               formData.requiresTrainer && formData.trainerId
                 ? trainers.find((t) => String(t.id) === String(formData.trainerId))
@@ -1109,7 +1107,7 @@ export default function MembersPage() {
           {showPageSkeleton ? (
             <>
               <SearchBarSkeleton />
-              <TableSkeleton rows={10} columns={canManage ? 9 : 8} />
+              <TableSkeleton rows={10} columns={showActions ? 9 : 8} />
             </>
           ) : (
             <>
@@ -1782,7 +1780,7 @@ export default function MembersPage() {
                       )}
                     </div>
                   </th>
-                  {canManage && (
+                  {showActions && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
                       Actions
                     </th>
@@ -1792,7 +1790,7 @@ export default function MembersPage() {
               <tbody className="bg-white divide-y divide-gray-200">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 12 : 11} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={showActions ? 12 : 11} className="px-6 py-8 text-center text-gray-500">
                     {searchQuery ? 'No members found matching your search.' : 'No members found.'}
                   </td>
                 </tr>
@@ -1903,27 +1901,33 @@ export default function MembersPage() {
                           )}
                         </div>
                       </td>
-                      {canManage && (
+                      {showActions && (
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button
-                            onClick={() => handleEdit(member)}
-                            className="text-blue hover:text-blue-900 mr-4"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(member.id, member.name)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            Delete
-                          </button>
-                          <button
-                            onClick={() => openStatusDialog(member, member.isActive === false ? 'reactivate' : 'deactivate')}
-                            disabled={statusSubmitting}
-                            className="ml-4 text-primary hover:text-primary-dark disabled:opacity-50"
-                          >
-                            {member.isActive === false ? 'Reactivate Member' : 'Deactivate Member'}
-                          </button>
+                          {canManage && (
+                            <button
+                              onClick={() => handleEdit(member)}
+                              className="text-blue hover:text-blue-900 mr-4"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDeleteClick(member.id, member.name)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Delete
+                            </button>
+                          )}
+                          {canManage && (
+                            <button
+                              onClick={() => openStatusDialog(member, member.isActive === false ? 'reactivate' : 'deactivate')}
+                              disabled={statusSubmitting}
+                              className="ml-4 text-primary hover:text-primary-dark disabled:opacity-50"
+                            >
+                              {member.isActive === false ? 'Reactivate Member' : 'Deactivate Member'}
+                            </button>
+                          )}
                         </td>
                       )}
                     </tr>

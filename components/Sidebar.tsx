@@ -1,14 +1,26 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import FitNixLogo from '@/components/FitNixLogo';
+import { isGymAdmin } from '@/lib/gymRoles';
 
-const teamNavItem = {
+type NavItem = {
+  name: string;
+  href: string;
+  icon: ReactNode;
+  /** Required permission; omit for always-visible (Attendance). */
+  permission?: string;
+  /** Only GYM_ADMIN (Import). */
+  adminOnly?: boolean;
+};
+
+const teamNavItem: NavItem = {
   name: 'Team',
   href: '/team',
+  permission: 'gym.team.manage',
   icon: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
@@ -19,11 +31,12 @@ const teamNavItem = {
       />
     </svg>
   ),
-} as const;
+};
 
-const packageFeaturesNavItem = {
+const packageFeaturesNavItem: NavItem = {
   name: 'Package features',
   href: '/packages/features',
+  permission: 'gym.packageFeatures.manage',
   icon: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
@@ -34,12 +47,13 @@ const packageFeaturesNavItem = {
       />
     </svg>
   ),
-} as const;
+};
 
-const navigation = [
+const navigation: NavItem[] = [
   { 
     name: 'Dashboard', 
-    href: '/dashboard', 
+    href: '/dashboard',
+    permission: 'gym.dashboard.read',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -48,7 +62,8 @@ const navigation = [
   },
   { 
     name: 'Members', 
-    href: '/members', 
+    href: '/members',
+    permission: 'gym.members.read',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -57,7 +72,8 @@ const navigation = [
   },
   { 
     name: 'Trainers', 
-    href: '/trainers', 
+    href: '/trainers',
+    permission: 'gym.trainers.read',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -66,7 +82,8 @@ const navigation = [
   },
   { 
     name: 'Packages', 
-    href: '/packages', 
+    href: '/packages',
+    permission: 'gym.packages.read',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -75,7 +92,7 @@ const navigation = [
   },
   { 
     name: 'Attendance', 
-    href: '/attendance', 
+    href: '/attendance',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -84,7 +101,8 @@ const navigation = [
   },
   { 
     name: 'Payments', 
-    href: '/payments', 
+    href: '/payments',
+    permission: 'gym.payments.read',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -93,7 +111,8 @@ const navigation = [
   },
   { 
     name: 'Reports', 
-    href: '/reports', 
+    href: '/reports',
+    permission: 'gym.financialReports.read',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -102,7 +121,8 @@ const navigation = [
   },
   { 
     name: 'Settings', 
-    href: '/settings', 
+    href: '/settings',
+    permission: 'gym.settings.read',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -119,23 +139,26 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, can } = useAuth();
+  const admin = isGymAdmin(user?.role);
 
   const navItems = useMemo(() => {
-    if (user?.role === 'GYM_ADMIN') {
-      const items = [...navigation];
-      const packagesIdx = items.findIndex((i) => i.href === '/packages');
-      if (packagesIdx >= 0) {
-        items.splice(packagesIdx + 1, 0, packageFeaturesNavItem);
-      }
-      const settingsIdx = items.findIndex((i) => i.href === '/settings');
-      if (settingsIdx >= 0) {
-        items.splice(settingsIdx, 0, teamNavItem);
-      }
-      return items;
+    const items = [...navigation];
+    const packagesIdx = items.findIndex((i) => i.href === '/packages');
+    if (packagesIdx >= 0) {
+      items.splice(packagesIdx + 1, 0, packageFeaturesNavItem);
     }
-    return navigation;
-  }, [user?.role]);
+    const settingsIdx = items.findIndex((i) => i.href === '/settings');
+    if (settingsIdx >= 0) {
+      items.splice(settingsIdx, 0, teamNavItem);
+    }
+
+    return items.filter((item) => {
+      if (item.adminOnly) return admin;
+      if (!item.permission) return true; // Attendance always
+      return can(item.permission);
+    });
+  }, [can, admin]);
 
   // Close sidebar when clicking outside on mobile/tablet
   useEffect(() => {
@@ -242,7 +265,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         >
           <ul className="space-y-1">
             {navItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
               return (
                 <li key={item.name}>
                   <Link
@@ -308,4 +331,3 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     </>
   );
 }
-

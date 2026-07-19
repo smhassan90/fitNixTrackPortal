@@ -7,7 +7,6 @@ import Loading from '@/components/Loading';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAlert } from '@/hooks/useAlert';
-import { isGymAdmin } from '@/lib/gymRoles';
 import {
   type PackageFeature,
   createPackageFeature,
@@ -28,9 +27,9 @@ const emptyForm = () => ({
 });
 
 export default function PackageFeaturesPage() {
-  const { user } = useAuth();
+  const { can } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
-  const canManage = isGymAdmin(user?.role);
+  const canManage = can('gym.packageFeatures.manage');
 
   const [rows, setRows] = useState<PackageFeature[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,8 +191,8 @@ export default function PackageFeaturesPage() {
         <div className="max-w-2xl">
           <h1 className="text-2xl font-bold text-gray-900">Package features</h1>
           <p className="mt-2 text-gray-600">
-            Only a gym <strong>administrator</strong> can add or edit the feature catalog used on
-            packages. Ask a gym admin if you need a new feature option.
+            You need the <strong>Manage package features</strong> permission to add or edit the feature
+            catalog used on packages. Ask a gym admin if you need access.
           </p>
         </div>
       </Layout>

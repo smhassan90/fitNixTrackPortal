@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import DeviceUserMappingModal from '@/components/DeviceUserMappingModal';
 import { useAlert } from '@/hooks/useAlert';
+import { useAuth } from '@/contexts/AuthContext';
 import Alert from '@/components/Alert';
 import {
   fetchTabletSyncSetup,
@@ -21,6 +22,9 @@ export default function DeviceSyncPanel({
   /** Called with overdue-member check-in alerts returned by a completed attendance sync. */
   onOverdueAlerts?: (alerts: OverdueCheckinAlert[]) => void;
 } = {}) {
+  const { can } = useAuth();
+  const canViewDevices = can('gym.devices.read');
+  const canManageDevices = can('gym.devices.manage');
   const { alert, showAlert, closeAlert } = useAlert();
   const [deviceSetup, setDeviceSetup] = useState<TabletSyncSetup | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +37,11 @@ export default function DeviceSyncPanel({
   } | null>(null);
 
   const fetchDevices = useCallback(async () => {
+    if (!canViewDevices && !canManageDevices) {
+      setLoading(false);
+      setDeviceSetup(null);
+      return;
+    }
     try {
       setLoading(true);
       const setup = await fetchTabletSyncSetup();
@@ -43,13 +52,14 @@ export default function DeviceSyncPanel({
     } finally {
       setLoading(false);
     }
-  }, [showAlert]);
+  }, [showAlert, canViewDevices, canManageDevices]);
 
   useEffect(() => {
     void fetchDevices();
   }, [fetchDevices]);
 
   const openMappingForDevice = (device: AttendanceDevice) => {
+    if (!canManageDevices) return;
     setMappingPrompt(null);
     setMappingDevice(device);
   };
@@ -58,6 +68,7 @@ export default function DeviceSyncPanel({
     device: AttendanceDevice,
     opts: { pending?: number; unmappedCount?: number }
   ) => {
+    if (!canManageDevices) return;
     const pending = opts.pending ?? 0;
     const unmappedCount = opts.unmappedCount ?? 0;
     if (pending > 0 || unmappedCount > 0) {
@@ -66,6 +77,7 @@ export default function DeviceSyncPanel({
   };
 
   const handleSyncUsers = async (device: AttendanceDevice) => {
+    if (!canManageDevices) return;
     try {
       setSyncingDeviceId(`${device.id}:users`);
       const result = await syncDeviceUsers(device.id);
@@ -87,6 +99,7 @@ export default function DeviceSyncPanel({
   };
 
   const handleSyncAttendance = async (device: AttendanceDevice) => {
+    if (!canManageDevices) return;
     try {
       setSyncingDeviceId(`${device.id}:attendance`);
       const result = await syncDeviceAttendance(device.id);
@@ -110,6 +123,17 @@ export default function DeviceSyncPanel({
     }
   };
 
+  if (!canViewDevices && !canManageDevices) {
+    return (
+      <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
+        <h2 className="text-xl font-bold text-dark-gray">Sync users</h2>
+        <p className="text-sm text-gray-500 mt-2">
+          You need device view or manage permission to use tablet sync.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <>
       <Alert
@@ -119,7 +143,7 @@ export default function DeviceSyncPanel({
         title={alert.title}
         message={alert.message}
       />
-      {mappingDevice && (
+      {mappingDevice && canManageDevices && (
         <DeviceUserMappingModal
           isOpen={!!mappingDevice}
           deviceId={mappingDevice.id}
@@ -155,7 +179,7 @@ export default function DeviceSyncPanel({
           </p>
         </div>
 
-        {mappingPrompt && (
+        {mappingPrompt && canManageDevices && (
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
             <div className="text-sm text-amber-900">
               <span className="font-semibold">{mappingPrompt.device.name}</span>
@@ -213,7 +237,9 @@ export default function DeviceSyncPanel({
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">IP address</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Config ID</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-dark-gray">Last sync</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase text-dark-gray">Actions</th>
+                  {canManageDevices && (
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase text-dark-gray">Actions</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -235,33 +261,35 @@ export default function DeviceSyncPanel({
                           ? new Date(device.lastSyncAt).toLocaleString()
                           : 'Never'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-right">
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openMappingForDevice(device)}
-                            className="px-3 py-1.5 border border-primary text-primary rounded-lg text-xs font-medium hover:bg-primary/5"
-                          >
-                            Map users
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleSyncUsers(device)}
-                            disabled={anyBusy}
-                            className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            {usersBusy ? 'Syncing…' : 'Sync users'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleSyncAttendance(device)}
-                            disabled={anyBusy}
-                            className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            {attendanceBusy ? 'Syncing…' : 'Sync attendance'}
-                          </button>
-                        </div>
-                      </td>
+                      {canManageDevices && (
+                        <td className="px-4 py-3 text-sm text-right">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openMappingForDevice(device)}
+                              className="px-3 py-1.5 border border-primary text-primary rounded-lg text-xs font-medium hover:bg-primary/5"
+                            >
+                              Map users
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleSyncUsers(device)}
+                              disabled={anyBusy}
+                              className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {usersBusy ? 'Syncing…' : 'Sync users'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleSyncAttendance(device)}
+                              disabled={anyBusy}
+                              className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {attendanceBusy ? 'Syncing…' : 'Sync attendance'}
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

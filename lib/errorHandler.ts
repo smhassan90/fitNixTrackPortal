@@ -14,6 +14,10 @@ export const getErrorMessage = (error: any): string => {
     return 'Please sign in again to continue.';
   }
 
+  if (status === 403) {
+    return rawMessage || "You don't have permission to perform this action.";
+  }
+
   // Map error codes to user-friendly messages
   const validationDetailMessage = (() => {
     if (!details) return '';

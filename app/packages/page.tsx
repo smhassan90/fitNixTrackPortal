@@ -11,7 +11,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
-import { canManageGymCatalog, isGymAdmin } from '@/lib/gymRoles';
 
 interface Feature {
   id: number;
@@ -70,9 +69,9 @@ function normalizeFeaturesPayload(payload: unknown): Feature[] {
 }
 
 export default function PackagesPage() {
-  const { user } = useAuth();
-  const canManage = canManageGymCatalog(user?.role);
-  const canManageFeatures = isGymAdmin(user?.role);
+  const { can } = useAuth();
+  const canManage = can('gym.packages.manage');
+  const canManageFeatures = can('gym.packageFeatures.manage');
   const { alert, showAlert, closeAlert } = useAlert();
   const [packages, setPackages] = useState<Package[]>([]);
   const [availableFeatures, setAvailableFeatures] = useState<Feature[]>([]);
@@ -303,7 +302,7 @@ export default function PackagesPage() {
       
       // Handle specific error codes from API documentation
       if (errorCode === 'FORBIDDEN') {
-        showAlert('error', 'Access Denied', 'You do not have permission to perform this action. Admin access required.');
+        showAlert('error', "You don't have permission", "You don't have permission to perform this action.");
       } else if (errorCode === 'NOT_FOUND') {
         showAlert('error', 'Package Not Found', editingPackage 
           ? 'The package you are trying to update was not found. It may have been deleted.'

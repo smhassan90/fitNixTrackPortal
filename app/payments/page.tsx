@@ -12,7 +12,6 @@ import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
-import { canManageGymPayments } from '@/lib/gymRoles';
 import {
   tailwindBadgeForUiBucket,
   uiBucketForNextUnpaid,
@@ -156,8 +155,9 @@ function normalizeMemberSummary(raw: Record<string, unknown>): MemberPaymentSumm
 function PaymentsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
+  const canPay = can('gym.payments.manage');
 
   const [rows, setRows] = useState<MemberPaymentSummaryRow[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -191,8 +191,6 @@ function PaymentsPageContent() {
   const [exporting, setExporting] = useState(false);
   const [checkingOverdue, setCheckingOverdue] = useState(false);
   const photoMap = useMemberPhotoMap();
-
-  const canPay = canManageGymPayments(user?.role);
 
   const syncFromUrl = useCallback(() => {
     const open = searchParams.get('onlyWithOpenInstallments');

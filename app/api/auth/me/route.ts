@@ -82,6 +82,8 @@ export async function GET(request: NextRequest) {
       role: user.role,
       gymId: user.gymId,
       gymName: user.gymName,
+      permissionKeys: [] as string[],
+      usesLegacyPermissions: false,
     };
 
     return NextResponse.json({

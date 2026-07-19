@@ -10,7 +10,6 @@ import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
-import { canManageGymCatalog } from '@/lib/gymRoles';
 
 interface Trainer {
   id: string;
@@ -74,8 +73,10 @@ function trainerToForm(trainer: Trainer) {
 }
 
 export default function TrainersPage() {
-  const { user } = useAuth();
-  const canManage = canManageGymCatalog(user?.role);
+  const { can } = useAuth();
+  const canManage = can('gym.trainers.manage');
+  const canDelete = can('gym.trainers.delete');
+  const showActions = canManage || canDelete;
   const { alert, showAlert, closeAlert } = useAlert();
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -605,7 +606,7 @@ export default function TrainersPage() {
         {showPageSkeleton ? (
           <>
             <FilterBarSkeleton fields={2} />
-            <TableSkeleton rows={8} columns={canManage ? 8 : 7} />
+            <TableSkeleton rows={8} columns={showActions ? 8 : 7} />
           </>
         ) : (
           <>
@@ -757,7 +758,7 @@ export default function TrainersPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
                   Status
                 </th>
-                {canManage && (
+                {showActions && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider">
                     Actions
                   </th>
@@ -768,7 +769,7 @@ export default function TrainersPage() {
               {sortedTrainers.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={canManage ? 10 : 9}
+                    colSpan={showActions ? 10 : 9}
                     className="px-6 py-10 text-center text-sm text-gray-500"
                   >
                     {searchQuery || statusFilter !== 'all'
@@ -828,41 +829,46 @@ export default function TrainersPage() {
                     <div className="text-sm text-gray-500">{memberCount}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">{statusBadge(trainer)}</td>
-                  {canManage && (
+                  {showActions && (
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => handleEdit(trainer)}
-                        className="text-blue hover:text-blue-900 mr-3"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleActive(trainer)}
-                        disabled={statusSubmittingId === trainer.id}
-                        className="mr-3 text-primary hover:text-primary-dark disabled:opacity-50"
-                      >
-                        {statusSubmittingId === trainer.id
-                          ? 'Saving…'
-                          : active
-                            ? 'Deactivate'
-                            : 'Activate'}
-                      </button>
-                      {memberCount === 0 ? (
+                      {canManage && (
                         <button
-                          onClick={() => handleDeleteClick(trainer.id, trainer.name)}
-                          className="text-red-600 hover:text-red-900"
+                          onClick={() => handleEdit(trainer)}
+                          className="text-blue hover:text-blue-900 mr-3"
                         >
-                          Delete
+                          Edit
                         </button>
-                      ) : (
-                        <span
-                          className="text-xs text-gray-400"
-                          title="Delete is blocked while members are assigned. Use Deactivate instead."
-                        >
-                          —
-                        </span>
                       )}
+                      {canManage && (
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleActive(trainer)}
+                          disabled={statusSubmittingId === trainer.id}
+                          className="mr-3 text-primary hover:text-primary-dark disabled:opacity-50"
+                        >
+                          {statusSubmittingId === trainer.id
+                            ? 'Saving…'
+                            : active
+                              ? 'Deactivate'
+                              : 'Activate'}
+                        </button>
+                      )}
+                      {canDelete &&
+                        (memberCount === 0 ? (
+                          <button
+                            onClick={() => handleDeleteClick(trainer.id, trainer.name)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            Delete
+                          </button>
+                        ) : (
+                          <span
+                            className="text-xs text-gray-400"
+                            title="Delete is blocked while members are assigned. Use Deactivate instead."
+                          >
+                            —
+                          </span>
+                        ))}
                     </td>
                   )}
                 </tr>

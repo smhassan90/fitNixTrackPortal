@@ -12,7 +12,6 @@ import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
-import { canManageGymPayments } from '@/lib/gymRoles';
 import { printPaymentReceipt } from '@/lib/paymentReceipt';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
@@ -149,9 +148,9 @@ function sortByDueDate(a: MonthlyInstallment, b: MonthlyInstallment) {
 export default function MemberPaymentsDetailPage() {
   const params = useParams();
   const memberId = String(params.id ?? '');
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
-  const canPay = canManageGymPayments(user?.role);
+  const canPay = can('gym.payments.manage');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

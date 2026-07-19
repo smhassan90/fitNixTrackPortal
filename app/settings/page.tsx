@@ -31,9 +31,12 @@ const TABS: { id: SettingsTab; label: string }[] = [
 ];
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { can } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
-  const isAdmin = user?.role === 'GYM_ADMIN';
+  const canEditSettings = can('gym.settings.manage');
+  const canManageAttendancePolicy = can('gym.attendancePolicy.manage');
+  const canViewDevices = can('gym.devices.read');
+  const canManageDevices = can('gym.devices.manage');
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [loading, setLoading] = useState(true);
@@ -99,8 +102,8 @@ export default function SettingsPage() {
       showAlert('error', 'Invalid Amount', 'Please enter a valid maximum discount (0 or greater).');
       return;
     }
-    if (!isAdmin) {
-      showAlert('error', 'Access Denied', 'Only administrators can update settings.');
+    if (!canEditSettings) {
+      showAlert('error', "You don't have permission", "You don't have permission to update settings.");
       return;
     }
 
@@ -130,8 +133,8 @@ export default function SettingsPage() {
       showAlert('error', 'Invalid Amount', 'Please enter a valid admission fee (0 or greater).');
       return;
     }
-    if (!isAdmin) {
-      showAlert('error', 'Access Denied', 'Only administrators can update settings.');
+    if (!canEditSettings) {
+      showAlert('error', "You don't have permission", "You don't have permission to update settings.");
       return;
     }
 
@@ -152,8 +155,8 @@ export default function SettingsPage() {
   };
 
   const handleSaveAttendance = async () => {
-    if (!isAdmin) {
-      showAlert('error', 'Access Denied', 'Only administrators can update attendance policies.');
+    if (!canManageAttendancePolicy) {
+      showAlert('error', "You don't have permission", "You don't have permission to update attendance policies.");
       return;
     }
 
@@ -191,8 +194,8 @@ export default function SettingsPage() {
   };
 
   const handleApplyPolicies = async () => {
-    if (!isAdmin) {
-      showAlert('error', 'Access Denied', 'Only administrators can apply policies.');
+    if (!canManageAttendancePolicy) {
+      showAlert('error', "You don't have permission", "You don't have permission to apply policies.");
       return;
     }
     try {
@@ -214,8 +217,8 @@ export default function SettingsPage() {
   };
 
   const handleAddDevice = async () => {
-    if (!isAdmin) {
-      showAlert('error', 'Access Denied', 'Only administrators can add devices.');
+    if (!canManageDevices) {
+      showAlert('error', "You don't have permission", "You don't have permission to add devices.");
       return;
     }
     if (!newDeviceName.trim()) {
@@ -300,6 +303,11 @@ export default function SettingsPage() {
 
         {activeTab === 'general' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {!canEditSettings && (
+              <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                You can view these settings. Editing requires the manage settings permission.
+              </div>
+            )}
             <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
               <div className="flex items-center mb-4">
                 <div className="bg-primary bg-opacity-10 p-3 rounded-lg mr-3">
@@ -336,13 +344,13 @@ export default function SettingsPage() {
                           setAdmissionAmount(value);
                         }
                       }}
-                      disabled={!isAdmin}
+                      disabled={!canEditSettings}
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-50"
                       placeholder="1000"
                     />
                     <button
                       onClick={handleSaveAdmission}
-                      disabled={!isAdmin || saving}
+                      disabled={!canEditSettings || saving}
                       className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 sm:w-auto"
                     >
                       Save
@@ -400,13 +408,13 @@ export default function SettingsPage() {
                           setMaxMemberDiscountAmount(value);
                         }
                       }}
-                      disabled={!isAdmin}
+                      disabled={!canEditSettings}
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-50"
                       placeholder="5000"
                     />
                     <button
                       onClick={handleSaveMaxMemberDiscount}
-                      disabled={!isAdmin || saving}
+                      disabled={!canEditSettings || saving}
                       className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 sm:w-auto"
                     >
                       Save
@@ -459,7 +467,7 @@ export default function SettingsPage() {
                   max={24}
                   value={autoCheckoutHours}
                   onChange={(e) => setAutoCheckoutHours(e.target.value)}
-                  disabled={!isAdmin}
+                  disabled={!canManageAttendancePolicy}
                   className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary disabled:bg-gray-50"
                 />
                 <p className="text-xs text-gray-500 mt-2">
@@ -480,7 +488,7 @@ export default function SettingsPage() {
                   type="checkbox"
                   checked={absenceEnabled}
                   onChange={(e) => setAbsenceEnabled(e.target.checked)}
-                  disabled={!isAdmin}
+                  disabled={!canManageAttendancePolicy}
                   className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                 />
                 <span className="text-sm font-medium text-dark-gray">
@@ -498,7 +506,7 @@ export default function SettingsPage() {
                     max={365}
                     value={absenceInactiveDays}
                     onChange={(e) => setAbsenceInactiveDays(e.target.value)}
-                    disabled={!isAdmin}
+                    disabled={!canManageAttendancePolicy}
                     className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary disabled:bg-gray-50"
                   />
                 </div>
@@ -512,7 +520,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={handleSaveAttendance}
-                disabled={!isAdmin || saving}
+                disabled={!canManageAttendancePolicy || saving}
                 className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white hover:bg-primary-dark disabled:opacity-50 sm:w-auto"
               >
                 {saving ? 'Saving…' : 'Save attendance policies'}
@@ -520,14 +528,14 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={handleApplyPolicies}
-                disabled={!isAdmin || applyingPolicies}
+                disabled={!canManageAttendancePolicy || applyingPolicies}
                 className="w-full rounded-lg border border-gray-300 bg-white px-6 py-2 font-medium text-dark-gray hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
               >
                 {applyingPolicies ? 'Applying…' : 'Apply policies now'}
               </button>
-              {!isAdmin && (
+              {!canManageAttendancePolicy && (
                 <p className="text-sm text-gray-500 self-center">
-                  Only gym administrators can change attendance policies.
+                  You can view attendance policies but need permission to change them.
                 </p>
               )}
             </div>
@@ -536,6 +544,12 @@ export default function SettingsPage() {
 
         {activeTab === 'devices' && (
           <div className="space-y-6">
+            {!canViewDevices ? (
+              <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-600">
+                You need device view permission to see tablet setup.
+              </div>
+            ) : (
+              <>
             <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
               <h2 className="text-xl font-bold text-dark-gray mb-2">Tablet API key</h2>
               <p className="text-sm text-gray-500 mb-4">
@@ -543,21 +557,27 @@ export default function SettingsPage() {
               </p>
               {devicesLoading ? (
                 <p className="text-sm text-gray-500">Loading device setup…</p>
-              ) : deviceSetup?.apiKey ? (
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                  <code className="flex-1 min-w-0 px-4 py-2 bg-gray-100 rounded-lg text-sm font-mono break-all">
-                    {deviceSetup.apiKey}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={copyApiKey}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
-                  >
-                    Copy
-                  </button>
-                </div>
+              ) : canManageDevices ? (
+                deviceSetup?.apiKey ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                    <code className="flex-1 min-w-0 px-4 py-2 bg-gray-100 rounded-lg text-sm font-mono break-all">
+                      {deviceSetup.apiKey}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={copyApiKey}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No API key available.</p>
+                )
               ) : (
-                <p className="text-sm text-gray-500">No API key available.</p>
+                <p className="text-sm text-gray-500">
+                  You need device manage permission to view the tablet API key.
+                </p>
               )}
             </div>
 
@@ -569,7 +589,7 @@ export default function SettingsPage() {
                     Register devices once to get a Device Config ID for the attendance Android app
                   </p>
                 </div>
-                {isAdmin && (
+                {canManageDevices && (
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
                     <input
                       type="text"
@@ -641,6 +661,8 @@ export default function SettingsPage() {
                 .
               </p>
             </div>
+              </>
+            )}
           </div>
         )}
           </>

@@ -1,17 +1,24 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import api from '@/lib/api';
 import { isJwtExpired } from '@/lib/jwtClient';
-import { normalizeGymRole } from '@/lib/gymRoles';
+import {
+  canGymPermission,
+  normalizeGymRole,
+  normalizePermissionKeys,
+  type GymPermissionUser,
+} from '@/lib/gymRoles';
 
-interface User {
+export interface User {
   id: string;
   name: string;
   email: string;
   role: string;
   gymId: string;
   gymName?: string;
+  permissionKeys: string[];
+  usesLegacyPermissions: boolean;
 }
 
 interface AuthContextType {
@@ -20,9 +27,38 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
+  /** Permission check for the signed-in user. */
+  can: (key: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function normalizeAuthUser(userData: Record<string, unknown>): User {
+  return {
+    id: String(userData.id ?? ''),
+    name: String(userData.name ?? ''),
+    email: String(userData.email ?? ''),
+    role: normalizeGymRole(userData.role as string),
+    gymId: String(userData.gymId ?? ''),
+    gymName: (() => {
+      if (typeof userData.gymName === 'string' && userData.gymName) return userData.gymName;
+      const gym = userData.gym;
+      if (gym && typeof gym === 'object' && typeof (gym as { name?: unknown }).name === 'string') {
+        return (gym as { name: string }).name;
+      }
+      return undefined;
+    })(),
+    permissionKeys: normalizePermissionKeys(userData.permissionKeys),
+    usesLegacyPermissions: userData.usesLegacyPermissions === true,
+  };
+}
+
+function coerceStoredUser(raw: unknown): User | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (o.id == null) return null;
+  return normalizeAuthUser(o);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -77,15 +113,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const apiResponse = await api.get('/api/auth/me');
               if (apiResponse.data.success) {
                 const userData = apiResponse.data.data;
-                // Convert numeric IDs to strings if needed
-                const normalizedUser = {
-                  id: String(userData.id),
-                  name: userData.name,
-                  email: userData.email,
-                  role: normalizeGymRole(userData.role),
-                  gymId: String(userData.gymId),
-                  gymName: userData.gymName || userData.gym?.name,
-                };
+                const normalizedUser = normalizeAuthUser(
+                  userData && typeof userData === 'object' ? userData : {}
+                );
                 setUser(normalizedUser);
                 setToken(storedToken);
                 // Update stored user data in case it changed
@@ -107,9 +137,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 // Network error or other issue - restore from localStorage
                 console.warn('⚠️ Token validation failed but restoring from localStorage:', apiError.message);
                 try {
-                  const parsedUser = JSON.parse(storedUser);
-                  setUser(parsedUser);
-                  setToken(storedToken);
+                  const parsedUser = coerceStoredUser(JSON.parse(storedUser));
+                  if (parsedUser) {
+                    setUser(parsedUser);
+                    setToken(storedToken);
+                  } else {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                  }
                 } catch (parseError) {
                   console.error('❌ Failed to parse stored user data');
                   localStorage.removeItem('token');
@@ -130,15 +165,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const data = await response.json();
               if (data.success) {
                 const userData = data.data;
-                setUser({
-                  id: userData.id,
-                  name: userData.name,
-                  email: userData.email,
-                  role: normalizeGymRole(userData.role),
-                  gymId: userData.gymId,
-                  gymName: userData.gymName,
-                });
+                const normalizedUser = normalizeAuthUser(
+                  userData && typeof userData === 'object' ? userData : {}
+                );
+                setUser(normalizedUser);
                 setToken(storedToken);
+                localStorage.setItem('user', JSON.stringify(normalizedUser));
                 console.log('✅ Local token validated successfully');
               } else {
                 // Token invalid, clear storage
@@ -157,9 +189,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Unexpected error - restore from localStorage as fallback
           console.error('⚠️ Token validation error (restoring from localStorage):', error);
           try {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
-            setToken(storedToken);
+            const parsedUser = coerceStoredUser(JSON.parse(storedUser));
+            if (parsedUser) {
+              setUser(parsedUser);
+              setToken(storedToken);
+            } else {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+            }
           } catch (parseError) {
             console.error('❌ Failed to parse stored user data');
             localStorage.removeItem('token');
@@ -200,15 +237,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('Token received:', authToken ? 'Yes' : 'No');
         console.log('User data received:', userData);
         
-        // Convert numeric IDs to strings if needed
-        const normalizedUser = {
-          id: String(userData.id),
-          name: userData.name,
-          email: userData.email,
-          role: normalizeGymRole(userData.role),
-          gymId: String(userData.gymId),
-          gymName: userData.gymName || userData.gym?.name,
-        };
+        const normalizedUser = normalizeAuthUser(
+          userData && typeof userData === 'object' ? userData : {}
+        );
         
         // Store token and user
         localStorage.setItem('token', authToken);
@@ -241,33 +272,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: 'GYM_ADMIN',
           gymId: 'gym-1',
           gymName: 'FitNix Elite Gym',
+          permissionKeys: [] as string[],
+          usesLegacyPermissions: false,
         },
       ];
       
-      const user = localUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
+      const localUser = localUsers.find(u => u.username.toLowerCase() === username.toLowerCase());
       
-      if (!user) {
+      if (!localUser) {
         console.error('❌ User not found');
         throw new Error('Invalid username or password');
       }
       
       // Plain password comparison (no hashing)
-      if (user.password !== password) {
+      if (localUser.password !== password) {
         console.error('❌ Password mismatch');
         throw new Error('Invalid username or password');
       }
       
       // Generate a simple token for local auth
-      const authToken = `local_token_${Date.now()}_${user.id}`;
+      const authToken = `local_token_${Date.now()}_${localUser.id}`;
       
-      const userData = {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        gymId: user.gymId,
-        gymName: user.gymName,
-      };
+      const userData = normalizeAuthUser({
+        id: localUser.id,
+        name: localUser.name,
+        email: localUser.email,
+        role: localUser.role,
+        gymId: localUser.gymId,
+        gymName: localUser.gymName,
+        permissionKeys: localUser.permissionKeys,
+        usesLegacyPermissions: localUser.usesLegacyPermissions,
+      });
       
       // Store token and user
       localStorage.setItem('token', authToken);
@@ -297,8 +332,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const can = useCallback(
+    (key: string) => canGymPermission(user as GymPermissionUser | null, key),
+    [user]
+  );
+
+  const value = useMemo(
+    () => ({ user, token, login, logout, loading, can }),
+    [user, token, loading, can]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
@@ -311,4 +356,3 @@ export function useAuth() {
   }
   return context;
 }
-

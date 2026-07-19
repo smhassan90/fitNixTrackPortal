@@ -1,5 +1,6 @@
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
+import { normalizePermissionKeys } from '@/lib/gymRoles';
 
 /** Must align with backend gym-scoped user roles. */
 export const GYM_TEAM_ROLE_OPTIONS = [
@@ -14,6 +15,8 @@ export type GymTeamUser = {
   email: string;
   phone: string | null;
   role: string;
+  permissionKeys: string[];
+  usesLegacyPermissions: boolean;
   isActive: boolean;
   createdAt?: string;
   lastLoginAt?: string | null;
@@ -40,6 +43,8 @@ export function normalizeGymTeamUser(row: unknown): GymTeamUser | null {
     email: pickString(o.email) || '—',
     phone: o.phone != null ? pickString(o.phone) : null,
     role: pickString(o.role) || 'GYM_STAFF',
+    permissionKeys: normalizePermissionKeys(o.permissionKeys),
+    usesLegacyPermissions: o.usesLegacyPermissions === true,
     isActive: o.isActive === false || pickString(o.status) === 'INACTIVE' ? false : true,
     createdAt: o.createdAt != null ? pickString(o.createdAt) : undefined,
     lastLoginAt: o.lastLoginAt != null && pickString(o.lastLoginAt) ? pickString(o.lastLoginAt) : null,
@@ -76,10 +81,12 @@ export async function fetchGymTeamUsers(): Promise<GymTeamUser[]> {
 export type CreateGymTeamUserInput = {
   name: string;
   email: string;
-  phone?: string;
+  phone?: string | null;
   role: string;
   /** If omitted, backend may generate and return temporaryPassword. */
   password?: string;
+  /** Checked permission keys. Defaults to [] if omitted. Admins should send []. */
+  permissionKeys?: string[];
 };
 
 export type CreateGymTeamUserResult = {
@@ -106,10 +113,12 @@ export async function createGymTeamUser(
 export type UpdateGymTeamUserInput = {
   name?: string;
   email?: string;
-  phone?: string;
+  phone?: string | null;
   role?: string;
   isActive?: boolean;
   password?: string;
+  /** Omit to leave unchanged. */
+  permissionKeys?: string[];
 };
 
 export async function updateGymTeamUser(
