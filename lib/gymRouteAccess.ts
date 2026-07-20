@@ -39,6 +39,19 @@ export function matchRouteAccess(pathname: string): RouteAccessRule | null {
   return null;
 }
 
+/** Whether the signed-in user may open this pathname. */
+export function isGymRouteAllowed(
+  pathname: string,
+  can: (key: string) => boolean,
+  isAdmin: boolean
+): boolean {
+  const rule = matchRouteAccess(pathname);
+  if (!rule) return true;
+  if (rule.adminOnly) return isAdmin;
+  if (rule.permission) return can(rule.permission);
+  return true;
+}
+
 /** Safe fallback when a user lacks permission for the current route. */
 export function firstAllowedGymPath(
   can: (key: string) => boolean,

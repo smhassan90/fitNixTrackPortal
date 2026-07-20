@@ -7,7 +7,7 @@ import Layout from '@/components/Layout';
 import { DashboardContentSkeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
-import { getErrorMessage } from '@/lib/errorHandler';
+import { getErrorMessage, isAuthDeniedError } from '@/lib/errorHandler';
 import { colors } from '@/lib/colors';
 import {
   currentYm,
@@ -62,7 +62,9 @@ const RANGE_PRESETS: { id: RevenuePresetId; label: string; title: string }[] = [
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  const canViewDashboard = can('gym.dashboard.read');
+  const canViewFinancialReports = can('gym.financialReports.read');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentCollections, setRecentCollections] = useState<FeeCollectionRow[]>([]);
   const [gymMismatch, setGymMismatch] = useState<string | null>(null);
@@ -82,6 +84,7 @@ export default function DashboardPage() {
   const [inGymLoading, setInGymLoading] = useState(false);
 
   const fetchDashboardStats = useCallback(async () => {
+    if (!canViewDashboard) return;
     try {
       setLoading(true);
       setError(null);
@@ -112,17 +115,23 @@ export default function DashboardPage() {
         throw new Error('API returned unsuccessful response');
       }
     } catch (err: unknown) {
-      setError(getErrorMessage(err));
+      if (!isAuthDeniedError(err)) {
+        setError(getErrorMessage(err));
+      }
       setStats(null);
     } finally {
       setLoading(false);
     }
-  }, [user?.gymId]);
+  }, [canViewDashboard, user?.gymId]);
 
   const fetchRevenueForRange = useCallback(async (start: string, end: string) => {
+    if (!canViewDashboard) return;
     setRevenueLoading(true);
     try {
-      const result = await fetchRevenueReport(api, start, end, user?.gymId);
+      const result = await fetchRevenueReport(api, start, end, user?.gymId, {
+        // Reports revenue requires gym.financialReports.read; dashboard-only users use the dashboard alias.
+        source: canViewFinancialReports ? 'auto' : 'dashboard',
+      });
       if (result.gymMismatch) setGymMismatch(result.gymMismatch);
       if (Object.keys(result.revenueByMonth).length > 0) {
         setRevenueByMonthFull((prev) => ({ ...prev, ...result.revenueByMonth }));
@@ -132,7 +141,7 @@ export default function DashboardPage() {
     } finally {
       setRevenueLoading(false);
     }
-  }, [user?.gymId]);
+  }, [canViewDashboard, canViewFinancialReports, user?.gymId]);
 
   const applyRange = useCallback(
     (start: string, end: string, fetchRemote: boolean) => {
@@ -171,20 +180,20 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
-    void fetchDashboardStats();
-  }, [fetchDashboardStats]);
+    if (canViewDashboard) void fetchDashboardStats();
+  }, [fetchDashboardStats, canViewDashboard]);
 
   useEffect(() => {
     const onRefresh = () => {
-      void fetchDashboardStats();
+      if (canViewDashboard) void fetchDashboardStats();
     };
     window.addEventListener(DASHBOARD_STATS_REFRESH_EVENT, onRefresh);
     return () => window.removeEventListener(DASHBOARD_STATS_REFRESH_EVENT, onRefresh);
-  }, [fetchDashboardStats]);
+  }, [fetchDashboardStats, canViewDashboard]);
 
   useEffect(() => {
-    void fetchRevenueForRange(ymMonthsAgo(5), currentYm());
-  }, [fetchRevenueForRange]);
+    if (canViewDashboard) void fetchRevenueForRange(ymMonthsAgo(5), currentYm());
+  }, [fetchRevenueForRange, canViewDashboard]);
 
   const revenueChartData = useMemo(() => {
     const months = eachYmBetween(revenueRangeStart, revenueRangeEnd);

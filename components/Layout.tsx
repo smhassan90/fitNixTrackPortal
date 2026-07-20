@@ -6,13 +6,16 @@ import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from './Sidebar';
 import Loading from './Loading';
 import { isGymAdmin } from '@/lib/gymRoles';
-import { firstAllowedGymPath, matchRouteAccess } from '@/lib/gymRouteAccess';
+import { firstAllowedGymPath, isGymRouteAllowed } from '@/lib/gymRouteAccess';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, loading, can } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const redirectedRef = useRef<string | null>(null);
+
+  const admin = Boolean(user && isGymAdmin(user.role));
+  const routeAllowed = user ? isGymRouteAllowed(pathname || '', can, admin) : true;
 
   // Initialize sidebar state from localStorage or default based on screen size
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -36,28 +39,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   // Route-level permission guard
   useEffect(() => {
     if (loading || !user) return;
-    const rule = matchRouteAccess(pathname || '');
-    if (!rule) return;
-
-    const admin = isGymAdmin(user.role);
-    let allowed = true;
-    if (rule.adminOnly) {
-      allowed = admin;
-    } else if (rule.permission) {
-      allowed = can(rule.permission);
-    }
-
-    if (!allowed) {
-      const dest = firstAllowedGymPath(can, admin);
-      if (dest !== pathname && redirectedRef.current !== pathname) {
-        redirectedRef.current = pathname;
-        // Silent redirect — limited access is normal for team roles, not an error.
-        router.replace(dest);
-      }
-    } else {
+    if (routeAllowed) {
       redirectedRef.current = null;
+      return;
     }
-  }, [loading, user, pathname, can, router]);
+    const dest = firstAllowedGymPath(can, admin);
+    if (dest !== pathname && redirectedRef.current !== pathname) {
+      redirectedRef.current = pathname;
+      // Silent redirect — limited access is normal for team roles, not an error.
+      router.replace(dest);
+    }
+  }, [loading, user, pathname, can, router, routeAllowed, admin]);
 
   // Save sidebar state to localStorage whenever it changes
   useEffect(() => {
@@ -89,6 +81,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return null;
+  }
+
+  if (!routeAllowed) {
+    return <Loading message="Loading…" fullScreen size="lg" />;
   }
 
   return (

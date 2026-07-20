@@ -78,18 +78,29 @@ export interface RevenueFetchResult {
   gymMismatch: string | null;
 }
 
+/** Which revenue endpoints to call. Dashboard users without reports access should use `dashboard` only. */
+export type RevenueReportSource = 'auto' | 'reports' | 'dashboard';
+
 /**
  * Billing-month revenue from fee_collections ledger.
- * Tries GET /api/reports/revenue then GET /api/dashboard/revenue.
+ * Tries GET /api/reports/revenue then GET /api/dashboard/revenue when source is `auto`.
  */
 export async function fetchRevenueReport(
   api: AxiosInstance,
   startMonth: string,
   endMonth: string,
-  expectedGymId?: string | number | null
+  expectedGymId?: string | number | null,
+  options?: { source?: RevenueReportSource }
 ): Promise<RevenueFetchResult> {
   const q = `startMonth=${encodeURIComponent(startMonth)}&endMonth=${encodeURIComponent(endMonth)}`;
-  const urls = [`/api/reports/revenue?${q}`, `/api/dashboard/revenue?${q}`];
+  const source = options?.source ?? 'auto';
+  const urls: string[] = [];
+  if (source === 'reports' || source === 'auto') {
+    urls.push(`/api/reports/revenue?${q}`);
+  }
+  if (source === 'dashboard' || source === 'auto') {
+    urls.push(`/api/dashboard/revenue?${q}`);
+  }
   for (const url of urls) {
     try {
       const res = await api.get(url);

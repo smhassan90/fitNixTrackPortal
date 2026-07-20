@@ -5,6 +5,20 @@ export function isForbiddenError(error: unknown): boolean {
   return err?.response?.data?.error?.code === 'FORBIDDEN';
 }
 
+/** True for auth failures on optional/gated requests (don't show as user-facing errors). */
+export function isAuthDeniedError(error: unknown): boolean {
+  const err = error as {
+    response?: { status?: number; data?: { error?: { code?: string; message?: string } } };
+  };
+  const status = err?.response?.status;
+  const code = err?.response?.data?.error?.code;
+  const message = String(err?.response?.data?.error?.message || '');
+  if (status === 403 || code === 'FORBIDDEN') return true;
+  if (status === 401 || code === 'UNAUTHORIZED') return true;
+  if (/no token provided/i.test(message)) return true;
+  return false;
+}
+
 export const getErrorMessage = (error: any): string => {
   if (!error.response) {
     return 'Network error. Please check your connection.';
