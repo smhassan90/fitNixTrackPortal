@@ -1,3 +1,10 @@
+/** True when the API rejected the call due to missing permission (expected for gated features). */
+export function isForbiddenError(error: unknown): boolean {
+  const err = error as { response?: { status?: number; data?: { error?: { code?: string } } } };
+  if (err?.response?.status === 403) return true;
+  return err?.response?.data?.error?.code === 'FORBIDDEN';
+}
+
 export const getErrorMessage = (error: any): string => {
   if (!error.response) {
     return 'Network error. Please check your connection.';

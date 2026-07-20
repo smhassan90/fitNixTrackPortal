@@ -5,8 +5,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from './Sidebar';
 import Loading from './Loading';
-import Alert from './Alert';
-import { useAlert } from '@/hooks/useAlert';
 import { isGymAdmin } from '@/lib/gymRoles';
 import { firstAllowedGymPath, matchRouteAccess } from '@/lib/gymRouteAccess';
 
@@ -14,7 +12,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, loading, can } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const { alert, showAlert, closeAlert } = useAlert();
   const redirectedRef = useRef<string | null>(null);
 
   // Initialize sidebar state from localStorage or default based on screen size
@@ -54,17 +51,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       const dest = firstAllowedGymPath(can, admin);
       if (dest !== pathname && redirectedRef.current !== pathname) {
         redirectedRef.current = pathname;
-        showAlert(
-          'error',
-          "You don't have permission",
-          'Redirecting to a page you can access.'
-        );
+        // Silent redirect — limited access is normal for team roles, not an error.
         router.replace(dest);
       }
     } else {
       redirectedRef.current = null;
     }
-  }, [loading, user, pathname, can, router, showAlert]);
+  }, [loading, user, pathname, can, router]);
 
   // Save sidebar state to localStorage whenever it changes
   useEffect(() => {
@@ -100,13 +93,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-[#ECF0F1]">
-      <Alert
-        isOpen={alert.isOpen}
-        onClose={closeAlert}
-        type={alert.type}
-        title={alert.title}
-        message={alert.message}
-      />
       <Sidebar isOpen={sidebarOpen} onToggle={toggleSidebar} />
 
       {/* Toggle Button - Always visible when sidebar is closed */}

@@ -278,6 +278,10 @@ export default function MembersPage() {
   // Fetch trainers from API (active only for the selection dropdown).
   // When editing, any currently assigned inactive trainer is merged in below.
   const fetchTrainers = useCallback(async () => {
+    if (!can('gym.trainers.read')) {
+      setTrainers([]);
+      return;
+    }
     try {
       console.log('🔵 Fetching trainers from API...');
       const response = await api.get('/api/trainers?isActive=true&limit=1000');
@@ -293,12 +297,15 @@ export default function MembersPage() {
       }
     } catch (error: any) {
       console.error('Error fetching trainers:', error);
-      // Don't show alert for trainers, just log
     }
-  }, []);
+  }, [can]);
 
   // Fetch packages from API
   const fetchPackages = useCallback(async () => {
+    if (!can('gym.packages.read')) {
+      setAvailablePackages([]);
+      return;
+    }
     try {
       console.log('🔵 Fetching packages from API...');
       const response = await api.get('/api/packages?limit=1000');
@@ -311,16 +318,15 @@ export default function MembersPage() {
       }
     } catch (error: any) {
       console.error('Error fetching packages:', error);
-      // Don't show alert for packages, just log
     }
-  }, []);
+  }, [can]);
 
   // Load data on mount
   useEffect(() => {
     fetchMembers();
     fetchTrainers();
     fetchPackages();
-  }, []); // Only run on mount
+  }, [fetchMembers, fetchTrainers, fetchPackages]);
 
   // Refetch members when search or sort changes
   useEffect(() => {

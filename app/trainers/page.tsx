@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/dateUtils';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
-import { getErrorMessage } from '@/lib/errorHandler';
+import { getErrorMessage, isForbiddenError } from '@/lib/errorHandler';
 
 interface Trainer {
   id: string;
@@ -74,6 +74,7 @@ function trainerToForm(trainer: Trainer) {
 
 export default function TrainersPage() {
   const { can } = useAuth();
+  const canRead = can('gym.trainers.read');
   const canManage = can('gym.trainers.manage');
   const canDelete = can('gym.trainers.delete');
   const showActions = canManage || canDelete;
@@ -109,6 +110,11 @@ export default function TrainersPage() {
 
   // Fetch trainers from API
   const fetchTrainers = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!canRead) {
+      setTrainers([]);
+      if (!opts?.silent) setLoading(false);
+      return;
+    }
     try {
       if (!opts?.silent) setLoading(true);
       console.log('🔵 Fetching trainers from API...');
@@ -133,11 +139,13 @@ export default function TrainersPage() {
       }
     } catch (error: any) {
       console.error('Error fetching trainers:', error);
-      showAlert('error', 'Error', getErrorMessage(error));
+      if (!isForbiddenError(error)) {
+        showAlert('error', 'Error', getErrorMessage(error));
+      }
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, [sortConfig, searchQuery, statusFilter, showAlert]);
+  }, [canRead, sortConfig, searchQuery, statusFilter, showAlert]);
 
   // Load trainers on mount and when sort/search changes
   useEffect(() => {

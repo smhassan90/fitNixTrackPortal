@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { canGymPermission, isGymAdmin } from '@/lib/gymRoles';
+import { firstAllowedGymPath } from '@/lib/gymRouteAccess';
 import Loading from '@/components/Loading';
 import FitNixLogo from '@/components/FitNixLogo';
 
@@ -64,7 +66,20 @@ export default function LoginPage() {
 
     try {
       await login(username, password);
-      router.push('/dashboard');
+      const storedUser = localStorage.getItem('user');
+      let dest = '/attendance';
+      if (storedUser) {
+        try {
+          const parsed = JSON.parse(storedUser) as Record<string, unknown>;
+          dest = firstAllowedGymPath(
+            (key) => canGymPermission(parsed, key),
+            isGymAdmin(parsed.role as string)
+          );
+        } catch {
+          /* keep attendance fallback */
+        }
+      }
+      router.push(dest);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Login failed';
       setError(message);
