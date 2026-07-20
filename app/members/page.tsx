@@ -1722,28 +1722,6 @@ export default function MembersPage() {
                   </th>
                   <th 
                     className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
-                    onClick={() => handleSort('dateOfBirth')}
-                  >
-                    <div className="flex items-center space-x-1">
-                      <span>Date of Birth</span>
-                      {sortConfig?.key === 'dateOfBirth' && (
-                        <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
-                    onClick={() => handleSort('cnic')}
-                  >
-                    <div className="flex items-center space-x-1">
-                      <span>CNIC</span>
-                      {sortConfig?.key === 'cnic' && (
-                        <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
                     onClick={() => handleSort('package')}
                   >
                     <div className="flex items-center space-x-1">
@@ -1796,7 +1774,7 @@ export default function MembersPage() {
               <tbody className="bg-white divide-y divide-gray-200">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={showActions ? 12 : 11} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={showActions ? 10 : 9} className="px-6 py-8 text-center text-gray-500">
                     {searchQuery ? 'No members found matching your search.' : 'No members found.'}
                   </td>
                 </tr>
@@ -1847,14 +1825,6 @@ export default function MembersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-500">{member.gender || 'N/A'}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {formatDate(member.dateOfBirth)}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">{member.cnic || 'N/A'}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm text-gray-500">
