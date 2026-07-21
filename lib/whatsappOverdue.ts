@@ -31,28 +31,23 @@ export function memberHonorific(gender?: string | null): 'Mr.' | 'Mrs.' | null {
 export function buildOverdueWhatsAppMessage({
   alert,
   gymName,
-  adminName,
-  gender,
+  adminName: _adminName,
+  gender: _gender,
 }: OverdueWhatsAppContext): string {
-  const honorific = memberHonorific(gender);
-  const greeting = honorific ? `Dear ${honorific} ${alert.memberName}` : `Dear ${alert.memberName}`;
-
   const amount = alert.overdueAmount.toLocaleString('en-US', { maximumFractionDigits: 0 });
-  const installmentWord = alert.overdueCount === 1 ? 'installment' : 'installments';
-  const dueSince = alert.overdueSince ? `, due since ${formatOverdueDate(alert.overdueSince)}` : '';
+  const dueSince = alert.overdueSince ? formatOverdueDate(alert.overdueSince) : null;
+  const overdueLine = dueSince
+    ? `This is a friendly reminder that your Rs. ${amount} gym membership fee has been overdue since ${dueSince} .`
+    : `This is a friendly reminder that your Rs. ${amount} gym membership fee is overdue.`;
 
   const lines = [
-    `${greeting},`,
+    `Hi ${alert.memberName} 👋`,
     '',
-    'We hope you are doing well. This is a gentle reminder that your gym membership fee is currently overdue.',
-    `You have ${alert.overdueCount} overdue ${installmentWord} totaling Rs. ${amount}${dueSince}.`,
+    overdueLine,
     '',
-    'Kindly clear your pending payment at your earliest convenience so you can continue enjoying uninterrupted access to our facilities.',
+    'Please make your payment as soon as you can to keep your membership active.',
     '',
-    'Thank you for your cooperation.',
-    '',
-    `Regards,`,
-    adminName.trim() || 'Gym Admin',
+    'Thank you!',
     gymName.trim() || 'Your Gym',
   ];
 
