@@ -58,7 +58,7 @@ interface MonthlyInstallment {
   status: InstallmentStatus;
   dueDate: string;
   paidDate: string | null;
-  /** Server-computed using GYM_TIMEZONE; prefer over client inference. */
+  /** Server-computed using the gym's DB timezone; prefer over client inference. */
   displayBucket?: string | null;
   member?: {
     id: string;

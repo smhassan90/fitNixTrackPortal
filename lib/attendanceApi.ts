@@ -26,6 +26,8 @@ export interface GymSettings {
   gym: {
     id: number;
     name: string;
+    /** IANA timezone from GET /api/settings (e.g. Asia/Karachi). */
+    timezone?: string | null;
     address?: string | null;
     phone?: string | null;
     email?: string | null;
@@ -144,6 +146,7 @@ export function normalizeGymSettings(raw: unknown): GymSettings {
     gym: {
       id: Number(gym.id) || 0,
       name: String(gym.name ?? ''),
+      timezone: gym.timezone != null && String(gym.timezone).trim() !== '' ? String(gym.timezone) : null,
       address: gym.address != null ? String(gym.address) : null,
       phone: gym.phone != null ? String(gym.phone) : null,
       email: gym.email != null ? String(gym.email) : null,
@@ -328,6 +331,13 @@ export interface ManualCheckInResult {
   overdueAlerts: OverdueCheckinAlert[];
 }
 
+export interface ManualCheckOutResult {
+  message: string;
+  checkOutTime: string | null;
+  checkOutFormatted: string | null;
+  attendanceRecordId: string | null;
+}
+
 function normalizeAttendanceSearchMember(row: unknown): AttendanceSearchMember | null {
   const o = asObj(row);
   if (!o || o.id == null) return null;
@@ -396,6 +406,24 @@ export async function manualCheckIn(memberId: number): Promise<ManualCheckInResu
     checkInFormatted: o.checkInFormatted != null ? String(o.checkInFormatted) : null,
     attendanceRecordId: o.attendanceRecordId != null ? String(o.attendanceRecordId) : o.id != null ? String(o.id) : null,
     overdueAlerts,
+  };
+}
+
+/** Record a manual check-out when the attendance device is unavailable. */
+export async function manualCheckOut(memberId: number): Promise<ManualCheckOutResult> {
+  const res = await api.post('/api/attendance/manual-check-out', {
+    memberId,
+    checkOutTime: new Date().toISOString(),
+  });
+  if (!res.data?.success) {
+    throw new Error(res.data?.error?.message || 'Failed to check out member');
+  }
+  const o = asObj(res.data.data) ?? {};
+  return {
+    message: String(o.message ?? res.data.message ?? 'Member checked out successfully.'),
+    checkOutTime: o.checkOutTime != null ? String(o.checkOutTime) : null,
+    checkOutFormatted: o.checkOutFormatted != null ? String(o.checkOutFormatted) : null,
+    attendanceRecordId: o.attendanceRecordId != null ? String(o.attendanceRecordId) : o.id != null ? String(o.id) : null,
   };
 }
 

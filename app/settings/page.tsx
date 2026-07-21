@@ -6,6 +6,7 @@ import Layout from '@/components/Layout';
 import Alert from '@/components/Alert';
 import { SettingsContentSkeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGymSettings } from '@/contexts/GymSettingsContext';
 import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
@@ -32,6 +33,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
 
 export default function SettingsPage() {
   const { can } = useAuth();
+  const { gymTimezone } = useGymSettings();
   const { alert, showAlert, closeAlert } = useAlert();
   const canEditSettings = can('gym.settings.manage');
   const canManageAttendancePolicy = can('gym.attendancePolicy.manage');
@@ -308,6 +310,13 @@ export default function SettingsPage() {
                 You can view these settings. Editing requires the manage settings permission.
               </div>
             )}
+            <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-lg border border-gray-200">
+              <h2 className="text-xl font-bold text-dark-gray">Gym timezone</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Used for attendance dates and formatted times. Set by your platform admin when the gym was created.
+              </p>
+              <p className="mt-3 font-mono text-sm text-dark-gray">{gymTimezone || '—'}</p>
+            </div>
             <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
               <div className="flex items-center mb-4">
                 <div className="bg-primary bg-opacity-10 p-3 rounded-lg mr-3">

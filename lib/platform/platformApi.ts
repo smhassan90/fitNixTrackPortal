@@ -153,6 +153,15 @@ export async function getPlatformLocationsCatalog() {
   return assertPlatformSuccess(res);
 }
 
+export async function listPlatformTimezones(): Promise<string[]> {
+  const res = await platformClient.get<PlatformApiEnvelope<{ timezones?: string[] }>>(
+    '/api/platform/timezones'
+  );
+  const data = assertPlatformSuccess(res);
+  const list = Array.isArray(data.timezones) ? data.timezones : [];
+  return list.filter((tz): tz is string => typeof tz === 'string' && tz.trim().length > 0);
+}
+
 export async function patchPlatformGym(id: string | number, body: unknown) {
   const res = await platformClient.patch<PlatformApiEnvelope<unknown>>(
     `/api/platform/gyms/${id}`,

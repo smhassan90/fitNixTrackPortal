@@ -280,6 +280,7 @@ export default function PlatformGymsPage() {
             <thead className="bg-light-gray text-left text-dark-gray-light">
               <tr>
                 <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Timezone</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Members</th>
                 <th className="px-4 py-3">Trainers</th>
@@ -297,6 +298,7 @@ export default function PlatformGymsPage() {
                 const sub = (g.subscription as Record<string, unknown> | undefined) ?? {};
                 const planName = String(row.planName ?? sub.planName ?? row.packageName ?? '—');
                 const dueDate = normalizeDateLike(row.dueDate ?? sub.dueDate);
+                const timezone = g.timezone != null ? String(g.timezone) : '';
                 return (
                   <tr key={String(g.id)} className="border-t border-light-gray">
                     <td className="px-4 py-3 font-medium">
@@ -306,6 +308,9 @@ export default function PlatformGymsPage() {
                       {g.slug && (
                         <span className="block text-xs text-dark-gray-light font-normal">{g.slug}</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-mono text-dark-gray-light">
+                      {timezone || '—'}
                     </td>
                     <td className="px-4 py-3">
                       {suspended ? (
@@ -359,7 +364,7 @@ export default function PlatformGymsPage() {
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-dark-gray-light">
+                  <td colSpan={8} className="px-4 py-8 text-center text-dark-gray-light">
                     No gyms found
                   </td>
                 </tr>

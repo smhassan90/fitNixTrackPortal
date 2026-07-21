@@ -461,8 +461,11 @@ function AttendancePageContent() {
         </div>
 
         <ManualCheckInBar
-          onSuccess={({ message, member }) => {
-            showAlert('success', 'Check-in recorded', message || `${member.name} checked in successfully.`);
+          onSuccess={({ message, member, checkInFormatted }) => {
+            const detail = checkInFormatted
+              ? `${member.name} checked in at ${checkInFormatted}.`
+              : message || `${member.name} checked in successfully.`;
+            showAlert('success', 'Check-in recorded', detail);
             void fetchAttendance(filters);
           }}
           onError={(message) => showAlert('error', 'Manual check-in failed', message)}

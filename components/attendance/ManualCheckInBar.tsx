@@ -12,7 +12,11 @@ import { getErrorMessage } from '@/lib/errorHandler';
 import type { OverdueCheckinAlert } from '@/lib/overdueAlerts';
 
 type ManualCheckInBarProps = {
-  onSuccess?: (result: { message: string; member: AttendanceSearchMember }) => void;
+  onSuccess?: (result: {
+    message: string;
+    member: AttendanceSearchMember;
+    checkInFormatted: string | null;
+  }) => void;
   onError?: (message: string) => void;
   onOverdueAlerts?: (alerts: OverdueCheckinAlert[]) => void;
 };
@@ -109,7 +113,11 @@ export default function ManualCheckInBar({ onSuccess, onError, onOverdueAlerts }
           }))
         );
       }
-      onSuccess?.({ message: result.message, member: selected });
+      onSuccess?.({
+        message: result.message,
+        member: selected,
+        checkInFormatted: result.checkInFormatted,
+      });
       clearSelection();
     } catch (err: unknown) {
       onError?.(getErrorMessage(err));

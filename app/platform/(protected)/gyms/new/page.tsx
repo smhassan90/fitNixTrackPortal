@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { format, addDays } from 'date-fns';
 import { createPlatformGym } from '@/lib/platform/platformApi';
-import { getPlatformLocationsCatalog } from '@/lib/platform/platformApi';
+import { getPlatformLocationsCatalog, listPlatformTimezones } from '@/lib/platform/platformApi';
 import { listPlatformBillingPlans } from '@/lib/platform/platformApi';
 import { createGymBodySchema } from '@/lib/platform/validation';
 import { suggestSlugFromName } from '@/lib/platform/slug';
@@ -13,6 +13,7 @@ import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
 import { useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
 import GeneratedPasswordModal from '@/components/platform/GeneratedPasswordModal';
 import PlatformLogoUpload from '@/components/platform/PlatformLogoUpload';
+import TimezoneCombobox from '@/components/platform/TimezoneCombobox';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
 import Loading from '@/components/Loading';
@@ -26,6 +27,8 @@ import {
   withFallbackCatalog,
   type LocationCatalog,
 } from '@/lib/platform/locationCatalog';
+import { DEFAULT_GYM_TIMEZONE, suggestTimezoneForCountry } from '@/lib/gymTimezone';
+import { resolveTimezoneOptions } from '@/lib/platform/timezoneCatalog';
 
 const STEPS = ['Name', 'Slug', 'Location', 'Logo', 'Plan & dates', 'Gym admin login', 'Review'] as const;
 
@@ -35,6 +38,7 @@ type Wizard = {
   address: string;
   city: string;
   country: string;
+  timezone: string;
   logoUrl: string;
   planId: string;
   dueDate: string;
@@ -51,6 +55,7 @@ const initialWizard = (): Wizard => ({
   address: '',
   city: '',
   country: DEFAULT_COUNTRY,
+  timezone: DEFAULT_GYM_TIMEZONE,
   logoUrl: '',
   planId: '',
   dueDate: format(addDays(new Date(), 30), 'yyyy-MM-dd'),
@@ -73,6 +78,8 @@ export default function CreateGymWizardPage() {
   const [plans, setPlans] = useState<BillingPlanOption[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [locationCatalog, setLocationCatalog] = useState<LocationCatalog>(LOCATION_CATALOG);
+  const [timezoneOptions, setTimezoneOptions] = useState<string[]>(() => resolveTimezoneOptions());
+  const [timezonesLoading, setTimezonesLoading] = useState(false);
   const countryOptions = useMemo(() => getSupportedCountries(locationCatalog), [locationCatalog]);
   const cityOptions = useMemo(() => getCitiesForCountry(w.country, locationCatalog), [w.country, locationCatalog]);
 
@@ -114,6 +121,34 @@ export default function CreateGymWizardPage() {
 
   useEffect(() => {
     let active = true;
+    const loadTimezones = async () => {
+      setTimezonesLoading(true);
+      try {
+        const list = await listPlatformTimezones();
+        if (!active) return;
+        const resolved = resolveTimezoneOptions(list);
+        setTimezoneOptions(resolved);
+        setW((prev) => {
+          if (prev.timezone && resolved.includes(prev.timezone)) return prev;
+          const suggested = suggestTimezoneForCountry(prev.country);
+          const fallback = resolved.includes(suggested) ? suggested : resolved[0] ?? DEFAULT_GYM_TIMEZONE;
+          return { ...prev, timezone: fallback };
+        });
+      } catch {
+        if (!active) return;
+        setTimezoneOptions(resolveTimezoneOptions());
+      } finally {
+        if (active) setTimezonesLoading(false);
+      }
+    };
+    void loadTimezones();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     const loadPlans = async () => {
       setPlansLoading(true);
       try {
@@ -147,7 +182,12 @@ export default function CreateGymWizardPage() {
       case 1:
         return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(w.slug.trim());
       case 2:
-        return w.country.trim().length > 0 && w.city.trim().length > 0;
+        return (
+          w.country.trim().length > 0 &&
+          w.city.trim().length > 0 &&
+          w.timezone.trim().length > 0 &&
+          w.timezone.length <= 64
+        );
       case 3:
         if (logoBusy) return false;
         if (!w.logoUrl.trim()) return true;
@@ -183,6 +223,7 @@ export default function CreateGymWizardPage() {
       address: w.address.trim() || undefined,
       city: w.city.trim() || undefined,
       country: w.country.trim() || undefined,
+      timezone: w.timezone.trim(),
       ownerAdmin: {
         name: w.ownerName.trim(),
         email: w.ownerEmail.trim(),
@@ -216,6 +257,7 @@ export default function CreateGymWizardPage() {
     if (parsed.data.address) payload.address = parsed.data.address;
     if (parsed.data.city) payload.city = parsed.data.city;
     if (parsed.data.country) payload.country = parsed.data.country;
+    payload.timezone = parsed.data.timezone;
     if (parsed.data.ownerAdmin.phone) {
       (payload.ownerAdmin as Record<string, string>).phone = parsed.data.ownerAdmin.phone;
     }
@@ -340,7 +382,14 @@ export default function CreateGymWizardPage() {
                     const nextCountry = e.target.value;
                     const nextCities = getCitiesForCountry(nextCountry, locationCatalog);
                     const nextCity = nextCities.includes(p.city) ? p.city : '';
-                    return { ...p, country: nextCountry, city: nextCity };
+                    const suggestedTz = suggestTimezoneForCountry(nextCountry);
+                    const nextTimezone =
+                      timezoneOptions.length === 0
+                        ? suggestedTz
+                        : timezoneOptions.includes(suggestedTz)
+                          ? suggestedTz
+                          : p.timezone;
+                    return { ...p, country: nextCountry, city: nextCity, timezone: nextTimezone };
                   })
                 }
                 className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
@@ -370,6 +419,18 @@ export default function CreateGymWizardPage() {
                   </option>
                 ))}
               </select>
+              <label className="block text-sm font-medium">Timezone *</label>
+              <p className="text-xs text-dark-gray-light">
+                IANA timezone for attendance and billing date boundaries. Pakistan gyms typically use{' '}
+                <span className="font-mono">Asia/Karachi</span>.
+              </p>
+              <TimezoneCombobox
+                value={w.timezone}
+                onChange={(timezone) => setW((p) => ({ ...p, timezone }))}
+                options={timezoneOptions}
+                loading={timezonesLoading}
+                required
+              />
             </>
           )}
           {step === 3 && (
@@ -468,6 +529,10 @@ export default function CreateGymWizardPage() {
                 <dd className="text-right">
                   {[w.address, w.city, w.country].filter(Boolean).join(', ') || '—'}
                 </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-dark-gray-light">Timezone</dt>
+                <dd className="font-mono text-sm">{w.timezone || '—'}</dd>
               </div>
               <div className="flex justify-between gap-4 items-start">
                 <dt className="text-dark-gray-light shrink-0">Logo</dt>

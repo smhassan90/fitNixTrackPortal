@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import { DashboardContentSkeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGymTimezone } from '@/contexts/GymSettingsContext';
 import api from '@/lib/api';
 import { getErrorMessage, isAuthDeniedError } from '@/lib/errorHandler';
 import { colors } from '@/lib/colors';
@@ -26,6 +27,7 @@ import {
 import { displayMemberId } from '@/lib/displayMemberId';
 import { DASHBOARD_STATS_REFRESH_EVENT } from '@/lib/dashboardEvents';
 import { formatDate } from '@/lib/dateUtils';
+import { formatTimeInGymTimezone } from '@/lib/gymTimezone';
 import {
   fetchCurrentlyInGym,
   normalizeDashboardAttendanceStats,
@@ -63,6 +65,7 @@ const RANGE_PRESETS: { id: RevenuePresetId; label: string; title: string }[] = [
 export default function DashboardPage() {
   const router = useRouter();
   const { user, can } = useAuth();
+  const gymTimezone = useGymTimezone();
   const canViewDashboard = can('gym.dashboard.read');
   const canViewFinancialReports = can('gym.financialReports.read');
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -505,7 +508,9 @@ export default function DashboardPage() {
                     >
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.memberName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {row.checkInTime ? formatDate(row.checkInTime) : '—'}
+                        {row.checkInTime
+                          ? formatTimeInGymTimezone(row.checkInTime, gymTimezone)
+                          : '—'}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{row.durationFormatted || '—'}</td>
                       <td className="px-4 py-3">

@@ -7,6 +7,7 @@ import {
   activatePlatformGym,
   getPlatformLocationsCatalog,
   getPlatformGym,
+  listPlatformTimezones,
   patchPlatformGym,
   patchPlatformGymSubscription,
   listPlatformBillingPlans,
@@ -18,6 +19,7 @@ import { patchGymProfileSchema, patchSubscriptionSchema } from '@/lib/platform/v
 import { useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
 import Loading from '@/components/Loading';
 import PlatformLogoUpload from '@/components/platform/PlatformLogoUpload';
+import TimezoneCombobox from '@/components/platform/TimezoneCombobox';
 import GymOwnerAdminSection, { normalizeGymOwnerAdmin } from '@/components/platform/GymOwnerAdminSection';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import Alert from '@/components/Alert';
@@ -33,6 +35,8 @@ import {
   withFallbackCatalog,
   type LocationCatalog,
 } from '@/lib/platform/locationCatalog';
+import { DEFAULT_GYM_TIMEZONE } from '@/lib/gymTimezone';
+import { resolveTimezoneOptions, withTimezoneValue } from '@/lib/platform/timezoneCatalog';
 
 type Tab = 'overview' | 'owner' | 'subscription' | 'activity';
 
@@ -68,6 +72,7 @@ export default function PlatformGymDetailPage() {
     address: '',
     city: '',
     country: '',
+    timezone: '',
     phone: '',
     email: '',
   });
@@ -98,6 +103,8 @@ export default function PlatformGymDetailPage() {
   const [plans, setPlans] = useState<BillingPlanOption[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [locationCatalog, setLocationCatalog] = useState<LocationCatalog>(LOCATION_CATALOG);
+  const [timezoneOptions, setTimezoneOptions] = useState<string[]>(() => resolveTimezoneOptions());
+  const [timezonesLoading, setTimezonesLoading] = useState(false);
   const countryOptions = getSupportedCountries(locationCatalog);
   const cityOptions = getCitiesForCountry(profileDraft.country || DEFAULT_COUNTRY, locationCatalog);
   const planNameById = useMemo(() => {
@@ -135,6 +142,7 @@ export default function PlatformGymDetailPage() {
         address: String(data.address ?? ''),
         city: String(data.city ?? ''),
         country: String(data.country ?? DEFAULT_COUNTRY),
+        timezone: String(data.timezone ?? DEFAULT_GYM_TIMEZONE),
         phone: String(data.phone ?? ''),
         email: String(data.email ?? ''),
       });
@@ -181,6 +189,27 @@ export default function PlatformGymDetailPage() {
       }
     };
     loadLocations();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadTimezones = async () => {
+      setTimezonesLoading(true);
+      try {
+        const list = await listPlatformTimezones();
+        if (!active) return;
+        setTimezoneOptions(resolveTimezoneOptions(list));
+      } catch {
+        if (!active) return;
+        setTimezoneOptions(resolveTimezoneOptions());
+      } finally {
+        if (active) setTimezonesLoading(false);
+      }
+    };
+    void loadTimezones();
     return () => {
       active = false;
     };
@@ -290,6 +319,7 @@ export default function PlatformGymDetailPage() {
     if (profileDraft.address) body.address = profileDraft.address;
     if (profileDraft.city) body.city = profileDraft.city;
     if (profileDraft.country) body.country = profileDraft.country;
+    if (profileDraft.timezone.trim()) body.timezone = profileDraft.timezone.trim();
     if (profileDraft.phone) body.phone = profileDraft.phone;
     if (profileDraft.email) body.email = profileDraft.email;
     const parsed = patchGymProfileSchema.safeParse(body);
@@ -667,6 +697,19 @@ export default function PlatformGymDetailPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label className="text-xs text-dark-gray-light">Timezone</label>
+                  <p className="text-[11px] text-dark-gray-light mb-1">
+                    Optional — IANA name used for attendance and billing dates.
+                  </p>
+                  <TimezoneCombobox
+                    value={profileDraft.timezone}
+                    onChange={(timezone) => setProfileDraft((d) => ({ ...d, timezone }))}
+                    options={withTimezoneValue(timezoneOptions, profileDraft.timezone)}
+                    loading={timezonesLoading}
+                    disabled={!isSuper}
+                  />
                 </div>
                 {PROFILE_FIELDS.map(({ key, label }) => (
                   <div key={key}>

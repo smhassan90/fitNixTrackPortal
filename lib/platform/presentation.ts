@@ -186,6 +186,7 @@ export function gymProfileSummary(gym: Record<string, unknown>): Array<{ label: 
   add('Address line', 'address');
   add('City', 'city');
   add('Country', 'country');
+  add('Timezone', 'timezone');
   add('Phone', 'phone');
   add('Email', 'email');
   add('Web address key', 'slug');

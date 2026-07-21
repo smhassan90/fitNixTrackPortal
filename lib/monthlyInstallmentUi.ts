@@ -31,7 +31,7 @@ function yearMonth(d: Date): number {
 
 /**
  * Browser-local fallback if API omits displayBucket (should match server rules conceptually;
- * authoritative overdue/pending/advance is GYM_TIMEZONE on the backend).
+ * authoritative overdue/pending/advance is the gym timezone on the backend).
  */
 export function uiBucketForUnpaid(dueDateStr: string, today = new Date()): 'overdue' | 'pending' | 'advance' {
   const due = startOfLocalDay(parseLocalDateInput(dueDateStr));

@@ -48,6 +48,8 @@ export interface PlatformGymRow {
   id: string | number;
   name: string;
   slug?: string;
+  /** IANA timezone, e.g. Asia/Karachi */
+  timezone?: string;
   tenantStatus?: 'ACTIVE' | 'SUSPENDED' | string;
   membersCount?: number;
   trainersCount?: number;

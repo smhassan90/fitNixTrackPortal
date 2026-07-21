@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { GymSettingsProvider } from '@/contexts/GymSettingsContext'
 
 export const metadata: Metadata = {
   title: 'FitNix Track Admin Portal',
@@ -18,7 +19,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <GymSettingsProvider>{children}</GymSettingsProvider>
+        </AuthProvider>
       </body>
     </html>
   )

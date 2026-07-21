@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { SLUG_PATTERN } from './slug';
 
+export const ianaTimezoneSchema = z
+  .string()
+  .min(1, 'Timezone is required')
+  .max(64, 'Timezone must be at most 64 characters');
+
 const httpUrl = z
   .string()
   .max(2048)
@@ -30,6 +35,7 @@ export const createGymBodySchema = z.object({
   address: z.string().max(2000).optional(),
   city: z.string().max(200).optional(),
   country: z.string().max(200).optional(),
+  timezone: ianaTimezoneSchema,
   ownerAdmin: z.object({
     name: z.string().min(1, 'Owner name is required').max(200),
     email: z.string().email('Valid owner email required'),
@@ -63,6 +69,7 @@ export const patchGymProfileSchema = z
     country: z.string().max(200).optional(),
     phone: z.string().max(50).optional(),
     email: z.string().email().optional(),
+    timezone: ianaTimezoneSchema.optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'Provide at least one field' });
 
