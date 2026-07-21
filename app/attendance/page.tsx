@@ -14,6 +14,7 @@ import { getErrorMessage } from '@/lib/errorHandler';
 import {
   exportNoSignInCsv,
   fetchNoSignInReport,
+  manualCheckOut,
   type NoSignInReport,
 } from '@/lib/attendanceApi';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
@@ -97,6 +98,12 @@ function attendanceRecordToOverdueAlert(record: AttendanceRecord): OverdueChecki
   };
 }
 
+function recordNeedsManualCheckout(record: AttendanceRecord): boolean {
+  const hasCheckOut = Boolean(record.checkOut?.trim() || record.checkOutTime?.trim());
+  const hasCheckIn = Boolean(record.checkIn?.trim() || record.checkInTime?.trim());
+  return !hasCheckOut && hasCheckIn && record.memberId > 0;
+}
+
 function AttendancePageContent() {
   const { alert, showAlert, closeAlert } = useAlert();
   const searchParams = useSearchParams();
@@ -140,6 +147,7 @@ function AttendancePageContent() {
   const [noSignInError, setNoSignInError] = useState<string | null>(null);
 
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
+  const [checkingOutMemberId, setCheckingOutMemberId] = useState<number | null>(null);
 
   const { toasts, pushAlerts, dismissToast } = useOverdueCheckinToasts();
   const overdueSinceRef = useRef<string | null>(null);
@@ -420,6 +428,23 @@ function AttendancePageContent() {
   // Handle page change
   const handlePageChange = (newPage: number) => {
     setFilters((prev) => ({ ...prev, page: newPage }));
+  };
+
+  const handleManualCheckout = async (record: AttendanceRecord) => {
+    if (!recordNeedsManualCheckout(record)) return;
+    setCheckingOutMemberId(record.memberId);
+    try {
+      const result = await manualCheckOut(record.memberId);
+      const detail = result.checkOutFormatted
+        ? `${record.member} checked out at ${result.checkOutFormatted}.`
+        : result.message || `${record.member} checked out successfully.`;
+      showAlert('success', 'Check-out recorded', detail);
+      void fetchAttendance(filters);
+    } catch (error: unknown) {
+      showAlert('error', 'Manual check-out failed', getErrorMessage(error));
+    } finally {
+      setCheckingOutMemberId(null);
+    }
   };
 
   // Get status badge styling
@@ -943,7 +968,18 @@ function AttendancePageContent() {
                       <div className="text-sm text-gray-900">{record.checkIn || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{record.checkOut || 'N/A'}</div>
+                      {recordNeedsManualCheckout(record) ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleManualCheckout(record)}
+                          disabled={checkingOutMemberId === record.memberId}
+                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {checkingOutMemberId === record.memberId ? 'Checking out…' : 'Checkout'}
+                        </button>
+                      ) : (
+                        <div className="text-sm text-gray-900">{record.checkOut || 'N/A'}</div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
