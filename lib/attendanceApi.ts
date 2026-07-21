@@ -316,6 +316,7 @@ export interface AttendanceSearchMember {
   memberNumber: string | null;
   legacyMemberId: string | null;
   phone: string;
+  gender: string | null;
   photoUrl: string | null;
 }
 
@@ -340,6 +341,7 @@ function normalizeAttendanceSearchMember(row: unknown): AttendanceSearchMember |
     memberNumber: nums.memberNumber,
     legacyMemberId: nums.legacyMemberId,
     phone: String(o.phone ?? o.contact ?? nested?.phone ?? ''),
+    gender: o.gender != null && o.gender !== '' ? String(o.gender) : nested?.gender != null ? String(nested.gender) : null,
     photoUrl: pickMemberPhotoUrl(o) ?? pickMemberPhotoUrl(nested),
   };
 }

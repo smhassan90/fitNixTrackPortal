@@ -101,7 +101,13 @@ export default function ManualCheckInBar({ onSuccess, onError, onOverdueAlerts }
     try {
       const result = await manualCheckIn(selected.id);
       if (result.overdueAlerts.length > 0) {
-        onOverdueAlerts?.(result.overdueAlerts);
+        onOverdueAlerts?.(
+          result.overdueAlerts.map((alert) => ({
+            ...alert,
+            contact: alert.contact || selected.phone || null,
+            gender: alert.gender || selected.gender || null,
+          }))
+        );
       }
       onSuccess?.({ message: result.message, member: selected });
       clearSelection();

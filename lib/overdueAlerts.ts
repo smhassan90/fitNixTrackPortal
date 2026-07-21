@@ -20,6 +20,7 @@ export interface OverdueCheckinAlert extends OverduePaymentInfo {
   legacyMemberId: string | null;
   memberName: string;
   contact: string | null;
+  gender?: string | null;
   checkInTime: string;
 }
 
@@ -45,7 +46,8 @@ export function normalizeOverdueAlert(raw: unknown): OverdueCheckinAlert | null 
     memberNumber: nums.memberNumber,
     legacyMemberId: nums.legacyMemberId,
     memberName: String(o.memberName ?? o.name ?? `Member ${memberId}`),
-    contact: o.contact != null && o.contact !== '' ? String(o.contact) : null,
+    contact: o.contact != null && o.contact !== '' ? String(o.contact) : o.phone != null && o.phone !== '' ? String(o.phone) : null,
+    gender: o.gender != null && o.gender !== '' ? String(o.gender) : null,
     checkInTime: String(o.checkInTime ?? ''),
     overdueCount: Number(o.overdueCount) || 0,
     overdueAmount: Number(o.overdueAmount) || 0,
