@@ -1,60 +1,55 @@
 import platformClient, { assertPlatformSuccess } from './platformClient';
 import type { PlatformApiEnvelope } from './types';
-import { normalizeAnalyticsRows, normalizeCategory } from '@/lib/pos/posApi';
+import { normalizeAnalyticsRows, normalizeCategory, normalizePosCatalogResponse } from '@/lib/pos/posApi';
 import type { PosAnalyticsRow, PosCategory, NutrientForm, PosProductType } from '@/lib/pos/types';
-
-function unwrapList(body: unknown, keys: string[]): unknown[] {
-  if (Array.isArray(body)) return body;
-  const root = body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
-  if (!root) return [];
-  for (const k of keys) {
-    if (Array.isArray(root[k])) return root[k] as unknown[];
-  }
-  const data = root.data;
-  if (Array.isArray(data)) return data;
-  if (data && typeof data === 'object') {
-    const d = data as Record<string, unknown>;
-    for (const k of keys) {
-      if (Array.isArray(d[k])) return d[k] as unknown[];
-    }
-  }
-  return [];
-}
 
 // ─── Platform catalog CRUD ─────────────────────────────────────────────────
 
 export async function fetchPlatformPosCatalog(productType?: PosProductType): Promise<PosCategory[]> {
   const res = await platformClient.get<PlatformApiEnvelope<unknown>>('/api/platform/pos/catalog', {
-    params: productType ? { productType } : undefined,
+    params: {
+      includeInactive: 'true',
+      ...(productType ? { productType } : {}),
+    },
   });
   const data = assertPlatformSuccess(res);
-  const list = unwrapList(data, ['categories', 'catalog']);
-  return list.map(normalizeCategory).filter((c): c is PosCategory => c != null);
+  // Create returns a flat category; list returns nested catalog by productType — always parse as tree.
+  return normalizePosCatalogResponse(data);
 }
 
 export async function createPlatformPosCategory(body: {
   name: string;
   productType: PosProductType;
+  code?: string;
+  description?: string;
   sortOrder?: number;
+  isActive?: boolean;
 }): Promise<PosCategory> {
   const res = await platformClient.post<PlatformApiEnvelope<unknown>>('/api/platform/pos/categories', body);
   const data = assertPlatformSuccess(res);
-  const row = (data as Record<string, unknown>)?.category ?? data;
-  const cat = normalizeCategory(row);
+  // Response data is the category object itself (not wrapped, not a catalog tree).
+  const row =
+    data && typeof data === 'object' && 'category' in (data as object) && (data as { category?: unknown }).category != null
+      ? (data as { category: unknown }).category
+      : data;
+  const cat = normalizeCategory(row, body.productType);
   if (!cat) throw new Error('Invalid category response');
-  return cat;
+  return { ...cat, productType: cat.productType || body.productType };
 }
 
 export async function updatePlatformPosCategory(
   id: number | string,
-  body: Partial<{ name: string; sortOrder: number }>
+  body: Partial<{ name: string; sortOrder: number; description: string; isActive: boolean }>
 ): Promise<PosCategory> {
   const res = await platformClient.patch<PlatformApiEnvelope<unknown>>(
     `/api/platform/pos/categories/${id}`,
     body
   );
   const data = assertPlatformSuccess(res);
-  const row = (data as Record<string, unknown>)?.category ?? data;
+  const row =
+    data && typeof data === 'object' && 'category' in (data as object) && (data as { category?: unknown }).category != null
+      ? (data as { category: unknown }).category
+      : data;
   const cat = normalizeCategory(row);
   if (!cat) throw new Error('Invalid category response');
   return cat;

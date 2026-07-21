@@ -73,65 +73,83 @@ export default function PosCatalogTree({
             )}
           </div>
           <ul className="mt-3 space-y-2">
-            {(cat.subcategories ?? []).map((sub) => {
-              const enabled = enabledIds ? enabledIds.has(sub.id) : sub.enabledForGym;
-              const selected = selectedSubcategoryId === sub.id;
-              return (
-                <li
-                  key={sub.id}
-                  className={`flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 ${
-                    selected ? 'bg-primary/10 ring-1 ring-primary/30' : 'bg-gray-50'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    className="text-left text-sm font-medium text-gray-800"
-                    onClick={() => onSelectSubcategory?.(sub)}
+            {(cat.subcategories ?? []).length === 0 ? (
+              <li className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                No subcategories yet — add one
+                {!readOnly && onAddSubcategory ? (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      onClick={() => onAddSubcategory(cat)}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      now
+                    </button>
+                  </>
+                ) : null}
+              </li>
+            ) : (
+              (cat.subcategories ?? []).map((sub) => {
+                const enabled = enabledIds ? enabledIds.has(sub.id) : sub.enabledForGym;
+                const selected = selectedSubcategoryId === sub.id;
+                return (
+                  <li
+                    key={sub.id}
+                    className={`flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 ${
+                      selected ? 'bg-primary/10 ring-1 ring-primary/30' : 'bg-gray-50'
+                    }`}
                   >
-                    {sub.name}
-                    {sub.allowedForms?.length ? (
-                      <span className="ml-2 text-xs text-gray-500">
-                        ({sub.allowedForms.join(', ')})
-                      </span>
-                    ) : null}
-                  </button>
-                  <div className="flex items-center gap-3">
-                    {showEnableToggle && onToggleEnable && (
-                      <label className="flex items-center gap-2 text-xs text-gray-600">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(enabled)}
-                          onChange={(e) => onToggleEnable(sub.id, e.target.checked)}
-                        />
-                        Enabled
-                      </label>
-                    )}
-                    {!readOnly && (
-                      <>
-                        {onEditSubcategory && (
-                          <button
-                            type="button"
-                            onClick={() => onEditSubcategory(sub, cat)}
-                            className="text-xs text-gray-600"
-                          >
-                            Edit
-                          </button>
-                        )}
-                        {onDeleteSubcategory && (
-                          <button
-                            type="button"
-                            onClick={() => onDeleteSubcategory(sub)}
-                            className="text-xs text-red-600"
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
+                    <button
+                      type="button"
+                      className="text-left text-sm font-medium text-gray-800"
+                      onClick={() => onSelectSubcategory?.(sub)}
+                    >
+                      {sub.name}
+                      {sub.allowedForms?.length ? (
+                        <span className="ml-2 text-xs text-gray-500">
+                          ({sub.allowedForms.join(', ')})
+                        </span>
+                      ) : null}
+                    </button>
+                    <div className="flex items-center gap-3">
+                      {showEnableToggle && onToggleEnable && (
+                        <label className="flex items-center gap-2 text-xs text-gray-600">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(enabled)}
+                            onChange={(e) => onToggleEnable(sub.id, e.target.checked)}
+                          />
+                          Enabled
+                        </label>
+                      )}
+                      {!readOnly && (
+                        <>
+                          {onEditSubcategory && (
+                            <button
+                              type="button"
+                              onClick={() => onEditSubcategory(sub, cat)}
+                              className="text-xs text-gray-600"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {onDeleteSubcategory && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteSubcategory(sub)}
+                              className="text-xs text-red-600"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </li>
+                );
+              })
+            )}
           </ul>
         </div>
       ))}

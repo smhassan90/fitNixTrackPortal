@@ -53,22 +53,90 @@ function normalizeSubcategory(row: unknown): PosSubcategory | null {
   };
 }
 
-export function normalizeCategory(row: unknown): PosCategory | null {
+export function normalizeCategory(row: unknown, fallbackProductType?: PosProductType): PosCategory | null {
   const o = asObj(row);
   if (!o) return null;
   const id = num(o.id);
   if (!id) return null;
+  const productType =
+    (pickStr(o.productType).toUpperCase() as PosProductType) ||
+    fallbackProductType ||
+    'NUTRIENT';
+  const productTypeNorm: PosProductType = productType === 'ACCESSORY' ? 'ACCESSORY' : 'NUTRIENT';
   const subsRaw = o.subcategories ?? o.subCategories;
   const subcategories = Array.isArray(subsRaw)
-    ? subsRaw.map(normalizeSubcategory).filter((s): s is PosSubcategory => s != null)
+    ? subsRaw
+        .map((sub) => {
+          const normalized = normalizeSubcategory(sub);
+          if (!normalized) return null;
+          return {
+            ...normalized,
+            categoryId: normalized.categoryId || id,
+            productType: normalized.productType || productTypeNorm,
+          };
+        })
+        .filter((s): s is PosSubcategory => s != null)
     : [];
   return {
     id,
     name: pickStr(o.name) || '—',
-    productType: (pickStr(o.productType).toUpperCase() as PosProductType) || 'NUTRIENT',
+    productType: productTypeNorm,
     sortOrder: num(o.sortOrder),
     subcategories,
   };
+}
+
+/**
+ * Normalize POS catalog payloads.
+ * Supports:
+ * - Nested platform shape: { catalog: [{ productType, categories: [...] }] }
+ * - Flat: { categories: [...] } | { catalog: [category, ...] } | category[]
+ */
+export function normalizePosCatalogResponse(data: unknown): PosCategory[] {
+  const root = asObj(data);
+  const catalogRaw = root?.catalog;
+  const categoriesRaw = root?.categories;
+
+  const asGroups = Array.isArray(catalogRaw)
+    ? catalogRaw
+    : Array.isArray(data)
+      ? data
+      : null;
+
+  if (asGroups && asGroups.length > 0) {
+    const first = asObj(asGroups[0]);
+    const looksLikeProductTypeGroup =
+      Boolean(first) &&
+      Array.isArray(first?.categories) &&
+      Boolean(pickStr(first?.productType)) &&
+      !num(first?.id);
+
+    if (looksLikeProductTypeGroup) {
+      const out: PosCategory[] = [];
+      for (const group of asGroups) {
+        const g = asObj(group);
+        if (!g) continue;
+        const groupType = pickStr(g.productType).toUpperCase() as PosProductType;
+        const fallback: PosProductType = groupType === 'ACCESSORY' ? 'ACCESSORY' : 'NUTRIENT';
+        const cats = Array.isArray(g.categories) ? g.categories : [];
+        for (const cat of cats) {
+          const normalized = normalizeCategory(cat, fallback);
+          if (normalized) out.push(normalized);
+        }
+      }
+      return out;
+    }
+  }
+
+  const flatList = Array.isArray(categoriesRaw)
+    ? categoriesRaw
+    : Array.isArray(catalogRaw)
+      ? catalogRaw
+      : Array.isArray(data)
+        ? data
+        : [];
+
+  return flatList.map((row) => normalizeCategory(row)).filter((c): c is PosCategory => c != null);
 }
 
 export function normalizeProduct(row: unknown): PosProduct | null {
@@ -174,16 +242,7 @@ export async function fetchPosCatalog(includeDisabled = true): Promise<PosCatego
   const res = await api.get('/api/pos/catalog', {
     params: { includeDisabled: includeDisabled ? 'true' : 'false' },
   });
-  const data = unwrapData(res.data);
-  const root = asObj(data);
-  const list = Array.isArray(data)
-    ? data
-    : Array.isArray(root?.categories)
-      ? root!.categories
-      : Array.isArray(root?.catalog)
-        ? root!.catalog
-        : [];
-  return list.map(normalizeCategory).filter((c): c is PosCategory => c != null);
+  return normalizePosCatalogResponse(unwrapData(res.data));
 }
 
 export async function saveGymSubcategories(subcategoryIds: number[]): Promise<void> {

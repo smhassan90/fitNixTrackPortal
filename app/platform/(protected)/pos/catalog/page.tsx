@@ -63,10 +63,20 @@ export default function PlatformPosCatalogPage() {
   const addCategory = async () => {
     if (!catName.trim()) return;
     try {
-      await createPlatformPosCategory({ name: catName.trim(), productType });
+      const created = await createPlatformPosCategory({ name: catName.trim(), productType });
       setCatName('');
+      // Always refetch nested catalog tree — do not merge create response into local state.
       await load();
-      showAlert('success', 'Created', 'Category added.');
+      showAlert(
+        'success',
+        'Category created',
+        'Add at least one subcategory so gyms can enable it and use it when adding products.'
+      );
+      setSubForm({
+        categoryId: created.id,
+        name: '',
+        allowedForms: productType === 'NUTRIENT' ? ['PACKAGED', 'SERVING'] : [],
+      });
     } catch (e) {
       showAlert('error', 'Failed', mapPlatformErrorToUserMessage(e));
     }
@@ -92,7 +102,10 @@ export default function PlatformPosCatalogPage() {
     <>
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
       <h1 className="mb-2 text-2xl font-bold text-dark-gray">POS Catalog</h1>
-      <p className="mb-4 text-sm text-gray-500">Manage platform-wide POS categories and subcategories.</p>
+      <p className="mb-4 text-sm text-gray-500">
+        Manage platform-wide POS categories and subcategories. Products attach to a subcategory — create
+        at least one subcategory under each category before gyms can enable it.
+      </p>
       <PosProductTypeTabs value={productType} onChange={setProductType} />
 
       <div className="mt-4 flex flex-wrap gap-2">

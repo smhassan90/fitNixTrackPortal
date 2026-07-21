@@ -48,16 +48,24 @@ export default function PosProductsPage() {
   const [pendingImageBlob, setPendingImageBlob] = useState<Blob | null>(null);
 
   const enabledSubs = useMemo(
-    () => subcategories.filter((s) => s.enabledForGym !== false && (s.productType ?? productType) === productType),
+    () =>
+      subcategories.filter(
+        (s) => s.enabledForGym === true && (s.productType ?? productType) === productType
+      ),
     [subcategories, productType]
   );
 
   const loadCatalog = useCallback(async () => {
-    const cats = await fetchPosCatalog(true);
+    // Enabled-only catalog for product form dropdowns (not platform catalog).
+    const cats = await fetchPosCatalog(false);
     const subs: PosSubcategory[] = [];
     for (const c of cats) {
       for (const s of c.subcategories ?? []) {
-        subs.push({ ...s, productType: c.productType });
+        subs.push({
+          ...s,
+          productType: s.productType ?? c.productType,
+          enabledForGym: s.enabledForGym !== false,
+        });
       }
     }
     setSubcategories(subs);
@@ -106,6 +114,9 @@ export default function PosProductsPage() {
     setPendingImageBlob(null);
     setForm(emptyProductForm(productType));
     setShowForm(true);
+    void loadCatalog().catch((e) => {
+      showAlert('error', 'Could not load categories', posErrorMessage(e));
+    });
   };
 
   const startEdit = (p: PosProduct) => {
@@ -194,6 +205,15 @@ export default function PosProductsPage() {
         {showForm && canManage && (
           <form onSubmit={submit} className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="mb-4 font-semibold">{editing ? 'Edit product' : 'New product'}</h2>
+            {enabledSubs.length === 0 ? (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                No POS categories enabled. Go to{' '}
+                <Link href="/pos/setup" className="font-semibold underline">
+                  POS Setup
+                </Link>{' '}
+                and enable subcategories.
+              </div>
+            ) : null}
             <PosProductForm
               form={form}
               setForm={setForm}
@@ -202,11 +222,15 @@ export default function PosProductsPage() {
               onPendingImageChange={setPendingImageBlob}
               onImageError={(message) => showAlert('error', 'Image', message)}
               onImageSuccess={(message) => showAlert('success', 'Image', message)}
-              disabled={saving}
+              disabled={saving || enabledSubs.length === 0}
               isEdit={Boolean(editing)}
             />
             <div className="mt-4 flex gap-2">
-              <button type="submit" disabled={saving} className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-50">
+              <button
+                type="submit"
+                disabled={saving || (!editing && enabledSubs.length === 0)}
+                className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-50"
+              >
                 {saving ? 'Saving…' : 'Save'}
               </button>
               <button

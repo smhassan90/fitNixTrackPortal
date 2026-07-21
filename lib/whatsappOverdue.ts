@@ -41,7 +41,7 @@ export function buildOverdueWhatsAppMessage({
     : `This is a friendly reminder that your Rs. ${amount} gym membership fee is overdue.`;
 
   const lines = [
-    `Hi ${alert.memberName} 👋`,
+    `Hi ${alert.memberName}!`,
     '',
     overdueLine,
     '',
