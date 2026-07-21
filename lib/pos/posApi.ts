@@ -373,7 +373,16 @@ export async function createPosSale(body: {
     discountValue?: number;
   }>;
 }): Promise<PosSale> {
-  const res = await api.post('/api/pos/sales', body);
+  const payload: Record<string, unknown> = {
+    items: body.items,
+  };
+  if (body.notes?.trim()) payload.notes = body.notes.trim();
+  // Only send memberId when linked — avoid null which some APIs ignore/mis-handle.
+  if (body.memberId != null && Number(body.memberId) > 0) {
+    payload.memberId = Number(body.memberId);
+  }
+
+  const res = await api.post('/api/pos/sales', payload);
   const data = unwrapData(res.data);
   const root = asObj(data);
   const sale = normalizeSale(root?.sale ?? data);
