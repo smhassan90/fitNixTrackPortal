@@ -83,7 +83,16 @@ export function productToForm(p: PosProduct): PosProductFormState {
   };
 }
 
+function inferNutrientFormFromSubcategory(sub?: PosSubcategory | null): NutrientForm | null {
+  const name = (sub?.name ?? '').trim().toLowerCase();
+  if (name === 'packaged') return 'PACKAGED';
+  if (name === 'serving') return 'SERVING';
+  return null;
+}
+
 function allowedFormsForSub(sub?: PosSubcategory | null): NutrientForm[] {
+  const inferred = inferNutrientFormFromSubcategory(sub);
+  if (inferred) return [inferred];
   if (!sub?.allowedForms?.length) return ['PACKAGED', 'SERVING'];
   return sub.allowedForms;
 }
@@ -102,12 +111,13 @@ export function validateProductForm(
     return null;
   }
 
+  const nutrientForm = inferNutrientFormFromSubcategory(sub) ?? form.form;
   const allowed = allowedFormsForSub(sub);
-  if (!allowed.includes(form.form)) {
+  if (!allowed.includes(nutrientForm)) {
     return `This subcategory only allows: ${allowed.join(', ')}.`;
   }
 
-  if (form.form === 'PACKAGED') {
+  if (nutrientForm === 'PACKAGED') {
     if (!form.servingSizeG.trim()) return 'Serving size (g) is required for packaged nutrients.';
     if (!form.calories.trim()) return 'Calories are required for packaged nutrients.';
     if (!form.proteinG.trim()) return 'Protein (g) is required for packaged nutrients.';
@@ -115,14 +125,18 @@ export function validateProductForm(
     if (!form.calories.trim()) return 'Calories are required for serving products.';
   }
 
-  if (!isEdit && form.form === 'PACKAGED' && form.initialStock === '' && form.trackInventory) {
+  if (!isEdit && nutrientForm === 'PACKAGED' && form.initialStock === '' && form.trackInventory) {
     return 'Initial stock is required when inventory is tracked.';
   }
 
   return null;
 }
 
-export function buildProductPayload(form: PosProductFormState, isEdit = false): Record<string, unknown> {
+export function buildProductPayload(
+  form: PosProductFormState,
+  isEdit = false,
+  sub?: PosSubcategory | null
+): Record<string, unknown> {
   const base: Record<string, unknown> = {
     productType: form.productType,
     subcategoryId: Number(form.subcategoryId),
@@ -146,9 +160,11 @@ export function buildProductPayload(form: PosProductFormState, isEdit = false): 
     };
   }
 
+  const nutrientForm = inferNutrientFormFromSubcategory(sub) ?? form.form;
   const nutrient: Record<string, unknown> = {
     ...base,
-    form: form.form,
+    // Backend also infers from Packaged/Serving subcategory names; send form for consistency.
+    form: nutrientForm,
     brand: form.brand.trim() || undefined,
     calories: Number(form.calories),
     proteinG: form.proteinG.trim() ? Number(form.proteinG) : undefined,
@@ -156,10 +172,10 @@ export function buildProductPayload(form: PosProductFormState, isEdit = false): 
     fatG: form.fatG.trim() ? Number(form.fatG) : undefined,
     fiberG: form.fiberG.trim() ? Number(form.fiberG) : undefined,
     sugarG: form.sugarG.trim() ? Number(form.sugarG) : undefined,
-    trackInventory: form.form === 'SERVING' ? form.trackInventory : true,
+    trackInventory: nutrientForm === 'SERVING' ? form.trackInventory : true,
   };
 
-  if (form.form === 'PACKAGED') {
+  if (nutrientForm === 'PACKAGED') {
     nutrient.servingSizeG = Number(form.servingSizeG);
     if (!isEdit && form.initialStock.trim()) nutrient.initialStock = Number(form.initialStock);
   } else {
@@ -193,8 +209,11 @@ export default function PosProductForm({
   isEdit,
 }: Props) {
   const selectedSub = subcategories.find((s) => String(s.id) === form.subcategoryId);
+  const inferredForm = form.productType === 'NUTRIENT' ? inferNutrientFormFromSubcategory(selectedSub) : null;
+  const nutrientForm = inferredForm ?? form.form;
   const allowedForms =
     form.productType === 'NUTRIENT' ? allowedFormsForSub(selectedSub) : ([] as NutrientForm[]);
+  const showFormSelector = form.productType === 'NUTRIENT' && inferredForm == null;
 
   const set = (patch: Partial<PosProductFormState>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -206,7 +225,15 @@ export default function PosProductForm({
           className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           value={form.subcategoryId}
           disabled={disabled || isEdit}
-          onChange={(e) => set({ subcategoryId: e.target.value })}
+          onChange={(e) => {
+            const nextId = e.target.value;
+            const nextSub = subcategories.find((s) => String(s.id) === nextId);
+            const nextForm = inferNutrientFormFromSubcategory(nextSub);
+            set({
+              subcategoryId: nextId,
+              ...(nextForm ? { form: nextForm } : {}),
+            });
+          }}
         >
           <option value="">Select subcategory</option>
           {subcategories.map((s) => (
@@ -216,6 +243,11 @@ export default function PosProductForm({
             </option>
           ))}
         </select>
+        {inferredForm && (
+          <p className="mt-1 text-xs text-gray-500">
+            Product type is set from subcategory ({inferredForm === 'PACKAGED' ? 'Packaged' : 'Serving'}).
+          </p>
+        )}
       </label>
 
       <label className="block sm:col-span-2">
@@ -240,21 +272,23 @@ export default function PosProductForm({
 
       {form.productType === 'NUTRIENT' && (
         <>
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Form</span>
-            <select
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={form.form}
-              disabled={disabled}
-              onChange={(e) => set({ form: e.target.value as NutrientForm })}
-            >
-              {allowedForms.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </label>
+          {showFormSelector && (
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">Form</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={form.form}
+                disabled={disabled}
+                onChange={(e) => set({ form: e.target.value as NutrientForm })}
+              >
+                {allowedForms.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Brand</span>
             <input
@@ -264,7 +298,7 @@ export default function PosProductForm({
               onChange={(e) => set({ brand: e.target.value })}
             />
           </label>
-          {form.form === 'PACKAGED' ? (
+          {nutrientForm === 'PACKAGED' ? (
             <>
               <label className="block">
                 <span className="text-sm font-medium text-gray-700">Serving size (g) *</span>

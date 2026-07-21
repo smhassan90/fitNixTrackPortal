@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
+import PosMemberPicker from '@/components/pos/PosMemberPicker';
 import PosPermissionGate from '@/components/pos/PosPermissionGate';
 import PosReceiptModal from '@/components/pos/PosReceiptModal';
 import PosProductTypeTabs from '@/components/pos/PosProductTypeTabs';
@@ -12,7 +13,6 @@ import {
   createPosSale,
   fetchPosCatalog,
   posErrorMessage,
-  searchMembersForPos,
   searchPosCheckoutProducts,
 } from '@/lib/pos/posApi';
 import { POS_PERMISSION_KEYS } from '@/lib/pos/permissions';
@@ -42,11 +42,11 @@ export default function PosCheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState(false);
   const [notes, setNotes] = useState('');
-  const [memberQuery, setMemberQuery] = useState('');
-  const [memberResults, setMemberResults] = useState<Array<{ id: number; name: string; memberNumber?: string }>>([]);
   const [memberId, setMemberId] = useState<number | null>(null);
   const [memberName, setMemberName] = useState('');
+  const [memberPhone, setMemberPhone] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<PosSale | null>(null);
+  const [receiptPhone, setReceiptPhone] = useState<string | null>(null);
   const [subcategories, setSubcategories] = useState<Array<{ id: number; name: string }>>([]);
 
   const loadCatalog = useCallback(async () => {
@@ -141,16 +141,6 @@ export default function PosCheckoutPage() {
     );
   };
 
-  const searchMembers = async () => {
-    if (!memberQuery.trim()) return;
-    try {
-      const rows = await searchMembersForPos(memberQuery.trim());
-      setMemberResults(rows);
-    } catch (e) {
-      showAlert('error', 'Member search failed', posErrorMessage(e));
-    }
-  };
-
   const checkout = async () => {
     if (cart.length === 0) {
       showAlert('warning', 'Empty cart', 'Add at least one product.');
@@ -169,11 +159,18 @@ export default function PosCheckoutPage() {
             : {}),
         })),
       });
-      setReceipt(sale);
+      const saleWithPhone: PosSale = {
+        ...sale,
+        memberPhone: sale.memberPhone || memberPhone || null,
+        memberName: sale.memberName || memberName || null,
+      };
+      setReceiptPhone(saleWithPhone.memberPhone ?? null);
+      setReceipt(saleWithPhone);
       setCart([]);
       setNotes('');
       setMemberId(null);
       setMemberName('');
+      setMemberPhone(null);
       await loadProducts();
     } catch (e) {
       showAlert('error', 'Checkout failed', posErrorMessage(e));
@@ -185,7 +182,16 @@ export default function PosCheckoutPage() {
   return (
     <>
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
-      <PosReceiptModal sale={receipt} onClose={() => setReceipt(null)} />
+      <PosReceiptModal
+        sale={receipt}
+        autoPrint
+        fallbackPhone={receiptPhone}
+        onClose={() => {
+          setReceipt(null);
+          setReceiptPhone(null);
+        }}
+        onPrintError={(message) => showAlert('warning', 'Receipt', message)}
+      />
       <h1 className="mb-4 text-2xl font-bold text-dark-gray">POS Checkout</h1>
       <PosPermissionGate allowed={canSell} message="You need Sell at POS permission to checkout.">
         <div className="grid gap-6 lg:grid-cols-3">
@@ -227,12 +233,33 @@ export default function PosCheckoutPage() {
             )}
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <h2 className="font-semibold">Cart</h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm lg:sticky lg:top-4">
+            <h2 className="font-semibold text-dark-gray">Cart</h2>
+
+            <div className="mt-3">
+              <PosMemberPicker
+                selectedId={memberId}
+                selectedName={memberName}
+                disabled={checkingOut}
+                onError={(message) => showAlert('error', 'Member search failed', message)}
+                onSelect={(member) => {
+                  if (!member) {
+                    setMemberId(null);
+                    setMemberName('');
+                    setMemberPhone(null);
+                    return;
+                  }
+                  setMemberId(member.id);
+                  setMemberName(member.name);
+                  setMemberPhone(member.phone ?? null);
+                }}
+              />
+            </div>
+
             {cart.length === 0 ? (
               <p className="mt-4 text-sm text-gray-500">Cart is empty.</p>
             ) : (
-              <ul className="mt-3 space-y-3">
+              <ul className="mt-4 max-h-[40vh] space-y-3 overflow-y-auto overscroll-contain pr-0.5">
                 {cart.map((item) => {
                   const sub = lineSubtotal(item.product.price, item.quantity);
                   return (
@@ -292,33 +319,20 @@ export default function PosCheckoutPage() {
               <div className="flex justify-between font-bold"><span>Total</span><span>{formatMoney(totals.total)}</span></div>
             </div>
 
-            <div className="mt-4 space-y-2">
-              <div className="flex gap-2">
-                <input className="flex-1 rounded border px-2 py-1 text-sm" placeholder="Link member (search)" value={memberQuery} onChange={(e) => setMemberQuery(e.target.value)} />
-                <button type="button" onClick={searchMembers} className="rounded border px-2 text-sm">Find</button>
-              </div>
-              {memberResults.length > 0 && (
-                <ul className="max-h-24 overflow-y-auto rounded border text-xs">
-                  {memberResults.map((m) => (
-                    <li key={m.id}>
-                      <button
-                        type="button"
-                        className="block w-full px-2 py-1 text-left hover:bg-gray-50"
-                        onClick={() => { setMemberId(m.id); setMemberName(m.name); setMemberResults([]); }}
-                      >
-                        {m.name} {m.memberNumber ? `(${m.memberNumber})` : ''}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {memberName && <p className="text-xs text-gray-600">Member: {memberName}</p>}
-              <textarea className="w-full rounded border px-2 py-1 text-sm" rows={2} placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <div className="mt-4 space-y-3">
+              <textarea
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm shadow-sm transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                rows={2}
+                placeholder="Notes (optional)"
+                value={notes}
+                disabled={checkingOut}
+                onChange={(e) => setNotes(e.target.value)}
+              />
               <button
                 type="button"
                 disabled={checkingOut || cart.length === 0}
                 onClick={checkout}
-                className="w-full rounded-lg bg-primary py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {checkingOut ? 'Processing…' : 'Complete sale'}
               </button>

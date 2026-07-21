@@ -137,7 +137,7 @@ export default function PosProductsPage() {
     }
     setSaving(true);
     try {
-      const payload = buildProductPayload(form, Boolean(editing));
+      const payload = buildProductPayload(form, Boolean(editing), sub);
       if (editing) {
         await updatePosProduct(editing.id, payload);
         showAlert('success', 'Updated', 'Product saved.');
@@ -178,7 +178,9 @@ export default function PosProductsPage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-dark-gray">POS Products</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage gym products in enabled subcategories.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            Manage gym products in enabled subcategories. For nutrients, add products under Packaged or Serving.
+          </p>
         </div>
         {canManage && (
           <button type="button" onClick={startAdd} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white">

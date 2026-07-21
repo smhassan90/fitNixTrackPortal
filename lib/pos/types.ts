@@ -82,6 +82,8 @@ export interface PosSale {
   status: PosSaleStatus;
   memberId?: number | null;
   memberName?: string | null;
+  /** Member phone/contact when available (for WhatsApp receipt). */
+  memberPhone?: string | null;
   notes?: string | null;
   subtotal: number;
   discountTotal: number;

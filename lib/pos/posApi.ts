@@ -207,6 +207,7 @@ function normalizeSale(row: unknown): PosSale | null {
     status: (pickStr(o.status).toUpperCase() as PosSale['status']) || 'COMPLETED',
     memberId: o.memberId != null ? num(o.memberId) : null,
     memberName: pickStr(o.memberName) || null,
+    memberPhone: pickStr(o.memberPhone ?? o.memberContact ?? o.contact ?? o.phone) || null,
     notes: pickStr(o.notes) || null,
     subtotal: num(o.subtotal),
     discountTotal: num(o.discountTotal),
@@ -466,22 +467,26 @@ export async function searchPosCheckoutProducts(params: {
   return products.filter((p) => p.isActive && p.subcategoryEnabled !== false);
 }
 
-export async function searchMembersForPos(query: string): Promise<Array<{ id: number; name: string; memberNumber?: string }>> {
+export async function searchMembersForPos(
+  query: string
+): Promise<Array<{ id: number; name: string; memberNumber?: string; phone?: string }>> {
   const res = await api.get('/api/members', { params: { search: query, limit: 20 } });
   const data = unwrapData(res.data);
   const root = asObj(data);
   const list = Array.isArray(root?.members) ? root!.members : [];
-  const out: Array<{ id: number; name: string; memberNumber?: string }> = [];
+  const out: Array<{ id: number; name: string; memberNumber?: string; phone?: string }> = [];
   for (const m of list) {
     const o = asObj(m);
     if (!o) continue;
     const id = num(o.id);
     if (!id) continue;
     const memberNumber = pickStr(o.memberNumber ?? o.legacyMemberId);
+    const phone = pickStr(o.phone ?? o.contact);
     out.push({
       id,
       name: pickStr(o.name) || '—',
       ...(memberNumber ? { memberNumber } : {}),
+      ...(phone ? { phone } : {}),
     });
   }
   return out;

@@ -81,6 +81,12 @@ export default function PosSetupPage() {
         <p className="mt-1 text-sm text-gray-500">
           Enable platform subcategories for your gym. Categories are managed by FitNix (read-only here).
         </p>
+        {productType === 'NUTRIENT' && (
+          <p className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+            Nutrients need only two subcategories: <strong>Packaged</strong> and <strong>Serving</strong>.
+            Enable those two, then add products under one of them.
+          </p>
+        )}
       </div>
       <PosPermissionGate allowed={canManage} message="You need Manage POS products permission to configure subcategories.">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

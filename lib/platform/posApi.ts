@@ -63,20 +63,35 @@ export async function deletePlatformPosCategory(id: number | string): Promise<vo
 export async function createPlatformPosSubcategory(body: {
   categoryId: number;
   name: string;
+  code?: string;
+  description?: string;
+  /** @deprecated Backend infers Packaged/Serving from subcategory name for nutrients. */
   allowedForms?: NutrientForm[];
   sortOrder?: number;
 }): Promise<void> {
-  const res = await platformClient.post<PlatformApiEnvelope<unknown>>('/api/platform/pos/subcategories', body);
+  const { allowedForms: _allowedForms, ...payload } = body;
+  const res = await platformClient.post<PlatformApiEnvelope<unknown>>(
+    '/api/platform/pos/subcategories',
+    payload
+  );
   assertPlatformSuccess(res);
 }
 
 export async function updatePlatformPosSubcategory(
   id: number | string,
-  body: Partial<{ name: string; allowedForms: NutrientForm[]; sortOrder: number }>
+  body: Partial<{
+    name: string;
+    code: string;
+    description: string;
+    /** @deprecated Backend infers Packaged/Serving from subcategory name for nutrients. */
+    allowedForms: NutrientForm[];
+    sortOrder: number;
+  }>
 ): Promise<void> {
+  const { allowedForms: _allowedForms, ...payload } = body;
   const res = await platformClient.patch<PlatformApiEnvelope<unknown>>(
     `/api/platform/pos/subcategories/${id}`,
-    body
+    payload
   );
   assertPlatformSuccess(res);
 }

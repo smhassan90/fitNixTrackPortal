@@ -17,7 +17,7 @@ import {
   updatePlatformPosCategory,
   updatePlatformPosSubcategory,
 } from '@/lib/platform/posApi';
-import type { NutrientForm, PosCategory, PosProductType, PosSubcategory } from '@/lib/pos/types';
+import type { PosCategory, PosProductType } from '@/lib/pos/types';
 import Link from 'next/link';
 
 export default function PlatformPosCatalogPage() {
@@ -27,7 +27,12 @@ export default function PlatformPosCatalogPage() {
   const [categories, setCategories] = useState<PosCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [catName, setCatName] = useState('');
-  const [subForm, setSubForm] = useState<{ categoryId: number; name: string; allowedForms: NutrientForm[] } | null>(null);
+  const [subForm, setSubForm] = useState<{
+    categoryId: number;
+    name: string;
+    code: string;
+    description: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,12 +75,15 @@ export default function PlatformPosCatalogPage() {
       showAlert(
         'success',
         'Category created',
-        'Add at least one subcategory so gyms can enable it and use it when adding products.'
+        productType === 'NUTRIENT'
+          ? 'Add Packaged and Serving subcategories so gyms can enable them for products.'
+          : 'Add at least one subcategory so gyms can enable it and use it when adding products.'
       );
       setSubForm({
         categoryId: created.id,
         name: '',
-        allowedForms: productType === 'NUTRIENT' ? ['PACKAGED', 'SERVING'] : [],
+        code: '',
+        description: '',
       });
     } catch (e) {
       showAlert('error', 'Failed', mapPlatformErrorToUserMessage(e));
@@ -88,7 +96,8 @@ export default function PlatformPosCatalogPage() {
       await createPlatformPosSubcategory({
         categoryId: subForm.categoryId,
         name: subForm.name.trim(),
-        allowedForms: productType === 'NUTRIENT' ? subForm.allowedForms : undefined,
+        ...(subForm.code.trim() ? { code: subForm.code.trim() } : {}),
+        ...(subForm.description.trim() ? { description: subForm.description.trim() } : {}),
       });
       setSubForm(null);
       await load();
@@ -103,8 +112,9 @@ export default function PlatformPosCatalogPage() {
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
       <h1 className="mb-2 text-2xl font-bold text-dark-gray">POS Catalog</h1>
       <p className="mb-4 text-sm text-gray-500">
-        Manage platform-wide POS categories and subcategories. Products attach to a subcategory — create
-        at least one subcategory under each category before gyms can enable it.
+        Manage platform-wide POS categories and subcategories. For Nutrients, use only two subcategories:{' '}
+        <span className="font-medium text-dark-gray">Packaged</span> and{' '}
+        <span className="font-medium text-dark-gray">Serving</span>. The backend sets product form from those names.
       </p>
       <PosProductTypeTabs value={productType} onChange={setProductType} />
 
@@ -121,26 +131,37 @@ export default function PlatformPosCatalogPage() {
       {subForm && (
         <div className="mt-4 rounded-xl border bg-white p-4">
           <h3 className="font-semibold">New subcategory</h3>
-          <input className="mt-2 w-full rounded border px-3 py-2 text-sm" value={subForm.name} onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} />
           {productType === 'NUTRIENT' && (
-            <div className="mt-2 flex gap-4 text-sm">
-              {(['PACKAGED', 'SERVING'] as NutrientForm[]).map((f) => (
-                <label key={f} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={subForm.allowedForms.includes(f)}
-                    onChange={(e) => {
-                      const next = e.target.checked
-                        ? [...subForm.allowedForms, f]
-                        : subForm.allowedForms.filter((x) => x !== f);
-                      setSubForm({ ...subForm, allowedForms: next });
-                    }}
-                  />
-                  {f}
-                </label>
-              ))}
-            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Use name <span className="font-medium">Packaged</span> or <span className="font-medium">Serving</span>.
+              No Packaged/Serving form question is needed — the name defines it.
+            </p>
           )}
+          <label className="mt-2 block">
+            <span className="text-xs font-medium text-gray-600">Name *</span>
+            <input
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              value={subForm.name}
+              onChange={(e) => setSubForm({ ...subForm, name: e.target.value })}
+              placeholder={productType === 'NUTRIENT' ? 'Packaged or Serving' : 'Subcategory name'}
+            />
+          </label>
+          <label className="mt-2 block">
+            <span className="text-xs font-medium text-gray-600">Code (optional)</span>
+            <input
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              value={subForm.code}
+              onChange={(e) => setSubForm({ ...subForm, code: e.target.value })}
+            />
+          </label>
+          <label className="mt-2 block">
+            <span className="text-xs font-medium text-gray-600">Description (optional)</span>
+            <input
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              value={subForm.description}
+              onChange={(e) => setSubForm({ ...subForm, description: e.target.value })}
+            />
+          </label>
           <div className="mt-3 flex gap-2">
             <button type="button" onClick={addSubcategory} className="rounded bg-primary px-3 py-1.5 text-sm text-white">Save</button>
             <button type="button" onClick={() => setSubForm(null)} className="rounded border px-3 py-1.5 text-sm">Cancel</button>
@@ -155,7 +176,9 @@ export default function PlatformPosCatalogPage() {
           <PosCatalogTree
             categories={filtered}
             onAddCategory={() => setCatName('')}
-            onAddSubcategory={(cat) => setSubForm({ categoryId: cat.id, name: '', allowedForms: ['PACKAGED', 'SERVING'] })}
+            onAddSubcategory={(cat) =>
+              setSubForm({ categoryId: cat.id, name: '', code: '', description: '' })
+            }
             onEditCategory={async (cat) => {
               const name = window.prompt('Category name', cat.name);
               if (!name?.trim()) return;
@@ -179,7 +202,8 @@ export default function PlatformPosCatalogPage() {
               const name = window.prompt('Subcategory name', sub.name);
               if (!name?.trim()) return;
               try {
-                await updatePlatformPosSubcategory(sub.id, { name: name.trim(), allowedForms: sub.allowedForms });
+                // Name alone defines Packaged/Serving for nutrients — do not send allowedForms.
+                await updatePlatformPosSubcategory(sub.id, { name: name.trim() });
                 await load();
               } catch (e) {
                 showAlert('error', 'Update failed', mapPlatformErrorToUserMessage(e));

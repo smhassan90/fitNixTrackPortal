@@ -57,7 +57,11 @@ export default function PosSalesPage() {
   return (
     <>
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
-      <PosReceiptModal sale={receipt} onClose={() => setReceipt(null)} />
+      <PosReceiptModal
+        sale={receipt}
+        onClose={() => setReceipt(null)}
+        onPrintError={(message) => showAlert('warning', 'Receipt', message)}
+      />
       <PosVoidSaleModal
         open={Boolean(voidTarget)}
         receiptNo={voidTarget?.receiptNo ?? ''}

@@ -105,13 +105,8 @@ export default function PosCatalogTree({
                       className="text-left text-sm font-medium text-gray-800"
                       onClick={() => onSelectSubcategory?.(sub)}
                     >
-                      {sub.name}
-                      {sub.allowedForms?.length ? (
-                        <span className="ml-2 text-xs text-gray-500">
-                          ({sub.allowedForms.join(', ')})
-                        </span>
-                      ) : null}
-                    </button>
+                    {sub.name}
+                  </button>
                     <div className="flex items-center gap-3">
                       {showEnableToggle && onToggleEnable && (
                         <label className="flex items-center gap-2 text-xs text-gray-600">
