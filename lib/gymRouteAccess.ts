@@ -17,6 +17,12 @@ export type RouteAccessRule = {
 export const GYM_ROUTE_ACCESS: RouteAccessRule[] = [
   { prefix: '/packages/features', permission: 'gym.packageFeatures.manage' },
   { prefix: '/payments/members', permission: 'gym.payments.read' },
+  { prefix: '/pos/setup', permission: 'gym.pos.products.manage' },
+  { prefix: '/pos/products', permission: 'gym.pos.catalog.read' },
+  { prefix: '/pos/checkout', permission: 'gym.pos.sell' },
+  { prefix: '/pos/sales', permission: 'gym.pos.catalog.read' },
+  { prefix: '/pos/reports', permission: 'gym.pos.revenue.read' },
+  { prefix: '/pos', permission: 'gym.pos.catalog.read' },
   { prefix: '/import', adminOnly: true },
   { prefix: '/dashboard', permission: 'gym.dashboard.read' },
   { prefix: '/members', permission: 'gym.members.read' },
@@ -61,6 +67,10 @@ export function firstAllowedGymPath(
   if (can('gym.dashboard.read')) return '/dashboard';
   if (can('gym.members.read')) return '/members';
   if (can('gym.payments.read')) return '/payments';
+  if (can('gym.pos.sell')) return '/pos/checkout';
+  if (can('gym.pos.catalog.read')) return '/pos/products';
+  if (can('gym.pos.revenue.read')) return '/pos/reports';
+  if (can('gym.pos.products.manage')) return '/pos/setup';
   if (can('gym.trainers.read')) return '/trainers';
   if (can('gym.packages.read')) return '/packages';
   if (can('gym.financialReports.read')) return '/reports';

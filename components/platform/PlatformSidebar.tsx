@@ -125,6 +125,32 @@ export default function PlatformSidebar({
           {isSuper && (
             <>
               <Link
+                href="/platform/pos/catalog"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();
+                }}
+                className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
+                  pathname.startsWith('/platform/pos/catalog')
+                    ? 'bg-primary text-white'
+                    : 'text-white/80 hover:bg-white/10'
+                }`}
+              >
+                POS catalog
+              </Link>
+              <Link
+                href="/platform/pos/analytics"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();
+                }}
+                className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
+                  pathname.startsWith('/platform/pos/analytics')
+                    ? 'bg-primary text-white'
+                    : 'text-white/80 hover:bg-white/10'
+                }`}
+              >
+                POS analytics
+              </Link>
+              <Link
                 href="/platform/catalog"
                 onClick={() => {
                   if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();

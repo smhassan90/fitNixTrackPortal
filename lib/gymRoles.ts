@@ -49,6 +49,9 @@ export function expandPermissionKeys(keys: Iterable<string>): Set<string> {
     imply('gym.packageFeatures.manage', 'gym.packages.read');
     imply('gym.payments.delete', 'gym.payments.manage', 'gym.payments.read');
     imply('gym.payments.manage', 'gym.payments.read');
+    imply('gym.pos.products.manage', 'gym.pos.catalog.read');
+    imply('gym.pos.inventory.manage', 'gym.pos.catalog.read');
+    imply('gym.pos.sell', 'gym.pos.catalog.read');
     imply('gym.devices.manage', 'gym.devices.read');
     imply('gym.settings.manage', 'gym.settings.read');
   }

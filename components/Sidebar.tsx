@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import FitNixLogo from '@/components/FitNixLogo';
 import { isGymAdmin } from '@/lib/gymRoles';
+import { firstPosPath, hasAnyPosPermission } from '@/lib/pos/permissions';
 
 type NavItem = {
   name: string;
@@ -13,6 +14,8 @@ type NavItem = {
   icon: ReactNode;
   /** Required permission; omit for always-visible (Attendance). */
   permission?: string;
+  /** Show when user has any POS permission. */
+  posNav?: boolean;
   /** Only GYM_ADMIN (Import). */
   adminOnly?: boolean;
 };
@@ -109,6 +112,16 @@ const navigation: NavItem[] = [
       </svg>
     )
   },
+  {
+    name: 'Point of Sale',
+    href: '/pos/checkout',
+    posNav: true,
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    ),
+  },
   { 
     name: 'Reports', 
     href: '/reports',
@@ -153,8 +166,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       items.splice(settingsIdx, 0, teamNavItem);
     }
 
-    return items.filter((item) => {
+    return items
+      .map((item) => (item.posNav ? { ...item, href: firstPosPath(can) } : item))
+      .filter((item) => {
       if (item.adminOnly) return admin;
+      if (item.posNav) return hasAnyPosPermission(can);
       if (!item.permission) return true; // Attendance always
       return can(item.permission);
     });
