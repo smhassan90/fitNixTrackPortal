@@ -24,11 +24,13 @@ import {
   fetchOverdueCheckins,
   normalizeOverduePaymentInfo,
   overdueDetailsText,
+  type OverdueCheckinAlert,
   type OverduePaymentInfo,
 } from '@/lib/overdueAlerts';
 import OverdueCheckinToasts, {
   useOverdueCheckinToasts,
 } from '@/components/OverdueCheckinToasts';
+import OverdueWhatsAppButton from '@/components/OverdueWhatsAppButton';
 import ManualCheckInBar from '@/components/attendance/ManualCheckInBar';
 
 type AttendanceTab = 'history' | 'no-sign-in' | 'sync-users';
@@ -75,6 +77,24 @@ interface AttendanceFilters {
   sortOrder?: 'asc' | 'desc';
   page?: number;
   limit?: number;
+}
+
+function attendanceRecordToOverdueAlert(record: AttendanceRecord): OverdueCheckinAlert | null {
+  if (!record.hasOverduePayment || !record.overduePayment) return null;
+  const contact = record.contact || record.memberDetails.phone || null;
+  if (!contact) return null;
+  return {
+    memberId: record.memberId,
+    memberNumber: record.memberNumber,
+    legacyMemberId: record.legacyMemberId,
+    memberName: record.member,
+    contact,
+    checkInTime: record.checkInTime ?? '',
+    overdueCount: record.overduePayment.overdueCount,
+    overdueAmount: record.overduePayment.overdueAmount,
+    overdueSince: record.overduePayment.overdueSince,
+    overdueMonths: record.overduePayment.overdueMonths,
+  };
 }
 
 function AttendancePageContent() {
@@ -834,71 +854,84 @@ function AttendancePageContent() {
                       <div className="text-sm font-medium text-dark-gray">{displayMemberId(record)}</div>
                     </td>
                     <td className="px-6 py-4">
-                      {record.hasOverduePayment && record.memberId > 0 ? (
-                        <Link
-                          href={`/payments/members/${record.memberId}`}
-                          title={
-                            record.overduePayment
-                              ? `${overdueDetailsText(record.overduePayment)} — View payment history`
-                              : 'View payment history'
-                          }
-                          className="group block max-w-xs"
-                        >
-                          <div className="flex items-center gap-3 whitespace-nowrap">
-                            <MemberAvatar
-                              name={record.member}
-                              photoUrl={photoUrlFromMap(
-                                photoMap,
-                                record.memberId,
-                                record.photoUrl
-                              )}
-                              size="sm"
-                            />
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-dark-gray group-hover:text-primary group-hover:underline">
-                                  {record.member}
-                                </span>
-                                <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 group-hover:bg-red-200">
-                                  Overdue
-                                </span>
+                      {(() => {
+                        const overdueAlert = attendanceRecordToOverdueAlert(record);
+                        const memberContent =
+                          record.hasOverduePayment && record.memberId > 0 ? (
+                            <Link
+                              href={`/payments/members/${record.memberId}`}
+                              title={
+                                record.overduePayment
+                                  ? `${overdueDetailsText(record.overduePayment)} — View payment history`
+                                  : 'View payment history'
+                              }
+                              className="group block min-w-0 flex-1 max-w-xs"
+                            >
+                              <div className="flex items-center gap-3 whitespace-nowrap">
+                                <MemberAvatar
+                                  name={record.member}
+                                  photoUrl={photoUrlFromMap(
+                                    photoMap,
+                                    record.memberId,
+                                    record.photoUrl
+                                  )}
+                                  size="sm"
+                                />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-dark-gray group-hover:text-primary group-hover:underline">
+                                      {record.member}
+                                    </span>
+                                    <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 group-hover:bg-red-200">
+                                      Overdue
+                                    </span>
+                                  </div>
+                                  {record.overduePayment && (
+                                    <p className="mt-1 whitespace-normal text-xs text-red-700">
+                                      {overdueDetailsText(record.overduePayment)}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                              {record.overduePayment && (
-                                <p className="mt-1 whitespace-normal text-xs text-red-700">
-                                  {overdueDetailsText(record.overduePayment)}
-                                </p>
-                              )}
+                            </Link>
+                          ) : (
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-3 whitespace-nowrap">
+                                <MemberAvatar
+                                  name={record.member}
+                                  photoUrl={photoUrlFromMap(
+                                    photoMap,
+                                    record.memberId,
+                                    record.photoUrl
+                                  )}
+                                  size="sm"
+                                />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-dark-gray">{record.member}</span>
+                                    {record.hasOverduePayment && (
+                                      <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+                                        Overdue
+                                      </span>
+                                    )}
+                                  </div>
+                                  {record.hasOverduePayment && record.overduePayment && (
+                                    <p className="mt-1 max-w-xs whitespace-normal text-xs text-red-700">
+                                      {overdueDetailsText(record.overduePayment)}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
                             </div>
+                          );
+
+                        return (
+                          <div className="flex items-start gap-2">
+                            {memberContent}
+                            {overdueAlert && <OverdueWhatsAppButton alert={overdueAlert} />}
                           </div>
-                        </Link>
-                      ) : (
-                        <div className="flex items-center gap-3 whitespace-nowrap">
-                          <MemberAvatar
-                            name={record.member}
-                            photoUrl={photoUrlFromMap(
-                              photoMap,
-                              record.memberId,
-                              record.photoUrl
-                            )}
-                            size="sm"
-                          />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-dark-gray">{record.member}</span>
-                              {record.hasOverduePayment && (
-                                <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
-                                  Overdue
-                                </span>
-                              )}
-                            </div>
-                            {record.hasOverduePayment && record.overduePayment && (
-                              <p className="mt-1 max-w-xs whitespace-normal text-xs text-red-700">
-                                {overdueDetailsText(record.overduePayment)}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">{record.contact || 'N/A'}</div>

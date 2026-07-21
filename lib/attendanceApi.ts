@@ -361,7 +361,10 @@ export async function searchMembersForAttendance(query: string): Promise<Attenda
 
 /** Record a manual check-in when the attendance device is unavailable. */
 export async function manualCheckIn(memberId: number): Promise<ManualCheckInResult> {
-  const res = await api.post('/api/attendance/manual-check-in', { memberId });
+  const res = await api.post('/api/attendance/manual-check-in', {
+    memberId,
+    checkInTime: new Date().toISOString(),
+  });
   if (!res.data?.success) {
     throw new Error(res.data?.error?.message || 'Failed to check in member');
   }
