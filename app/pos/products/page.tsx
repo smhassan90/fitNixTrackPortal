@@ -22,6 +22,7 @@ import {
   posErrorMessage,
   updatePosProduct,
 } from '@/lib/pos/posApi';
+import { posProductImageErrorMessage, uploadPosProductImage } from '@/lib/pos/productImage';
 import { POS_PERMISSION_KEYS } from '@/lib/pos/permissions';
 import { formatMoney } from '@/lib/pos/utils';
 import type { PosProduct, PosProductType, PosSubcategory } from '@/lib/pos/types';
@@ -44,6 +45,7 @@ export default function PosProductsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<PosProduct | null>(null);
   const [form, setForm] = useState<PosProductFormState>(emptyProductForm('NUTRIENT'));
+  const [pendingImageBlob, setPendingImageBlob] = useState<Blob | null>(null);
 
   const enabledSubs = useMemo(
     () => subcategories.filter((s) => s.enabledForGym !== false && (s.productType ?? productType) === productType),
@@ -101,12 +103,14 @@ export default function PosProductsPage() {
 
   const startAdd = () => {
     setEditing(null);
+    setPendingImageBlob(null);
     setForm(emptyProductForm(productType));
     setShowForm(true);
   };
 
   const startEdit = (p: PosProduct) => {
     setEditing(p);
+    setPendingImageBlob(null);
     setForm(productToForm(p));
     setShowForm(true);
   };
@@ -127,9 +131,26 @@ export default function PosProductsPage() {
         await updatePosProduct(editing.id, payload);
         showAlert('success', 'Updated', 'Product saved.');
       } else {
-        await createPosProduct(payload);
+        const created = await createPosProduct(payload);
+        if (pendingImageBlob) {
+          try {
+            await uploadPosProductImage(created.id, pendingImageBlob, 'product.jpg');
+          } catch (imgErr) {
+            showAlert(
+              'warning',
+              'Product created',
+              `Product was saved but the image could not be uploaded: ${posProductImageErrorMessage(imgErr)}`
+            );
+            setPendingImageBlob(null);
+            setShowForm(false);
+            setEditing(null);
+            await loadProducts();
+            return;
+          }
+        }
         showAlert('success', 'Created', 'Product added.');
       }
+      setPendingImageBlob(null);
       setShowForm(false);
       setEditing(null);
       await loadProducts();
@@ -173,12 +194,31 @@ export default function PosProductsPage() {
         {showForm && canManage && (
           <form onSubmit={submit} className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="mb-4 font-semibold">{editing ? 'Edit product' : 'New product'}</h2>
-            <PosProductForm form={form} setForm={setForm} subcategories={enabledSubs} disabled={saving} isEdit={Boolean(editing)} />
+            <PosProductForm
+              form={form}
+              setForm={setForm}
+              subcategories={enabledSubs}
+              productId={editing?.id}
+              onPendingImageChange={setPendingImageBlob}
+              onImageError={(message) => showAlert('error', 'Image', message)}
+              onImageSuccess={(message) => showAlert('success', 'Image', message)}
+              disabled={saving}
+              isEdit={Boolean(editing)}
+            />
             <div className="mt-4 flex gap-2">
               <button type="submit" disabled={saving} className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save'}
               </button>
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border px-4 py-2 text-sm">Cancel</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  setPendingImageBlob(null);
+                }}
+                className="rounded-lg border px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
             </div>
           </form>
         )}

@@ -1,6 +1,7 @@
 'use client';
 
 import type { Dispatch, SetStateAction } from 'react';
+import PosProductImageEditor from '@/components/pos/PosProductImageEditor';
 import type { NutrientForm, PosProduct, PosProductType, PosSubcategory } from '@/lib/pos/types';
 
 export type PosProductFormState = {
@@ -172,11 +173,25 @@ type Props = {
   form: PosProductFormState;
   setForm: Dispatch<SetStateAction<PosProductFormState>>;
   subcategories: PosSubcategory[];
+  productId?: string | number | null;
+  onPendingImageChange?: (blob: Blob | null) => void;
+  onImageError?: (message: string) => void;
+  onImageSuccess?: (message: string) => void;
   disabled?: boolean;
   isEdit?: boolean;
 };
 
-export default function PosProductForm({ form, setForm, subcategories, disabled, isEdit }: Props) {
+export default function PosProductForm({
+  form,
+  setForm,
+  subcategories,
+  productId,
+  onPendingImageChange,
+  onImageError,
+  onImageSuccess,
+  disabled,
+  isEdit,
+}: Props) {
   const selectedSub = subcategories.find((s) => String(s.id) === form.subcategoryId);
   const allowedForms =
     form.productType === 'NUTRIENT' ? allowedFormsForSub(selectedSub) : ([] as NutrientForm[]);
@@ -213,15 +228,15 @@ export default function PosProductForm({ form, setForm, subcategories, disabled,
         />
       </label>
 
-      <label className="block sm:col-span-2">
-        <span className="text-sm font-medium text-gray-700">Image URL</span>
-        <input
-          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          value={form.imageUrl}
-          disabled={disabled}
-          onChange={(e) => set({ imageUrl: e.target.value })}
-        />
-      </label>
+      <PosProductImageEditor
+        productId={productId}
+        imageUrl={form.imageUrl || null}
+        disabled={disabled}
+        onImageUrlChange={(url) => set({ imageUrl: url ?? '' })}
+        onPendingImageChange={onPendingImageChange}
+        onError={onImageError}
+        onSuccess={onImageSuccess}
+      />
 
       {form.productType === 'NUTRIENT' && (
         <>
