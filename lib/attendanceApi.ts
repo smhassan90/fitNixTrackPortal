@@ -1,6 +1,7 @@
 import api from '@/lib/api';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
+import { normalizeOverdueAlert, normalizeOverdueAlerts, type OverdueCheckinAlert } from '@/lib/overdueAlerts';
 
 function asObj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
@@ -306,6 +307,90 @@ export async function applyAttendancePolicies(): Promise<ApplyPoliciesResult> {
     autoCheckedOut: Number(o.autoCheckedOut ?? o.autoCheckouts ?? 0),
     markedInactive: Number(o.markedInactive ?? o.inactivated ?? 0),
     message: res.data.message != null ? String(res.data.message) : undefined,
+  };
+}
+
+export interface AttendanceSearchMember {
+  id: number;
+  name: string;
+  memberNumber: string | null;
+  legacyMemberId: string | null;
+  phone: string;
+  photoUrl: string | null;
+}
+
+export interface ManualCheckInResult {
+  message: string;
+  checkInTime: string | null;
+  checkInFormatted: string | null;
+  attendanceRecordId: string | null;
+  overdueAlerts: OverdueCheckinAlert[];
+}
+
+function normalizeAttendanceSearchMember(row: unknown): AttendanceSearchMember | null {
+  const o = asObj(row);
+  if (!o || o.id == null) return null;
+  const id = Number(o.id);
+  if (!Number.isFinite(id)) return null;
+  const nums = normalizeMemberNumberFields(o);
+  const nested = asObj(o.member);
+  return {
+    id,
+    name: String(o.name ?? nested?.name ?? ''),
+    memberNumber: nums.memberNumber,
+    legacyMemberId: nums.legacyMemberId,
+    phone: String(o.phone ?? o.contact ?? nested?.phone ?? ''),
+    photoUrl: pickMemberPhotoUrl(o) ?? pickMemberPhotoUrl(nested),
+  };
+}
+
+/** Search members by ID, phone, or name for manual check-in. */
+export async function searchMembersForAttendance(query: string): Promise<AttendanceSearchMember[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const res = await api.get('/api/members', { params: { search: q, limit: 20 } });
+  if (!res.data?.success) {
+    throw new Error(res.data?.error?.message || 'Failed to search members');
+  }
+  const root = asObj(res.data.data) ?? {};
+  const list = Array.isArray(root.members) ? root.members : [];
+  return list.map(normalizeAttendanceSearchMember).filter((m): m is AttendanceSearchMember => m != null);
+}
+
+/** Record a manual check-in when the attendance device is unavailable. */
+export async function manualCheckIn(memberId: number): Promise<ManualCheckInResult> {
+  const res = await api.post('/api/attendance/manual-check-in', { memberId });
+  if (!res.data?.success) {
+    throw new Error(res.data?.error?.message || 'Failed to check in member');
+  }
+  const o = asObj(res.data.data) ?? {};
+  const alertsFromArray = normalizeOverdueAlerts(o.overdueAlerts);
+  const singleAlert = normalizeOverdueAlert(o.overdueAlert ?? o.alert);
+  const overdueAlerts =
+    alertsFromArray.length > 0
+      ? alertsFromArray
+      : singleAlert
+        ? [singleAlert]
+        : o.hasOverduePayment === true
+          ? normalizeOverdueAlerts([
+              {
+                memberId,
+                memberName: o.memberName,
+                memberNumber: o.memberNumber,
+                legacyMemberId: o.legacyMemberId,
+                contact: o.contact ?? o.phone,
+                checkInTime: o.checkInTime ?? new Date().toISOString(),
+                overduePayment: o.overduePayment,
+                ...asObj(o.overduePayment),
+              },
+            ])
+          : [];
+  return {
+    message: String(o.message ?? res.data.message ?? 'Member checked in successfully.'),
+    checkInTime: o.checkInTime != null ? String(o.checkInTime) : null,
+    checkInFormatted: o.checkInFormatted != null ? String(o.checkInFormatted) : null,
+    attendanceRecordId: o.attendanceRecordId != null ? String(o.attendanceRecordId) : o.id != null ? String(o.id) : null,
+    overdueAlerts,
   };
 }
 

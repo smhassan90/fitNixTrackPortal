@@ -29,6 +29,7 @@ import {
 import OverdueCheckinToasts, {
   useOverdueCheckinToasts,
 } from '@/components/OverdueCheckinToasts';
+import ManualCheckInBar from '@/components/attendance/ManualCheckInBar';
 
 type AttendanceTab = 'history' | 'no-sign-in' | 'sync-users';
 
@@ -438,6 +439,15 @@ function AttendancePageContent() {
             <p className="text-sm text-gray-500 mt-1">History, absence reports, and device sync</p>
           </div>
         </div>
+
+        <ManualCheckInBar
+          onSuccess={({ message, member }) => {
+            showAlert('success', 'Check-in recorded', message || `${member.name} checked in successfully.`);
+            void fetchAttendance(filters);
+          }}
+          onError={(message) => showAlert('error', 'Manual check-in failed', message)}
+          onOverdueAlerts={(alerts) => pushAlerts(alerts)}
+        />
 
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex flex-wrap gap-4">
