@@ -1,33 +1,43 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { posErrorMessage, searchMembersForPos } from '@/lib/pos/posApi';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import MemberAvatar from '@/components/MemberAvatar';
+import { posErrorMessage, searchMembersForPos, type PosMemberSearchHit } from '@/lib/pos/posApi';
 
-export type PosCheckoutMember = {
-  id: number;
-  name: string;
-  memberNumber?: string;
-  phone?: string;
-};
+export type PosCheckoutMember = PosMemberSearchHit;
 
 type PosMemberPickerProps = {
   selectedId: number | null;
   selectedName: string;
+  selectedPhone?: string | null;
+  selectedMemberNumber?: string | null;
   onSelect: (member: PosCheckoutMember | null) => void;
   onError?: (message: string) => void;
   disabled?: boolean;
 };
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
+function highlightMatch(text: string, query: string): ReactNode {
+  const q = query.trim();
+  if (!q || !text) return text;
+  const lower = text.toLowerCase();
+  const idx = lower.indexOf(q.toLowerCase());
+  if (idx < 0) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="rounded bg-primary/20 px-0.5 font-semibold text-dark-gray not-italic">
+        {text.slice(idx, idx + q.length)}
+      </mark>
+      {text.slice(idx + q.length)}
+    </>
+  );
 }
 
 export default function PosMemberPicker({
   selectedId,
   selectedName,
+  selectedPhone = null,
+  selectedMemberNumber = null,
   onSelect,
   onError,
   disabled = false,
@@ -35,6 +45,7 @@ export default function PosMemberPicker({
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestSeq = useRef(0);
 
@@ -44,9 +55,11 @@ export default function PosMemberPicker({
   const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
   const clearSelection = () => {
     onSelect(null);
+    setSelectedPhoto(null);
     setQuery('');
     setResults([]);
     setOpen(false);
@@ -90,7 +103,7 @@ export default function PosMemberPicker({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       void runSearch(query);
-    }, 280);
+    }, 220);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -104,8 +117,15 @@ export default function PosMemberPicker({
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const el = listRef.current.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex, open]);
+
   const pick = (member: PosCheckoutMember) => {
     onSelect(member);
+    setSelectedPhoto(member.photoUrl ?? null);
     setQuery('');
     setResults([]);
     setOpen(false);
@@ -134,130 +154,240 @@ export default function PosMemberPicker({
 
   if (selectedId != null && selectedName) {
     return (
-      <div className="animate-[posMemberIn_220ms_ease-out]">
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">Member</p>
-        <div className="flex items-center gap-3 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 to-teal-50 px-3 py-2.5 shadow-sm transition-shadow duration-200">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white shadow-sm">
-            {initials(selectedName)}
+      <div className="pos-member-anim">
+        <div className="overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/12 via-white to-teal-50/80 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-primary/10 bg-primary/5 px-3 py-2">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white">
+              ✓
+            </span>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-primary-dark">
+              Member linked
+            </p>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-dark-gray">{selectedName}</p>
-            <p className="text-xs text-primary-dark">Linked to this sale</p>
+          <div className="flex items-center gap-3 px-3 py-3">
+            <MemberAvatar
+              name={selectedName}
+              photoUrl={selectedPhoto}
+              size="lg"
+              enlargeOnClick={false}
+              className="ring-2 ring-white shadow-sm"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-base font-semibold text-dark-gray">{selectedName}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                {selectedMemberNumber ? (
+                  <span className="inline-flex rounded-md bg-white/90 px-1.5 py-0.5 text-[11px] font-medium text-dark-gray ring-1 ring-gray-200">
+                    ID {selectedMemberNumber}
+                  </span>
+                ) : null}
+                {selectedPhone ? (
+                  <span className="inline-flex truncate rounded-md bg-white/90 px-1.5 py-0.5 text-[11px] text-gray-600 ring-1 ring-gray-200">
+                    {selectedPhone}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={clearSelection}
+              className="shrink-0 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-dark-gray shadow-sm transition hover:border-primary/40 hover:text-primary disabled:opacity-50"
+            >
+              Change
+            </button>
           </div>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={clearSelection}
-            className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-white/80 hover:text-dark-gray disabled:opacity-50"
-          >
-            Change
-          </button>
         </div>
       </div>
     );
   }
 
   const showDropdown = open && (searching || hasSearched || query.trim().length > 0);
+  const hintChips = ['Name', 'Member ID', 'Phone'];
 
   return (
-    <div ref={rootRef} className="relative animate-[posMemberIn_220ms_ease-out]">
-      <label htmlFor={`${listId}-input`} className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-        Member <span className="font-normal normal-case text-gray-400">(optional)</span>
-      </label>
-      <div
-        className={`flex items-center gap-2 rounded-xl border bg-white px-3 py-2 shadow-sm transition duration-200 ${
-          open ? 'border-primary ring-2 ring-primary/20' : 'border-gray-200 hover:border-gray-300'
-        }`}
-      >
-        <svg className="h-4 w-4 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <circle cx="11" cy="11" r="7" />
-          <path d="M20 20l-3-3" strokeLinecap="round" />
-        </svg>
-        <input
-          ref={inputRef}
-          id={`${listId}-input`}
-          type="search"
-          autoComplete="off"
-          disabled={disabled}
-          value={query}
-          placeholder="Search name, ID, or phone…"
-          className="min-w-0 flex-1 bg-transparent text-sm text-dark-gray outline-none placeholder:text-gray-400"
-          role="combobox"
-          aria-expanded={showDropdown}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          onFocus={() => {
-            if (results.length > 0 || hasSearched) setOpen(true);
-          }}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onKeyDown={onKeyDown}
-        />
-        {searching ? (
-          <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary/30 border-t-primary" aria-label="Searching" />
-        ) : query ? (
-          <button
-            type="button"
-            className="rounded p-0.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
-            onClick={() => {
-              setQuery('');
-              setResults([]);
-              setHasSearched(false);
-              inputRef.current?.focus();
-            }}
-            aria-label="Clear search"
+    <div ref={rootRef} className="relative pos-member-anim">
+      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-100 bg-gradient-to-r from-slate-50 to-teal-50/40 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-dark-gray">Link a member</p>
+              <p className="text-[11px] text-gray-500">Optional — leave empty for walk-in</p>
+            </div>
+            <span className="hidden rounded-full bg-white px-2 py-1 text-[10px] font-medium text-gray-500 ring-1 ring-gray-200 sm:inline">
+              Esc to close
+            </span>
+          </div>
+        </div>
+
+        <div className="p-3">
+          <div
+            className={`flex items-center gap-2.5 rounded-xl border bg-slate-50/80 px-3 py-2.5 transition duration-200 ${
+              open
+                ? 'border-primary bg-white shadow-[0_0_0_3px_rgba(26,188,156,0.15)]'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+            <svg
+              className="h-5 w-5 shrink-0 text-primary"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3-3" strokeLinecap="round" />
             </svg>
-          </button>
-        ) : null}
+            <input
+              ref={inputRef}
+              id={`${listId}-input`}
+              type="search"
+              autoComplete="off"
+              disabled={disabled}
+              value={query}
+              placeholder="Search by name, ID, or phone…"
+              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-dark-gray outline-none placeholder:font-normal placeholder:text-gray-400"
+              role="combobox"
+              aria-expanded={showDropdown}
+              aria-controls={listId}
+              aria-autocomplete="list"
+              onFocus={() => {
+                if (results.length > 0 || hasSearched || query.trim()) setOpen(true);
+              }}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setOpen(true);
+              }}
+              onKeyDown={onKeyDown}
+            />
+            {searching ? (
+              <span
+                className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary/30 border-t-primary"
+                aria-label="Searching"
+              />
+            ) : query ? (
+              <button
+                type="button"
+                className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                onClick={() => {
+                  setQuery('');
+                  setResults([]);
+                  setHasSearched(false);
+                  inputRef.current?.focus();
+                }}
+                aria-label="Clear search"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                </svg>
+              </button>
+            ) : null}
+          </div>
+
+          {!query.trim() && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {hintChips.map((chip) => (
+                <span
+                  key={chip}
+                  className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500"
+                >
+                  {chip}
+                </span>
+              ))}
+              <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-primary-dark">
+                ↑↓ navigate · Enter select
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {showDropdown && (
         <div
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 z-30 mt-1.5 origin-top overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg animate-[posMemberDrop_180ms_ease-out]"
+          className="absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl pos-member-drop"
         >
+          <div className="flex items-center justify-between border-b border-gray-100 bg-slate-50/90 px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              {searching && results.length === 0
+                ? 'Searching…'
+                : results.length > 0
+                  ? `${results.length} match${results.length === 1 ? '' : 'es'}`
+                  : 'Results'}
+            </p>
+            {results.length > 0 ? (
+              <p className="text-[11px] text-gray-400">Click or press Enter</p>
+            ) : null}
+          </div>
+
           {searching && results.length === 0 ? (
-            <p className="px-3 py-3 text-sm text-gray-500">Searching members…</p>
+            <div className="flex items-center gap-3 px-4 py-5">
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+              <div>
+                <p className="text-sm font-medium text-dark-gray">Looking up members</p>
+                <p className="text-xs text-gray-500">Matching name, ID, and phone…</p>
+              </div>
+            </div>
           ) : results.length === 0 && hasSearched ? (
-            <p className="px-3 py-3 text-sm text-gray-500">No members found. Sale can continue as walk-in.</p>
+            <div className="px-4 py-5 text-center">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-lg text-gray-400">
+                ⌕
+              </div>
+              <p className="text-sm font-medium text-dark-gray">No members found</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Try another spelling, or continue as walk-in.
+              </p>
+            </div>
           ) : results.length === 0 ? (
-            <p className="px-3 py-3 text-sm text-gray-500">Type to find a member</p>
+            <p className="px-4 py-4 text-sm text-gray-500">Start typing to find a member</p>
           ) : (
-            <ul className="max-h-52 overflow-y-auto overscroll-contain py-1">
+            <ul ref={listRef} className="max-h-64 overflow-y-auto overscroll-contain py-1">
               {results.map((m, index) => {
                 const active = index === activeIndex;
                 return (
                   <li key={m.id} role="option" aria-selected={active}>
                     <button
                       type="button"
-                      className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition ${
-                        active ? 'bg-primary/10' : 'hover:bg-gray-50'
+                      data-index={index}
+                      className={`group flex w-full items-center gap-3 px-3 py-2.5 text-left transition ${
+                        active ? 'bg-primary/10' : 'hover:bg-slate-50'
                       }`}
                       onMouseEnter={() => setActiveIndex(index)}
                       onClick={() => pick(m)}
                     >
-                      <div
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                          active ? 'bg-primary text-white' : 'bg-light-gray text-dark-gray'
+                      <MemberAvatar
+                        name={m.name}
+                        photoUrl={m.photoUrl}
+                        size="md"
+                        enlargeOnClick={false}
+                        className={active ? 'ring-2 ring-primary/40' : ''}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-dark-gray">
+                          {highlightMatch(m.name, query)}
+                        </p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                          {m.memberNumber ? (
+                            <span>ID {highlightMatch(m.memberNumber, query)}</span>
+                          ) : (
+                            <span className="text-gray-400">No ID</span>
+                          )}
+                          {m.phone ? (
+                            <>
+                              <span className="text-gray-300">·</span>
+                              <span className="truncate">{highlightMatch(m.phone, query)}</span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold transition ${
+                          active
+                            ? 'bg-primary text-white opacity-100'
+                            : 'bg-gray-100 text-gray-500 opacity-0 group-hover:opacity-100'
                         }`}
                       >
-                        {initials(m.name)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-dark-gray">{m.name}</p>
-                        {m.memberNumber ? (
-                          <p className="truncate text-xs text-gray-500">ID {m.memberNumber}</p>
-                        ) : (
-                          <p className="text-xs text-gray-400">No member ID</p>
-                        )}
-                      </div>
-                      <span className={`text-xs font-medium transition ${active ? 'text-primary opacity-100' : 'text-primary opacity-0'}`}>
                         Select
                       </span>
                     </button>
@@ -270,6 +400,12 @@ export default function PosMemberPicker({
       )}
 
       <style jsx>{`
+        .pos-member-anim {
+          animation: posMemberIn 220ms ease-out;
+        }
+        .pos-member-drop {
+          animation: posMemberDrop 180ms ease-out;
+        }
         @keyframes posMemberIn {
           from {
             opacity: 0;

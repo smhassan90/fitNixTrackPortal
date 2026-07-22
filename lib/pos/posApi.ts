@@ -1,5 +1,6 @@
 import api from '@/lib/api';
 import { getErrorMessage, isAuthDeniedError, isForbiddenError } from '@/lib/errorHandler';
+import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
 import type {
   PosAnalyticsRow,
   PosCategory,
@@ -476,14 +477,20 @@ export async function searchPosCheckoutProducts(params: {
   return products.filter((p) => p.isActive && p.subcategoryEnabled !== false);
 }
 
-export async function searchMembersForPos(
-  query: string
-): Promise<Array<{ id: number; name: string; memberNumber?: string; phone?: string }>> {
+export type PosMemberSearchHit = {
+  id: number;
+  name: string;
+  memberNumber?: string;
+  phone?: string;
+  photoUrl?: string | null;
+};
+
+export async function searchMembersForPos(query: string): Promise<PosMemberSearchHit[]> {
   const res = await api.get('/api/members', { params: { search: query, limit: 20 } });
   const data = unwrapData(res.data);
   const root = asObj(data);
   const list = Array.isArray(root?.members) ? root!.members : [];
-  const out: Array<{ id: number; name: string; memberNumber?: string; phone?: string }> = [];
+  const out: PosMemberSearchHit[] = [];
   for (const m of list) {
     const o = asObj(m);
     if (!o) continue;
@@ -491,11 +498,13 @@ export async function searchMembersForPos(
     if (!id) continue;
     const memberNumber = pickStr(o.memberNumber ?? o.legacyMemberId);
     const phone = pickStr(o.phone ?? o.contact);
+    const photoUrl = pickMemberPhotoUrl(o);
     out.push({
       id,
       name: pickStr(o.name) || '—',
       ...(memberNumber ? { memberNumber } : {}),
       ...(phone ? { phone } : {}),
+      ...(photoUrl ? { photoUrl } : {}),
     });
   }
   return out;

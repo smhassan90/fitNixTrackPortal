@@ -45,6 +45,7 @@ export default function PosCheckoutPage() {
   const [memberId, setMemberId] = useState<number | null>(null);
   const [memberName, setMemberName] = useState('');
   const [memberPhone, setMemberPhone] = useState<string | null>(null);
+  const [memberNumber, setMemberNumber] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<PosSale | null>(null);
   const [receiptPhone, setReceiptPhone] = useState<string | null>(null);
   const [subcategories, setSubcategories] = useState<Array<{ id: number; name: string }>>([]);
@@ -171,6 +172,7 @@ export default function PosCheckoutPage() {
       setMemberId(null);
       setMemberName('');
       setMemberPhone(null);
+      setMemberNumber(null);
       await loadProducts();
     } catch (e) {
       showAlert('error', 'Checkout failed', posErrorMessage(e));
@@ -240,6 +242,8 @@ export default function PosCheckoutPage() {
               <PosMemberPicker
                 selectedId={memberId}
                 selectedName={memberName}
+                selectedPhone={memberPhone}
+                selectedMemberNumber={memberNumber}
                 disabled={checkingOut}
                 onError={(message) => showAlert('error', 'Member search failed', message)}
                 onSelect={(member) => {
@@ -247,11 +251,13 @@ export default function PosCheckoutPage() {
                     setMemberId(null);
                     setMemberName('');
                     setMemberPhone(null);
+                    setMemberNumber(null);
                     return;
                   }
                   setMemberId(member.id);
                   setMemberName(member.name);
                   setMemberPhone(member.phone ?? null);
+                  setMemberNumber(member.memberNumber ?? null);
                 }}
               />
             </div>
