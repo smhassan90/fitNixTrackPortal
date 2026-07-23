@@ -65,9 +65,9 @@ export function normalizeCategory(row: unknown, fallbackProductType?: PosProduct
     'NUTRIENT';
   const productTypeNorm: PosProductType = productType === 'ACCESSORY' ? 'ACCESSORY' : 'NUTRIENT';
   const subsRaw = o.subcategories ?? o.subCategories;
-  const subcategories = Array.isArray(subsRaw)
+  const subcategories: PosSubcategory[] = Array.isArray(subsRaw)
     ? subsRaw
-        .map((sub) => {
+        .map((sub): PosSubcategory | null => {
           const normalized = normalizeSubcategory(sub);
           if (!normalized) return null;
           return {
