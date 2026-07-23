@@ -3,14 +3,26 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  /* Default FitNix theme — gym portal may override via JS */
+  --theme-ink: #0f0f0f;
+  --theme-ink-rgb: 15 15 15;
+  --theme-surface: #202020;
+  --theme-surface-rgb: 32 32 32;
+  --theme-primary: #5dd62c;
+  --theme-primary-rgb: 93 214 44;
+  --theme-primary-dark: #337418;
+  --theme-primary-dark-rgb: 51 116 24;
+  --theme-canvas: #f8f8f8;
+  --theme-canvas-rgb: 248 248 248;
+
+  --foreground-rgb: 15, 15, 15;
+  --background-start-rgb: 248, 248, 248;
+  --background-end-rgb: 248, 248, 248;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: #ECF0F1;
+  color: var(--theme-ink);
+  background: var(--theme-canvas);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
@@ -64,20 +76,3 @@ body {
   animation: pos-member-dropdown 180ms ease-out;
   transform-origin: top center;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

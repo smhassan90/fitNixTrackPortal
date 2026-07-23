@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {
   return (
     <PlatformAuthProvider>
-      <div className="min-h-screen bg-light-gray text-dark-gray">{children}</div>
+      <div className="min-h-screen bg-canvas text-dark-gray">{children}</div>
     </PlatformAuthProvider>
   );
 }

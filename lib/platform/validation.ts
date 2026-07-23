@@ -6,6 +6,18 @@ export const ianaTimezoneSchema = z
   .min(1, 'Timezone is required')
   .max(64, 'Timezone must be at most 64 characters');
 
+const hexColorSchema = z
+  .string()
+  .regex(/^#[0-9A-Fa-f]{6}$/, 'Color must be a 6-digit hex like #5DD62C');
+
+export const gymThemeSchema = z.object({
+  ink: hexColorSchema,
+  surface: hexColorSchema,
+  primary: hexColorSchema,
+  primaryDark: hexColorSchema,
+  canvas: hexColorSchema,
+});
+
 const httpUrl = z
   .string()
   .max(2048)
@@ -36,6 +48,7 @@ export const createGymBodySchema = z.object({
   city: z.string().max(200).optional(),
   country: z.string().max(200).optional(),
   timezone: ianaTimezoneSchema,
+  theme: gymThemeSchema.optional(),
   ownerAdmin: z.object({
     name: z.string().min(1, 'Owner name is required').max(200),
     email: z.string().email('Valid owner email required'),
@@ -70,6 +83,7 @@ export const patchGymProfileSchema = z
     phone: z.string().max(50).optional(),
     email: z.string().email().optional(),
     timezone: ianaTimezoneSchema.optional(),
+    theme: gymThemeSchema.optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'Provide at least one field' });
 

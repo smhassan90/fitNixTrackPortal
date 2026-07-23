@@ -1,66 +1,56 @@
 /**
  * Centralized color configuration for FitNixTrack Admin Portal
- * 
- * Usage:
- * - For Tailwind CSS classes: Use color names directly (e.g., 'bg-primary', 'text-blue')
- *   Colors are defined in tailwind.config.js
- * 
- * - For JavaScript/TypeScript code: Import from this file
- *   import { colors, getGradient, getStatusColors } from '@/lib/colors'
- * 
- * - For charts and inline styles: Use colors.chart.primary, colors.primary.main, etc.
- * 
- * - For status-based colors: Use getStatusColors('success' | 'error' | 'warning' | 'info')
+ *
+ * Tailwind classes (bg-primary, text-dark-gray, …) read CSS variables from
+ * lib/theme.ts defaults / per-gym overrides. Use this module for charts & JS.
  */
 
+import { DEFAULT_THEME } from '@/lib/theme';
+
 export const colors = {
-  // Primary Colors
   primary: {
-    main: '#1ABC9C',
-    light: '#48C9B0',
-    dark: '#16A085',
-    gradient: 'from-primary to-teal-600',
+    main: DEFAULT_THEME.primary,
+    light: DEFAULT_THEME.primary,
+    dark: DEFAULT_THEME.primaryDark,
+    gradient: 'from-primary to-primary-dark',
   },
-  
-  // Secondary Colors
+
   blue: {
     main: '#3498DB',
     light: '#5DADE2',
     dark: '#2980B9',
     gradient: 'from-blue to-blue-600',
   },
-  
+
   orange: {
     main: '#E67E22',
     light: '#F39C12',
     dark: '#D35400',
     gradient: 'from-orange to-orange-600',
   },
-  
-  // Neutral Colors
+
   darkGray: {
-    main: '#2C3E50',
-    light: '#34495E',
-    dark: '#1A252F',
+    main: DEFAULT_THEME.ink,
+    light: DEFAULT_THEME.surface,
+    dark: DEFAULT_THEME.ink,
   },
-  
+
   lightGray: {
-    main: '#ECF0F1',
-    light: '#F8F9FA',
-    dark: '#D5DBDB',
+    main: DEFAULT_THEME.canvas,
+    light: '#ffffff',
+    dark: '#e5e5e5',
   },
-  
-  // Status Colors
+
   success: {
-    main: '#27AE60',
-    light: '#58D68D',
-    dark: '#1E8449',
-    bg: 'from-green-50 to-green-100',
-    border: 'border-green-200',
-    text: 'text-green-700',
-    icon: 'bg-green-500',
+    main: DEFAULT_THEME.primary,
+    light: DEFAULT_THEME.primary,
+    dark: DEFAULT_THEME.primaryDark,
+    bg: 'from-primary/10 to-primary/5',
+    border: 'border-primary/30',
+    text: 'text-primary-dark',
+    icon: 'bg-primary',
   },
-  
+
   error: {
     main: '#E74C3C',
     light: '#EC7063',
@@ -70,7 +60,7 @@ export const colors = {
     text: 'text-red-700',
     icon: 'bg-red-500',
   },
-  
+
   warning: {
     main: '#F39C12',
     light: '#F7DC6F',
@@ -80,7 +70,7 @@ export const colors = {
     text: 'text-yellow-700',
     icon: 'bg-yellow-500',
   },
-  
+
   info: {
     main: '#3498DB',
     light: '#85C1E2',
@@ -90,25 +80,22 @@ export const colors = {
     text: 'text-blue-700',
     icon: 'bg-blue-500',
   },
-  
-  // Special Colors
+
   purple: {
     main: '#9B59B6',
     light: '#BB8FCE',
     dark: '#7D3C98',
     gradient: 'from-purple-500 to-purple-600',
   },
-  
-  // Chart Colors
+
   chart: {
-    primary: '#1ABC9C',
+    primary: DEFAULT_THEME.primary,
     secondary: '#3498DB',
     tertiary: '#E67E22',
-    quaternary: '#9B59B6',
+    quaternary: DEFAULT_THEME.primaryDark,
   },
 } as const;
 
-// Helper function to get gradient classes
 export const getGradient = (color: keyof typeof colors) => {
   if (color === 'primary') return colors.primary.gradient;
   if (color === 'blue') return colors.blue.gradient;
@@ -117,8 +104,6 @@ export const getGradient = (color: keyof typeof colors) => {
   return '';
 };
 
-// Helper function to get status colors
 export const getStatusColors = (status: 'success' | 'error' | 'warning' | 'info') => {
   return colors[status];
 };
-

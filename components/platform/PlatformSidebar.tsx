@@ -71,7 +71,7 @@ export default function PlatformSidebar({
     <>
       {isOpen && <div className="fixed inset-0 z-40 bg-black/45 lg:hidden" onClick={onToggle} />}
       <aside
-        className={`platform-sidebar-container fixed left-0 top-0 z-50 flex h-screen w-64 flex-col overflow-hidden border-r border-dark-gray-light/20 bg-dark-gray text-white shadow-2xl transition-transform duration-300 lg:shadow-none ${
+        className={`platform-sidebar-container fixed left-0 top-0 z-50 flex h-screen w-64 flex-col overflow-hidden border-r border-white/10 bg-ink text-white shadow-2xl transition-transform duration-300 lg:shadow-none ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -115,7 +115,7 @@ export default function PlatformSidebar({
                   if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();
                 }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
-                  active ? 'bg-primary text-white' : 'text-white/80 hover:bg-white/10'
+                  active ? 'bg-primary text-ink' : 'text-white/80 hover:bg-white/10'
                 }`}
               >
                 {l.label}
@@ -131,7 +131,7 @@ export default function PlatformSidebar({
                 }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                   pathname.startsWith('/platform/pos/catalog')
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-ink'
                     : 'text-white/80 hover:bg-white/10'
                 }`}
               >
@@ -144,7 +144,7 @@ export default function PlatformSidebar({
                 }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                   pathname.startsWith('/platform/pos/analytics')
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-ink'
                     : 'text-white/80 hover:bg-white/10'
                 }`}
               >
@@ -157,7 +157,7 @@ export default function PlatformSidebar({
                 }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                   pathname.startsWith('/platform/catalog')
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-ink'
                     : 'text-white/80 hover:bg-white/10'
                 }`}
               >
@@ -170,7 +170,7 @@ export default function PlatformSidebar({
                 }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                   pathname.startsWith('/platform/users')
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-ink'
                     : 'text-white/80 hover:bg-white/10'
                 }`}
               >
@@ -183,7 +183,7 @@ export default function PlatformSidebar({
                 }}
                 className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
                   pathname.startsWith('/platform/audit')
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-ink'
                     : 'text-white/80 hover:bg-white/10'
                 }`}
               >

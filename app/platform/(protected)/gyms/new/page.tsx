@@ -14,6 +14,7 @@ import { useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
 import GeneratedPasswordModal from '@/components/platform/GeneratedPasswordModal';
 import PlatformLogoUpload from '@/components/platform/PlatformLogoUpload';
 import TimezoneCombobox from '@/components/platform/TimezoneCombobox';
+import GymThemeColorFields from '@/components/GymThemeColorFields';
 import Alert from '@/components/Alert';
 import { useAlert } from '@/hooks/useAlert';
 import Loading from '@/components/Loading';
@@ -29,8 +30,9 @@ import {
 } from '@/lib/platform/locationCatalog';
 import { DEFAULT_GYM_TIMEZONE, suggestTimezoneForCountry } from '@/lib/gymTimezone';
 import { resolveTimezoneOptions } from '@/lib/platform/timezoneCatalog';
+import { DEFAULT_THEME, themeToApiPayload, type GymThemeColors } from '@/lib/theme';
 
-const STEPS = ['Name', 'Slug', 'Location', 'Logo', 'Plan & dates', 'Gym admin login', 'Review'] as const;
+const STEPS = ['Name', 'Slug', 'Location', 'Logo', 'Brand', 'Plan & dates', 'Gym admin login', 'Review'] as const;
 
 type Wizard = {
   name: string;
@@ -40,6 +42,7 @@ type Wizard = {
   country: string;
   timezone: string;
   logoUrl: string;
+  theme: GymThemeColors;
   planId: string;
   dueDate: string;
   isActive: boolean;
@@ -57,6 +60,7 @@ const initialWizard = (): Wizard => ({
   country: DEFAULT_COUNTRY,
   timezone: DEFAULT_GYM_TIMEZONE,
   logoUrl: '',
+  theme: { ...DEFAULT_THEME },
   planId: '',
   dueDate: format(addDays(new Date(), 30), 'yyyy-MM-dd'),
   isActive: true,
@@ -198,13 +202,21 @@ export default function CreateGymWizardPage() {
           return false;
         }
       case 4:
-        return !plansLoading && /^\d+$/.test(w.planId) && Number(w.planId) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(w.dueDate);
+        return (
+          /^#[0-9A-Fa-f]{6}$/.test(w.theme.ink) &&
+          /^#[0-9A-Fa-f]{6}$/.test(w.theme.surface) &&
+          /^#[0-9A-Fa-f]{6}$/.test(w.theme.primary) &&
+          /^#[0-9A-Fa-f]{6}$/.test(w.theme.primaryDark) &&
+          /^#[0-9A-Fa-f]{6}$/.test(w.theme.canvas)
+        );
       case 5:
+        return !plansLoading && /^\d+$/.test(w.planId) && Number(w.planId) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(w.dueDate);
+      case 6:
         return w.ownerName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(w.ownerEmail.trim());
       default:
         return true;
     }
-  }, [step, w, logoBusy]);
+  }, [step, w, logoBusy, plansLoading]);
 
   const goNext = () => {
     if (step === 0 && !w.slug.trim()) {
@@ -224,6 +236,7 @@ export default function CreateGymWizardPage() {
       city: w.city.trim() || undefined,
       country: w.country.trim() || undefined,
       timezone: w.timezone.trim(),
+      theme: themeToApiPayload(w.theme),
       ownerAdmin: {
         name: w.ownerName.trim(),
         email: w.ownerEmail.trim(),
@@ -258,6 +271,7 @@ export default function CreateGymWizardPage() {
     if (parsed.data.city) payload.city = parsed.data.city;
     if (parsed.data.country) payload.country = parsed.data.country;
     payload.timezone = parsed.data.timezone;
+    if (parsed.data.theme) payload.theme = parsed.data.theme;
     if (parsed.data.ownerAdmin.phone) {
       (payload.ownerAdmin as Record<string, string>).phone = parsed.data.ownerAdmin.phone;
     }
@@ -323,7 +337,7 @@ export default function CreateGymWizardPage() {
             <span
               key={label}
               className={`rounded-full px-2 py-1 text-xs ${
-                i === step ? 'bg-purple text-white' : i < step ? 'bg-primary/20 text-dark-gray' : 'bg-light-gray-dark/40'
+                i === step ? 'bg-primary text-ink' : i < step ? 'bg-primary/20 text-dark-gray' : 'bg-light-gray-dark/40'
               }`}
             >
               {i + 1}. {label}
@@ -442,6 +456,12 @@ export default function CreateGymWizardPage() {
             />
           )}
           {step === 4 && (
+            <GymThemeColorFields
+              value={w.theme}
+              onChange={(theme) => setW((p) => ({ ...p, theme }))}
+            />
+          )}
+          {step === 5 && (
             <>
               <label className="block text-sm font-medium">Billing plan ID</label>
               <select
@@ -476,7 +496,7 @@ export default function CreateGymWizardPage() {
               </label>
             </>
           )}
-          {step === 5 && (
+          {step === 6 && (
             <>
               <h2 className="text-base font-semibold text-dark-gray">Gym admin login</h2>
               <p className="text-xs text-dark-gray-light">
@@ -514,7 +534,7 @@ export default function CreateGymWizardPage() {
               />
             </>
           )}
-          {step === 6 && (
+          {step === 7 && (
             <dl className="text-sm space-y-2">
               <div className="flex justify-between gap-4">
                 <dt className="text-dark-gray-light">Name</dt>
@@ -533,6 +553,21 @@ export default function CreateGymWizardPage() {
               <div className="flex justify-between gap-4">
                 <dt className="text-dark-gray-light">Timezone</dt>
                 <dd className="font-mono text-sm">{w.timezone || '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-4 items-center">
+                <dt className="text-dark-gray-light shrink-0">Brand colors</dt>
+                <dd className="flex gap-1">
+                  {([w.theme.ink, w.theme.surface, w.theme.primary, w.theme.primaryDark, w.theme.canvas] as const).map(
+                    (c) => (
+                      <span
+                        key={c}
+                        className="h-5 w-5 rounded border border-black/10"
+                        style={{ background: c }}
+                        title={c}
+                      />
+                    )
+                  )}
+                </dd>
               </div>
               <div className="flex justify-between gap-4 items-start">
                 <dt className="text-dark-gray-light shrink-0">Logo</dt>
@@ -584,7 +619,7 @@ export default function CreateGymWizardPage() {
                 type="button"
                 onClick={submit}
                 disabled={submitting}
-                className="rounded-lg bg-purple px-4 py-2 text-sm text-white disabled:opacity-50"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
               >
                 {submitting ? 'Creating…' : 'Create gym'}
               </button>

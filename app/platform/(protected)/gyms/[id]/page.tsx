@@ -20,6 +20,7 @@ import { useIsPlatformSuperAdmin } from '@/contexts/PlatformAuthContext';
 import Loading from '@/components/Loading';
 import PlatformLogoUpload from '@/components/platform/PlatformLogoUpload';
 import TimezoneCombobox from '@/components/platform/TimezoneCombobox';
+import GymThemeColorFields from '@/components/GymThemeColorFields';
 import GymOwnerAdminSection, { normalizeGymOwnerAdmin } from '@/components/platform/GymOwnerAdminSection';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
 import Alert from '@/components/Alert';
@@ -37,6 +38,7 @@ import {
 } from '@/lib/platform/locationCatalog';
 import { DEFAULT_GYM_TIMEZONE } from '@/lib/gymTimezone';
 import { resolveTimezoneOptions, withTimezoneValue } from '@/lib/platform/timezoneCatalog';
+import { DEFAULT_THEME, parseThemeFromUnknown, themeToApiPayload, type GymThemeColors } from '@/lib/theme';
 
 type Tab = 'overview' | 'owner' | 'subscription' | 'activity';
 
@@ -75,6 +77,7 @@ export default function PlatformGymDetailPage() {
     timezone: '',
     phone: '',
     email: '',
+    theme: { ...DEFAULT_THEME } as GymThemeColors,
   });
   const [subDraft, setSubDraft] = useState({
     planId: '',
@@ -145,6 +148,7 @@ export default function PlatformGymDetailPage() {
         timezone: String(data.timezone ?? DEFAULT_GYM_TIMEZONE),
         phone: String(data.phone ?? ''),
         email: String(data.email ?? ''),
+        theme: parseThemeFromUnknown(data.theme ?? data.brandColors ?? data.colors ?? data),
       });
       const sub = (data.subscription as Record<string, unknown>) || {};
       setSubDraft({
@@ -320,6 +324,7 @@ export default function PlatformGymDetailPage() {
     if (profileDraft.city) body.city = profileDraft.city;
     if (profileDraft.country) body.country = profileDraft.country;
     if (profileDraft.timezone.trim()) body.timezone = profileDraft.timezone.trim();
+    body.theme = themeToApiPayload(profileDraft.theme);
     if (profileDraft.phone) body.phone = profileDraft.phone;
     if (profileDraft.email) body.email = profileDraft.email;
     const parsed = patchGymProfileSchema.safeParse(body);
@@ -708,6 +713,13 @@ export default function PlatformGymDetailPage() {
                     onChange={(timezone) => setProfileDraft((d) => ({ ...d, timezone }))}
                     options={withTimezoneValue(timezoneOptions, profileDraft.timezone)}
                     loading={timezonesLoading}
+                    disabled={!isSuper}
+                  />
+                </div>
+                <div className="pt-2 border-t border-light-gray">
+                  <GymThemeColorFields
+                    value={profileDraft.theme}
+                    onChange={(theme) => setProfileDraft((d) => ({ ...d, theme }))}
                     disabled={!isSuper}
                   />
                 </div>

@@ -33,7 +33,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
 
 export default function SettingsPage() {
   const { can } = useAuth();
-  const { gymTimezone } = useGymSettings();
+  const { gymTimezone, gymTheme } = useGymSettings();
   const { alert, showAlert, closeAlert } = useAlert();
   const canEditSettings = can('gym.settings.manage');
   const canManageAttendancePolicy = can('gym.attendancePolicy.manage');
@@ -316,6 +316,34 @@ export default function SettingsPage() {
                 Used for attendance dates and formatted times. Set by your platform admin when the gym was created.
               </p>
               <p className="mt-3 font-mono text-sm text-dark-gray">{gymTimezone || '—'}</p>
+            </div>
+            <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-lg border border-gray-200">
+              <h2 className="text-xl font-bold text-dark-gray">Brand colors</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Personalised by your platform admin. Defaults apply when none are set.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {(
+                  [
+                    ['Ink', gymTheme.ink],
+                    ['Surface', gymTheme.surface],
+                    ['Primary', gymTheme.primary],
+                    ['Primary dark', gymTheme.primaryDark],
+                    ['Canvas', gymTheme.canvas],
+                  ] as const
+                ).map(([label, hex]) => (
+                  <div key={label} className="flex items-center gap-2 rounded-lg border border-gray-200 px-2.5 py-2">
+                    <span
+                      className="h-8 w-8 rounded-md border border-black/10 shadow-sm"
+                      style={{ background: hex }}
+                    />
+                    <div>
+                      <p className="text-xs font-medium text-dark-gray">{label}</p>
+                      <p className="font-mono text-[11px] text-gray-500">{hex}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
               <div className="flex items-center mb-4">

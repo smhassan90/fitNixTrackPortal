@@ -2,6 +2,7 @@ import api from '@/lib/api';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
 import { normalizeOverdueAlert, normalizeOverdueAlerts, type OverdueCheckinAlert } from '@/lib/overdueAlerts';
+import { parseThemeFromUnknown, type GymThemeColors } from '@/lib/theme';
 
 function asObj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
@@ -28,6 +29,8 @@ export interface GymSettings {
     name: string;
     /** IANA timezone from GET /api/settings (e.g. Asia/Karachi). */
     timezone?: string | null;
+    /** Per-gym brand colors; defaults applied when omitted. */
+    theme?: GymThemeColors;
     address?: string | null;
     phone?: string | null;
     email?: string | null;
@@ -147,6 +150,7 @@ export function normalizeGymSettings(raw: unknown): GymSettings {
       id: Number(gym.id) || 0,
       name: String(gym.name ?? ''),
       timezone: gym.timezone != null && String(gym.timezone).trim() !== '' ? String(gym.timezone) : null,
+      theme: parseThemeFromUnknown(gym.theme ?? gym.brandColors ?? gym.colors ?? gym),
       address: gym.address != null ? String(gym.address) : null,
       phone: gym.phone != null ? String(gym.phone) : null,
       email: gym.email != null ? String(gym.email) : null,

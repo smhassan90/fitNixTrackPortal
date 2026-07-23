@@ -237,18 +237,18 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       {/* Sidebar */}
       <div className={`
         sidebar-container
-        bg-gradient-to-b from-slate-800 to-slate-900 text-white w-64 h-screen flex flex-col shadow-2xl overflow-hidden fixed left-0 top-0 z-50
+        bg-gradient-to-b from-ink to-surface text-white w-64 h-screen flex flex-col shadow-2xl overflow-hidden fixed left-0 top-0 z-50
         transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
       {/* Logo Section */}
-      <div className="p-6 border-b border-slate-700 border-opacity-50 shrink-0">
+      <div className="p-6 border-b border-white/10 shrink-0">
         <div className="flex items-center justify-between">
           <FitNixLogo
             size="sm"
             subtitle="Admin Portal"
             titleClassName="text-white"
-            subtitleClassName="text-gray-400"
+            subtitleClassName="text-white/50"
           />
           {/* Close/Toggle button */}
           <button
@@ -256,7 +256,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
               e.stopPropagation();
               onToggle();
             }}
-            className="text-gray-400 hover:text-white transition-colors p-1 hover:bg-slate-700 rounded"
+            className="text-white/50 hover:text-white transition-colors p-1 hover:bg-white/10 rounded"
             title="Toggle sidebar"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -271,7 +271,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         {scrollFades.top && (
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-slate-800 to-transparent"
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-ink to-transparent"
           />
         )}
         <nav
@@ -293,16 +293,16 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                     }}
                     className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${
                       isActive
-                        ? 'bg-slate-700 text-white'
-                        : 'text-slate-300 hover:bg-slate-700 hover:text-white hover:translate-x-1'
+                        ? 'bg-primary text-ink shadow-md shadow-primary/20'
+                        : 'text-white/70 hover:bg-white/10 hover:text-white hover:translate-x-1'
                     }`}
                   >
-                    <span className={`mr-3 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`}>
+                    <span className={`mr-3 ${isActive ? 'text-ink' : 'text-white/45 group-hover:text-white'}`}>
                       {item.icon}
                     </span>
                     <span className="font-medium">{item.name}</span>
                     {isActive && (
-                      <span className="ml-auto w-1 h-6 bg-primary rounded-full"></span>
+                      <span className="ml-auto w-1.5 h-6 bg-ink/40 rounded-full"></span>
                     )}
                   </Link>
                 </li>
@@ -313,29 +313,29 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         {scrollFades.bottom && (
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-5 bg-gradient-to-t from-slate-900 to-transparent"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-5 bg-gradient-to-t from-surface to-transparent"
           />
         )}
       </div>
 
       {/* User Section */}
-      <div className="p-4 border-t border-slate-700 border-opacity-50 bg-slate-900 shrink-0">
-        <div className="mb-4 p-3 bg-slate-800 rounded-xl">
+      <div className="p-4 border-t border-white/10 bg-surface shrink-0">
+        <div className="mb-4 p-3 bg-white/5 rounded-xl ring-1 ring-white/10">
           <div className="flex items-center space-x-3 mb-2">
-            <div className="bg-gradient-to-br from-primary to-primary-dark w-10 h-10 rounded-full flex items-center justify-center">
-              <span className="text-white font-semibold text-sm">
+            <div className="bg-primary w-10 h-10 rounded-full flex items-center justify-center">
+              <span className="text-ink font-semibold text-sm">
                 {user?.name?.charAt(0).toUpperCase() || 'A'}
               </span>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
-              <p className="text-xs text-slate-400 truncate">{user?.gymName}</p>
+              <p className="text-xs text-white/45 truncate">{user?.gymName}</p>
             </div>
           </div>
         </div>
         <button
           onClick={logout}
-          className="w-full bg-gradient-to-r from-orange to-orange-dark text-white py-2.5 px-4 rounded-xl hover:from-orange-dark hover:to-orange transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center space-x-2"
+          className="w-full bg-primary text-ink py-2.5 px-4 rounded-xl hover:bg-primary-dark hover:text-white transition-all duration-200 text-sm font-semibold shadow-lg flex items-center justify-center space-x-2"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

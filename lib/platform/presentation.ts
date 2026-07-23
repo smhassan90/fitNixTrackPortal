@@ -187,6 +187,13 @@ export function gymProfileSummary(gym: Record<string, unknown>): Array<{ label: 
   add('City', 'city');
   add('Country', 'country');
   add('Timezone', 'timezone');
+  if (gym.theme && typeof gym.theme === 'object') {
+    const t = gym.theme as Record<string, unknown>;
+    const swatches = [t.ink, t.surface, t.primary, t.primaryDark, t.canvas]
+      .filter((c) => typeof c === 'string' && c)
+      .join(' · ');
+    if (swatches) rows.push({ label: 'Brand colors', value: swatches });
+  }
   add('Phone', 'phone');
   add('Email', 'email');
   add('Web address key', 'slug');

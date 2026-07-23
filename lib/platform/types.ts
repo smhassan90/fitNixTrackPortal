@@ -50,6 +50,14 @@ export interface PlatformGymRow {
   slug?: string;
   /** IANA timezone, e.g. Asia/Karachi */
   timezone?: string;
+  /** Brand theme colors for gym portal */
+  theme?: {
+    ink?: string;
+    surface?: string;
+    primary?: string;
+    primaryDark?: string;
+    canvas?: string;
+  };
   tenantStatus?: 'ACTIVE' | 'SUSPENDED' | string;
   membersCount?: number;
   trainersCount?: number;
