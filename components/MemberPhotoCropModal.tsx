@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import Cropper, { type Area } from 'react-easy-crop';
-import { getCroppedJpegBlob } from '@/lib/cropImage';
+import { getCroppedImageBlob, type CropExportOptions } from '@/lib/cropImage';
 
 type Props = {
   imageSrc: string;
@@ -12,6 +12,12 @@ type Props = {
   busy?: boolean;
   /** Upload/API error from parent — shown inside the dialog so it is never hidden behind it. */
   submitError?: string | null;
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
+  cropShape?: 'round' | 'rect';
+  exportOptions?: CropExportOptions;
+  previewClassName?: string;
 };
 
 export default function MemberPhotoCropModal({
@@ -21,6 +27,12 @@ export default function MemberPhotoCropModal({
   onConfirm,
   busy = false,
   submitError = null,
+  title = 'Adjust photo',
+  description = 'Drag and pinch to frame the face in the square. Then use the photo.',
+  confirmLabel = 'Use photo',
+  cropShape = 'round',
+  exportOptions,
+  previewClassName,
 }: Props) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -29,6 +41,9 @@ export default function MemberPhotoCropModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  const mimeType = exportOptions?.mimeType ?? 'image/jpeg';
+  const previewRound = cropShape === 'round';
 
   const onCropComplete = useCallback((_area: Area, pixels: Area) => {
     setCroppedAreaPixels(pixels);
@@ -39,9 +54,12 @@ export default function MemberPhotoCropModal({
     if (!croppedAreaPixels) return;
     try {
       setError(null);
-      const blob = await getCroppedJpegBlob(imageSrc, croppedAreaPixels, rotation, {
+      const blob = await getCroppedImageBlob(imageSrc, croppedAreaPixels, rotation, {
         maxSize: 240,
         quality: 0.75,
+        mimeType,
+        ...(exportOptions ?? {}),
+        maxSize: exportOptions?.maxSize ? Math.min(240, exportOptions.maxSize) : 240,
       });
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
@@ -50,23 +68,25 @@ export default function MemberPhotoCropModal({
     } catch {
       setError('Could not build preview. Adjust the crop and try again.');
     }
-  }, [croppedAreaPixels, imageSrc, rotation]);
+  }, [croppedAreaPixels, exportOptions, imageSrc, mimeType, rotation]);
 
   const handleUsePhoto = async () => {
     if (!croppedAreaPixels || busy || exporting) return;
     try {
       setExporting(true);
       setError(null);
-      const blob = await getCroppedJpegBlob(imageSrc, croppedAreaPixels, rotation, {
+      const blob = await getCroppedImageBlob(imageSrc, croppedAreaPixels, rotation, {
         maxSize: 640,
         quality: 0.82,
+        mimeType,
+        ...exportOptions,
       });
       onConfirm(blob);
     } catch (e) {
       setError(
         e instanceof Error && e.message
           ? e.message
-          : 'Crop closer to the face and try again.'
+          : 'Adjust the crop and try again.'
       );
     } finally {
       setExporting(false);
@@ -95,11 +115,9 @@ export default function MemberPhotoCropModal({
       >
         <div className="border-b border-gray-100 px-5 py-4">
           <h3 id="member-photo-crop-title" className="text-lg font-semibold text-dark-gray">
-            Adjust photo
+            {title}
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Drag and pinch to frame the face in the square. Then use the photo.
-          </p>
+          <p className="mt-1 text-sm text-gray-500">{description}</p>
         </div>
 
         <div className="relative h-72 w-full bg-gray-900 sm:h-80">
@@ -109,8 +127,8 @@ export default function MemberPhotoCropModal({
             zoom={zoom}
             rotation={rotation}
             aspect={1}
-            cropShape="round"
-            showGrid={false}
+            cropShape={cropShape}
+            showGrid={cropShape === 'rect'}
             onCropChange={setCrop}
             onZoomChange={setZoom}
             onRotationChange={setRotation}
@@ -163,7 +181,10 @@ export default function MemberPhotoCropModal({
               <img
                 src={previewUrl}
                 alt="Cropped preview"
-                className="h-12 w-12 rounded-full border border-gray-200 object-cover"
+                className={
+                  previewClassName ??
+                  `h-12 w-12 border border-gray-200 object-cover ${previewRound ? 'rounded-full' : 'rounded-lg'}`
+                }
               />
             )}
           </div>
@@ -188,9 +209,9 @@ export default function MemberPhotoCropModal({
             type="button"
             onClick={() => void handleUsePhoto()}
             disabled={disabled || !croppedAreaPixels}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-ink hover:bg-primary-dark hover:text-white disabled:opacity-50"
           >
-            {busy || exporting ? 'Saving…' : 'Use photo'}
+            {busy || exporting ? 'Saving…' : confirmLabel}
           </button>
         </div>
       </div>

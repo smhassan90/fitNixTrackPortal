@@ -600,10 +600,11 @@ function AttendancePageContent() {
                   {noSignInReport?.days ?? noSignInDays} days.
                 </div>
               ) : (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-light-gray">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Member ID</th>
+                <div className="overflow-x-auto overscroll-x-contain">
+                  <table className="min-w-[720px] w-full divide-y divide-gray-200">
+                    <thead className="bg-light-gray">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Member ID</th>
                       <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Name</th>
                       <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Phone</th>
                       <th className="px-6 py-3 text-left text-xs font-medium uppercase text-dark-gray">Last check-in</th>
@@ -664,6 +665,7 @@ function AttendancePageContent() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </>
@@ -752,13 +754,14 @@ function AttendancePageContent() {
 
         {/* Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-light-gray">
-              <tr>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
-                  onClick={() => handleSort('date')}
-                >
+          <div className="overflow-x-auto overscroll-x-contain">
+            <table className="min-w-[960px] w-full divide-y divide-gray-200">
+              <thead className="bg-light-gray">
+                <tr>
+                  <th 
+                    className="px-6 py-3 text-left text-xs font-medium text-dark-gray uppercase tracking-wider cursor-pointer hover:bg-gray-200 transition-colors"
+                    onClick={() => handleSort('date')}
+                  >
                   <div className="flex items-center space-x-1">
                     <span>Date</span>
                     {filters.sortBy === 'date' && (
@@ -996,6 +999,7 @@ function AttendancePageContent() {
               )}
             </tbody>
           </table>
+          </div>
           
           {/* Pagination */}
           {pagination.totalPages > 1 && (

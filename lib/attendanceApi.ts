@@ -29,6 +29,8 @@ export interface GymSettings {
     name: string;
     /** IANA timezone from GET /api/settings (e.g. Asia/Karachi). */
     timezone?: string | null;
+    /** Gym logo URL for sidebar / receipts. */
+    logoUrl?: string | null;
     /** Per-gym brand colors; defaults applied when omitted. */
     theme?: GymThemeColors;
     address?: string | null;
@@ -150,12 +152,30 @@ export function normalizeGymSettings(raw: unknown): GymSettings {
       id: Number(gym.id) || 0,
       name: String(gym.name ?? ''),
       timezone: gym.timezone != null && String(gym.timezone).trim() !== '' ? String(gym.timezone) : null,
+      logoUrl: pickGymLogoUrl(gym, o),
       theme: parseThemeFromUnknown(gym.theme ?? gym.brandColors ?? gym.colors ?? gym),
       address: gym.address != null ? String(gym.address) : null,
       phone: gym.phone != null ? String(gym.phone) : null,
       email: gym.email != null ? String(gym.email) : null,
     },
   };
+}
+
+function pickGymLogoUrl(...sources: Array<Record<string, unknown> | null>): string | null {
+  for (const src of sources) {
+    if (!src) continue;
+    for (const key of ['logoUrl', 'logo', 'logo_url', 'imageUrl', 'image'] as const) {
+      const v = src[key];
+      if (v != null && String(v).trim() !== '') return String(v).trim();
+    }
+    const nestedLogo = asObj(src.logo);
+    if (nestedLogo) {
+      const nested =
+        nestedLogo.url ?? nestedLogo.src ?? nestedLogo.href ?? nestedLogo.path;
+      if (nested != null && String(nested).trim() !== '') return String(nested).trim();
+    }
+  }
+  return null;
 }
 
 function normalizeMemberInGym(row: unknown): MemberInGym | null {

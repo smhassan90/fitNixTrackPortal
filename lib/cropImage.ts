@@ -18,19 +18,27 @@ function rotateSize(width: number, height: number, rotation: number) {
   };
 }
 
+export type CropExportOptions = {
+  maxSize?: number;
+  quality?: number;
+  /** jpeg for photos; png keeps transparency for logos */
+  mimeType?: 'image/jpeg' | 'image/png';
+};
+
 /**
- * Crop + optionally rotate an image, then export a square JPEG blob.
- * Target size ~480–720px so upload stays fast; backend recompresses further.
+ * Crop + optionally rotate an image, then export a square blob.
+ * Target size ~480–720px so upload stays fast.
  */
-export async function getCroppedJpegBlob(
+export async function getCroppedImageBlob(
   imageSrc: string,
   pixelCrop: Area,
   rotation = 0,
-  options?: { maxSize?: number; quality?: number }
+  options?: CropExportOptions
 ): Promise<Blob> {
   const image = await loadImage(imageSrc);
   const maxSize = options?.maxSize ?? 640;
   const quality = options?.quality ?? 0.8;
+  const mimeType = options?.mimeType ?? 'image/jpeg';
 
   const rotRad = (rotation * Math.PI) / 180;
   const { width: bBoxWidth, height: bBoxHeight } = rotateSize(image.width, image.height, rotation);
@@ -56,6 +64,11 @@ export async function getCroppedJpegBlob(
   const outCtx = out.getContext('2d');
   if (!outCtx) throw new Error('Could not prepare image crop');
 
+  if (mimeType === 'image/jpeg') {
+    outCtx.fillStyle = '#ffffff';
+    outCtx.fillRect(0, 0, outSize, outSize);
+  }
+
   outCtx.drawImage(
     canvas,
     Math.round(pixelCrop.x),
@@ -72,13 +85,26 @@ export async function getCroppedJpegBlob(
     out.toBlob(
       (blob) => {
         if (!blob) {
-          reject(new Error('Crop closer to the face and try again.'));
+          reject(new Error('Could not export cropped image. Adjust the crop and try again.'));
           return;
         }
         resolve(blob);
       },
-      'image/jpeg',
-      quality
+      mimeType,
+      mimeType === 'image/jpeg' ? quality : undefined
     );
+  });
+}
+
+/** @deprecated Prefer getCroppedImageBlob — kept for existing member photo call sites. */
+export async function getCroppedJpegBlob(
+  imageSrc: string,
+  pixelCrop: Area,
+  rotation = 0,
+  options?: { maxSize?: number; quality?: number }
+): Promise<Blob> {
+  return getCroppedImageBlob(imageSrc, pixelCrop, rotation, {
+    ...options,
+    mimeType: 'image/jpeg',
   });
 }

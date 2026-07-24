@@ -4,9 +4,11 @@ import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } fro
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGymSettings } from '@/contexts/GymSettingsContext';
 import FitNixLogo from '@/components/FitNixLogo';
 import { isGymAdmin } from '@/lib/gymRoles';
 import { firstPosPath, hasAnyPosPermission } from '@/lib/pos/permissions';
+import { resolveGymLogoUrl } from '@/lib/resolveMediaUrl';
 
 type NavItem = {
   name: string;
@@ -153,7 +155,16 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout, can } = useAuth();
+  const { settings } = useGymSettings();
   const admin = isGymAdmin(user?.role);
+
+  const gymLogoUrl = resolveGymLogoUrl(settings?.gym.logoUrl || user?.gymLogoUrl);
+  const gymDisplayName = settings?.gym.name?.trim() || user?.gymName?.trim() || 'Gym';
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [gymLogoUrl]);
 
   const navItems = useMemo(() => {
     const items = [...navigation];
@@ -243,20 +254,36 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       `}>
       {/* Logo Section */}
       <div className="p-6 border-b border-white/10 shrink-0">
-        <div className="flex items-center justify-between">
-          <FitNixLogo
-            size="sm"
-            subtitle="Admin Portal"
-            titleClassName="text-white"
-            subtitleClassName="text-white/50"
-          />
+        <div className="flex items-center justify-between gap-2">
+          {gymLogoUrl && !logoFailed ? (
+            <div className="flex min-w-0 flex-1 items-center gap-3" role="img" aria-label={gymDisplayName}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={gymLogoUrl}
+                alt=""
+                onError={() => setLogoFailed(true)}
+                className="h-10 w-10 shrink-0 rounded-xl object-contain bg-white/10 ring-1 ring-white/15"
+              />
+              <div className="min-w-0 leading-tight">
+                <p className="truncate text-[15px] font-bold text-white">{gymDisplayName}</p>
+                <p className="truncate text-[11px] font-medium text-white/50">Admin Portal</p>
+              </div>
+            </div>
+          ) : (
+            <FitNixLogo
+              size="sm"
+              subtitle={gymDisplayName !== 'Gym' ? gymDisplayName : 'Admin Portal'}
+              titleClassName="text-white"
+              subtitleClassName="text-white/50"
+            />
+          )}
           {/* Close/Toggle button */}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onToggle();
             }}
-            className="text-white/50 hover:text-white transition-colors p-1 hover:bg-white/10 rounded"
+            className="shrink-0 text-white/50 hover:text-white transition-colors p-1 hover:bg-white/10 rounded"
             title="Toggle sidebar"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

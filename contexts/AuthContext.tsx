@@ -17,6 +17,7 @@ export interface User {
   role: string;
   gymId: string;
   gymName?: string;
+  gymLogoUrl?: string;
   permissionKeys: string[];
   usesLegacyPermissions: boolean;
 }
@@ -34,17 +35,27 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function normalizeAuthUser(userData: Record<string, unknown>): User {
+  const gym = userData.gym && typeof userData.gym === 'object' ? (userData.gym as Record<string, unknown>) : null;
   return {
     id: String(userData.id ?? ''),
     name: String(userData.name ?? ''),
     email: String(userData.email ?? ''),
     role: normalizeGymRole(userData.role as string),
-    gymId: String(userData.gymId ?? ''),
+    gymId: String(userData.gymId ?? gym?.id ?? ''),
     gymName: (() => {
       if (typeof userData.gymName === 'string' && userData.gymName) return userData.gymName;
-      const gym = userData.gym;
-      if (gym && typeof gym === 'object' && typeof (gym as { name?: unknown }).name === 'string') {
-        return (gym as { name: string }).name;
+      if (gym && typeof gym.name === 'string' && gym.name) return gym.name;
+      return undefined;
+    })(),
+    gymLogoUrl: (() => {
+      const candidates = [
+        userData.gymLogoUrl,
+        userData.logoUrl,
+        gym?.logoUrl,
+        gym?.logo,
+      ];
+      for (const c of candidates) {
+        if (typeof c === 'string' && c.trim()) return c.trim();
       }
       return undefined;
     })(),
