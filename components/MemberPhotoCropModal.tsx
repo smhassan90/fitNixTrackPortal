@@ -54,12 +54,14 @@ export default function MemberPhotoCropModal({
     if (!croppedAreaPixels) return;
     try {
       setError(null);
+      const previewMax = exportOptions?.maxSize
+        ? Math.min(240, exportOptions.maxSize)
+        : 240;
       const blob = await getCroppedImageBlob(imageSrc, croppedAreaPixels, rotation, {
-        maxSize: 240,
         quality: 0.75,
         mimeType,
         ...(exportOptions ?? {}),
-        maxSize: exportOptions?.maxSize ? Math.min(240, exportOptions.maxSize) : 240,
+        maxSize: previewMax,
       });
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
@@ -79,7 +81,7 @@ export default function MemberPhotoCropModal({
         maxSize: 640,
         quality: 0.82,
         mimeType,
-        ...exportOptions,
+        ...(exportOptions ?? {}),
       });
       onConfirm(blob);
     } catch (e) {
