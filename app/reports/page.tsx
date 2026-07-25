@@ -540,7 +540,7 @@ export default function ReportsPage() {
               type="button"
               onClick={() => void loadReports()}
               disabled={loading}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-opacity-90 disabled:opacity-50"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50"
             >
               {loading ? 'Refreshing…' : 'Refresh'}
             </button>

@@ -292,7 +292,7 @@ export default function DashboardPage() {
               <p className="mb-4 text-sm text-red-500">{error || 'Unknown error'}</p>
               <button
                 onClick={fetchDashboardStats}
-                className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90"
+                className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-primary-dark active:bg-primary-dark"
               >
                 Retry
               </button>
@@ -671,7 +671,7 @@ export default function DashboardPage() {
                     type="button"
                     onClick={handleApplyCustomRange}
                     disabled={revenueLoading}
-                    className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-opacity-90 disabled:opacity-50"
+                    className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50"
                   >
                     {revenueLoading ? '…' : 'Apply'}
                   </button>

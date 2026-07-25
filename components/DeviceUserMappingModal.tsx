@@ -553,7 +553,7 @@ export default function DeviceUserMappingModal({
             type="button"
             onClick={() => void handleConfirm()}
             disabled={submitting || loading || readyMappings.length === 0}
-            className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark disabled:opacity-50"
+            className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50"
           >
             {submitting
               ? 'Confirming…'

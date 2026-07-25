@@ -559,7 +559,7 @@ function AttendancePageContent() {
               <button
                 type="button"
                 onClick={handleNoSignInDaysApply}
-                className="w-full rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90 sm:w-auto"
+                className="w-full rounded-lg bg-primary px-4 py-2 text-white hover:bg-primary-dark active:bg-primary-dark sm:w-auto"
               >
                 Apply
               </button>
@@ -846,7 +846,7 @@ function AttendancePageContent() {
                             setApiError(null);
                             fetchAttendance(filters);
                           }}
-                          className="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90"
+                          className="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark active:bg-primary-dark"
                         >
                           Retry
                         </button>
@@ -976,7 +976,7 @@ function AttendancePageContent() {
                           type="button"
                           onClick={() => void handleManualCheckout(record)}
                           disabled={checkingOutMemberId === record.memberId}
-                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-dark active:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {checkingOutMemberId === record.memberId ? 'Checking out…' : 'Checkout'}
                         </button>

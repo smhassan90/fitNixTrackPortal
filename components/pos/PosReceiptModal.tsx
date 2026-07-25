@@ -196,7 +196,7 @@ export default function PosReceiptModal({
         <button
           type="button"
           onClick={onClose}
-          className="mt-2 w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition hover:bg-primary-dark"
+          className="mt-2 w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white transition hover:bg-primary-dark active:bg-primary-dark"
         >
           Done
         </button>

@@ -452,7 +452,7 @@ export default function TeamPage() {
           <button
             type="button"
             onClick={startAdd}
-            className="mt-2 sm:mt-0 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-95"
+            className="mt-2 sm:mt-0 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark active:bg-primary-dark"
             disabled={saving || apiMissing}
           >
             Add team member

@@ -211,7 +211,7 @@ export default function MemberPhotoCropModal({
             type="button"
             onClick={() => void handleUsePhoto()}
             disabled={disabled || !croppedAreaPixels}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-ink hover:bg-primary-dark hover:text-white disabled:opacity-50"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-ink hover:bg-primary-dark active:bg-primary-dark hover:text-white disabled:opacity-50"
           >
             {busy || exporting ? 'Saving…' : confirmLabel}
           </button>

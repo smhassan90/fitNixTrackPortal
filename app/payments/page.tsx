@@ -772,7 +772,7 @@ function PaymentsPageContent() {
                   type="button"
                   onClick={handleCheckOverdue}
                   disabled={checkingOverdue}
-                  className="w-full rounded-lg bg-orange px-4 py-2 text-white transition-colors hover:bg-opacity-90 disabled:opacity-60 sm:w-auto"
+                  className="w-full rounded-lg bg-orange px-4 py-2 text-white transition-colors hover:bg-orange-dark active:bg-orange-dark disabled:opacity-60 sm:w-auto"
                 >
                   {checkingOverdue ? 'Checking…' : 'Check overdue'}
                 </button>
@@ -822,7 +822,7 @@ function PaymentsPageContent() {
                   <button
                     type="button"
                     onClick={handleApplySearch}
-                    className="w-full rounded-lg bg-primary px-5 py-2 font-medium text-white hover:bg-primary-dark sm:w-auto"
+                    className="w-full rounded-lg bg-primary px-5 py-2 font-medium text-white hover:bg-primary-dark active:bg-primary-dark sm:w-auto"
                   >
                     Go
                   </button>

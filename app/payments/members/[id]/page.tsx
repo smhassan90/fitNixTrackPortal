@@ -809,7 +809,7 @@ export default function MemberPaymentsDetailPage() {
                 type="button"
                 onClick={submitMemberStatusAction}
                 disabled={statusSubmitting}
-                className="flex-1 rounded-lg bg-primary px-4 py-2 font-medium text-white hover:bg-primary-dark disabled:opacity-50"
+                className="flex-1 rounded-lg bg-primary px-4 py-2 font-medium text-white hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50"
               >
                 {statusSubmitting ? 'Saving…' : currentStatusAction === 'deactivate' ? 'Deactivate' : 'Reactivate'}
               </button>
@@ -915,7 +915,7 @@ export default function MemberPaymentsDetailPage() {
                 type="button"
                 disabled={bulkSubmitting || selectedIds.size === 0}
                 onClick={handleBulkMarkPaid}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark active:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {bulkSubmitting ? 'Saving…' : `Mark paid (${selectedIds.size})`}
               </button>

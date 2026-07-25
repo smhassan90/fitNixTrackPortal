@@ -34,7 +34,7 @@ export default function GeneratedPasswordModal({
         <div className="mt-4 flex gap-2">
           <button
             type="button"
-            className="flex-1 rounded-lg bg-primary px-4 py-2 text-white text-sm font-medium hover:bg-primary-dark"
+            className="flex-1 rounded-lg bg-primary px-4 py-2 text-white text-sm font-medium hover:bg-primary-dark active:bg-primary-dark"
             onClick={async () => {
               await navigator.clipboard.writeText(password);
             }}

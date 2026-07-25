@@ -15,6 +15,7 @@ interface Trainer {
   id: string;
   name: string;
   phone?: string | null;
+  email?: string | null;
   gender: string | null;
   dateOfBirth: string | null;
   specialization: string | null;
@@ -28,6 +29,12 @@ interface Trainer {
 }
 
 type TrainerStatusFilter = 'all' | 'active' | 'inactive';
+
+const EMAIL_MAX_LENGTH = 191;
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 function trainerIsActive(trainer: Trainer): boolean {
   return trainer.isActive !== false;
@@ -51,6 +58,7 @@ function statusBadge(trainer: Trainer) {
 const emptyForm = () => ({
   name: '',
   phone: '',
+  email: '',
   gender: '',
   dateOfBirth: '',
   specialization: '',
@@ -63,6 +71,7 @@ function trainerToForm(trainer: Trainer) {
   return {
     name: trainer.name || '',
     phone: trainer.phone ?? '',
+    email: trainer.email ?? '',
     gender: trainer.gender || '',
     dateOfBirth: trainer.dateOfBirth ? trainer.dateOfBirth.split('T')[0] : '',
     specialization: trainer.specialization || '',
@@ -94,6 +103,7 @@ export default function TrainersPage() {
     trainerName: '',
   });
   const [formData, setFormData] = useState(emptyForm);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   const specializationOptions = [
     'Strength Training',
@@ -154,10 +164,12 @@ export default function TrainersPage() {
 
   const buildCreatePayload = () => {
     const phone = formData.phone.trim();
+    const email = formData.email.trim().toLowerCase();
     const trainerData: Record<string, unknown> = {
       name: formData.name.trim(),
     };
     if (phone) trainerData.phone = phone;
+    if (email) trainerData.email = email;
     if (formData.gender) trainerData.gender = formData.gender;
     if (formData.dateOfBirth) trainerData.dateOfBirth = formData.dateOfBirth;
     if (formData.specialization) trainerData.specialization = formData.specialization;
@@ -167,7 +179,7 @@ export default function TrainersPage() {
     return trainerData;
   };
 
-  /** PUT body: only changed fields; empty phone clears as null. */
+  /** PUT body: only changed fields; empty phone/email clear as null. */
   const buildUpdatePayload = (baseline: Trainer) => {
     const payload: Record<string, unknown> = {};
     const name = formData.name.trim();
@@ -176,6 +188,10 @@ export default function TrainersPage() {
     const nextPhone = formData.phone.trim() || null;
     const prevPhone = baseline.phone?.trim() || null;
     if (nextPhone !== prevPhone) payload.phone = nextPhone;
+
+    const nextEmail = formData.email.trim().toLowerCase() || null;
+    const prevEmail = baseline.email?.trim().toLowerCase() || null;
+    if (nextEmail !== prevEmail) payload.email = nextEmail;
 
     const nextGender = formData.gender || null;
     const prevGender = baseline.gender || null;
@@ -209,6 +225,18 @@ export default function TrainersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const email = formData.email.trim();
+    if (email && !isValidEmail(email)) {
+      setEmailError('Enter a valid email address, e.g. trainer@gmail.com');
+      return;
+    }
+    if (email.length > EMAIL_MAX_LENGTH) {
+      setEmailError(`Email must be ${EMAIL_MAX_LENGTH} characters or fewer`);
+      return;
+    }
+    setEmailError(null);
+
     try {
       setLoading(true);
 
@@ -246,7 +274,9 @@ export default function TrainersPage() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error: any) {
       console.error('Error saving trainer:', error);
-      showAlert('error', 'Error', getErrorMessage(error));
+      const message = getErrorMessage(error);
+      if (/e-?mail/i.test(message)) setEmailError(message);
+      showAlert('error', 'Error', message);
     } finally {
       setLoading(false);
     }
@@ -256,6 +286,7 @@ export default function TrainersPage() {
     setShowAddForm(false);
     setEditingTrainer(trainer);
     setFormData(trainerToForm(trainer));
+    setEmailError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
@@ -334,6 +365,7 @@ export default function TrainersPage() {
 
   const resetForm = () => {
     setFormData(emptyForm());
+    setEmailError(null);
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -372,6 +404,10 @@ export default function TrainersPage() {
         case 'phone':
           aValue = a.phone?.toLowerCase() || '';
           bValue = b.phone?.toLowerCase() || '';
+          break;
+        case 'email':
+          aValue = a.email?.toLowerCase() || '';
+          bValue = b.email?.toLowerCase() || '';
           break;
         case 'gender':
           aValue = a.gender?.toLowerCase() || '';
@@ -446,7 +482,7 @@ export default function TrainersPage() {
             ) : (
             <button
               onClick={openAddForm}
-              className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+              className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-dark active:bg-primary-dark transition-colors"
             >
               + Add Trainer
             </button>
@@ -501,6 +537,32 @@ export default function TrainersPage() {
                   <p className="text-xs text-gray-500 mt-1">
                     Optional · {formData.phone.length}/40 characters
                   </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-dark-gray mb-1">Email</label>
+                  <input
+                    type="email"
+                    maxLength={EMAIL_MAX_LENGTH}
+                    value={formData.email}
+                    onChange={(e) => {
+                      setFormData({ ...formData, email: e.target.value });
+                      if (emailError) setEmailError(null);
+                    }}
+                    placeholder="trainer@gmail.com"
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
+                      emailError
+                        ? 'border-red-400 focus:ring-red-400'
+                        : 'border-gray-300 focus:ring-primary'
+                    }`}
+                  />
+                  {emailError ? (
+                    <p className="text-xs text-red-600 mt-1">{emailError}</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Optional · used for Google sign-in on the mobile app ·{' '}
+                      {formData.email.length}/{EMAIL_MAX_LENGTH} characters
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-dark-gray mb-1">Gender</label>
@@ -595,7 +657,7 @@ export default function TrainersPage() {
               <div className="flex gap-4 pt-2">
                 <button
                   type="submit"
-                  className="flex-1 bg-primary text-white py-2 px-4 rounded-lg hover:bg-opacity-90 transition-colors font-medium"
+                  className="flex-1 bg-primary text-white py-2 px-4 rounded-lg hover:bg-primary-dark active:bg-primary-dark transition-colors font-medium"
                 >
                   {editingTrainer ? 'Update' : 'Create'}
                 </button>
@@ -624,7 +686,7 @@ export default function TrainersPage() {
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Search name, phone…"
+                  placeholder="Search name, phone, email…"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
@@ -660,7 +722,7 @@ export default function TrainersPage() {
             <button
               type="button"
               onClick={() => setSearchQuery(searchInput)}
-              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition-colors"
+              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark active:bg-primary-dark transition-colors"
             >
               Go
             </button>
@@ -699,7 +761,7 @@ export default function TrainersPage() {
                   onClick={() => handleSort('phone')}
                 >
                   <div className="flex items-center space-x-1">
-                    <span>Phone</span>
+                    <span>Contact</span>
                     {sortConfig?.key === 'phone' && (
                       <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                     )}
@@ -802,6 +864,9 @@ export default function TrainersPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">
                       {trainer.phone?.trim() ? trainer.phone : '—'}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {trainer.email?.trim() ? trainer.email : '—'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

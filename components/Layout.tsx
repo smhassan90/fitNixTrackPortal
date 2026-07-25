@@ -95,7 +95,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {!sidebarOpen && (
         <button
           onClick={toggleSidebar}
-          className="sidebar-toggle fixed left-4 top-4 z-30 rounded-xl bg-primary p-2.5 text-ink shadow-lg transition-colors hover:bg-primary-dark hover:text-white lg:top-6"
+          className="sidebar-toggle fixed left-4 top-4 z-30 rounded-xl bg-primary p-2.5 text-ink shadow-lg transition-colors hover:bg-primary-dark active:bg-primary-dark hover:text-white lg:top-6"
           title="Open sidebar"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

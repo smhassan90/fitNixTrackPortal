@@ -338,7 +338,7 @@ export default function PosCheckoutPage() {
                 type="button"
                 disabled={checkingOut || cart.length === 0}
                 onClick={checkout}
-                className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-dark active:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {checkingOut ? 'Processing…' : 'Complete sale'}
               </button>

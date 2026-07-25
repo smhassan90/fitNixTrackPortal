@@ -388,7 +388,7 @@ export default function SettingsPage() {
                     <button
                       onClick={handleSaveAdmission}
                       disabled={!canEditSettings || saving}
-                      className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 sm:w-auto"
+                      className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50 sm:w-auto"
                     >
                       Save
                     </button>
@@ -452,7 +452,7 @@ export default function SettingsPage() {
                     <button
                       onClick={handleSaveMaxMemberDiscount}
                       disabled={!canEditSettings || saving}
-                      className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50 sm:w-auto"
+                      className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50 sm:w-auto"
                     >
                       Save
                     </button>
@@ -558,7 +558,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={handleSaveAttendance}
                 disabled={!canManageAttendancePolicy || saving}
-                className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white hover:bg-primary-dark disabled:opacity-50 sm:w-auto"
+                className="w-full rounded-lg bg-primary px-6 py-2 font-medium text-white hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50 sm:w-auto"
               >
                 {saving ? 'Saving…' : 'Save attendance policies'}
               </button>

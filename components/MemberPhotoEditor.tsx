@@ -208,7 +208,7 @@ export default function MemberPhotoEditor({
                   type="button"
                   disabled={busy}
                   onClick={() => openPicker('camera')}
-                  className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-opacity-90 disabled:opacity-50"
+                  className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50"
                   aria-label={hasPhoto ? 'Take a new photo with camera' : 'Take a photo with camera'}
                 >
                   Camera
@@ -228,7 +228,7 @@ export default function MemberPhotoEditor({
                 type="button"
                 disabled={busy}
                 onClick={() => openPicker('gallery')}
-                className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-opacity-90 disabled:opacity-50"
+                className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50"
                 aria-label={hasPhoto ? 'Change member photo' : 'Add member photo'}
               >
                 {hasPhoto ? 'Change photo' : 'Add photo'}

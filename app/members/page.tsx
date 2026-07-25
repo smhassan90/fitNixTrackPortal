@@ -1074,7 +1074,7 @@ export default function MembersPage() {
                 type="button"
                 onClick={submitStatusAction}
                 disabled={statusSubmitting}
-                className="flex-1 rounded-lg bg-primary px-4 py-2 font-medium text-white hover:bg-opacity-90 disabled:opacity-50"
+                className="flex-1 rounded-lg bg-primary px-4 py-2 font-medium text-white hover:bg-primary-dark active:bg-primary-dark disabled:opacity-50"
               >
                 {statusSubmitting ? 'Saving…' : statusDialog.action === 'deactivate' ? 'Deactivate' : 'Reactivate'}
               </button>
@@ -1100,7 +1100,7 @@ export default function MembersPage() {
                   {canManage && (
                     <button
                       onClick={openAddForm}
-                      className="w-full rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-opacity-90 sm:w-auto"
+                      className="w-full rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-dark active:bg-primary-dark sm:w-auto"
                     >
                       + Add Member
                     </button>
@@ -1142,7 +1142,7 @@ export default function MembersPage() {
               </div>
               <button
                 onClick={() => setSearchQuery(searchInput)}
-                className="w-full rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-opacity-90 sm:w-auto"
+                className="w-full rounded-lg bg-primary px-4 py-2 text-white transition-colors hover:bg-primary-dark active:bg-primary-dark sm:w-auto"
               >
                 Go
               </button>
@@ -1655,7 +1655,7 @@ export default function MembersPage() {
               <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:gap-4">
                 <button
                   type="submit"
-                  className="rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-opacity-90"
+                  className="rounded-lg bg-primary px-6 py-2 font-medium text-white transition-colors hover:bg-primary-dark active:bg-primary-dark"
                 >
                   {editingMember ? 'Update Member' : 'Add Member'}
                 </button>

@@ -529,7 +529,7 @@ export default function PackagesPage() {
             ) : (
             <button
               onClick={openAddForm}
-              className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+              className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-dark active:bg-primary-dark transition-colors"
             >
               + Add Package
             </button>
@@ -759,7 +759,7 @@ export default function PackagesPage() {
                 <button
                   type="submit"
                   disabled={submitting || loading}
-                  className="bg-primary text-white py-2 px-6 rounded-lg hover:bg-opacity-90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-primary text-white py-2 px-6 rounded-lg hover:bg-primary-dark active:bg-primary-dark transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting || loading ? (
                     <>

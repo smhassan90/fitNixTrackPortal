@@ -263,7 +263,7 @@ export default function PlatformGymsPage() {
           <button
             type="button"
             onClick={applyFilters}
-            className="rounded-lg bg-primary px-4 py-2 text-sm text-white hover:bg-primary-dark"
+            className="rounded-lg bg-primary px-4 py-2 text-sm text-white hover:bg-primary-dark active:bg-primary-dark"
           >
             Apply
           </button>

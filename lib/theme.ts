@@ -29,7 +29,7 @@ export const THEME_FIELD_META: Array<{
   { key: 'ink', label: 'Ink (dark)', hint: 'Sidebar & strong text' },
   { key: 'surface', label: 'Surface (dark)', hint: 'Dark panels & depth' },
   { key: 'primary', label: 'Primary (green)', hint: 'Buttons & accents' },
-  { key: 'primaryDark', label: 'Primary dark', hint: 'Hover / pressed' },
+  { key: 'primaryDark', label: 'Primary dark', hint: 'Button hover & press' },
   { key: 'canvas', label: 'Canvas (light)', hint: 'Page background' },
 ];
 
