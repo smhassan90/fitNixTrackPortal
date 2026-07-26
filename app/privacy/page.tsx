@@ -210,7 +210,14 @@ const sections: Array<{ id: string; title: string; body: ReactNode }> = [
         </ul>
         <p>
           Many profile updates can be made through the App or by contacting your gym&apos;s admin.
-          For privacy requests, email us at{' '}
+          To request deletion of your account and associated personal data, use our{' '}
+          <Link
+            href="/account-deletion"
+            className="font-semibold text-[#337418] underline underline-offset-2 hover:text-[#5DD62C]"
+          >
+            account deletion request form
+          </Link>{' '}
+          or email{' '}
           <a
             href={`mailto:${CONTACT_EMAIL}`}
             className="text-[#337418] underline underline-offset-2 hover:text-[#5DD62C]"
@@ -275,6 +282,14 @@ const sections: Array<{ id: string; title: string; body: ReactNode }> = [
           >
             {CONTACT_EMAIL}
           </a>
+          <br />
+          Account deletion:{' '}
+          <Link
+            href="/account-deletion"
+            className="font-medium text-[#337418] underline underline-offset-2 hover:text-[#5DD62C]"
+          >
+            fitnixtrack.vercel.app/account-deletion
+          </Link>
         </p>
       </>
     ),
@@ -309,6 +324,23 @@ export default function PrivacyPolicyPage() {
             How FitNix Track collects, uses, and protects information in the Android mobile app.
           </p>
           <p className="mt-4 text-sm text-black/55">Effective date: {EFFECTIVE_DATE}</p>
+        </div>
+
+        <div className="mt-8 flex flex-col gap-3 rounded-2xl border border-[#5DD62C]/35 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className={`${brandFont.className} font-bold text-[#0f0f0f]`}>
+              Want your account deleted?
+            </p>
+            <p className="mt-1 text-sm text-[#202020]/90">
+              Submit a request to delete your FitNix Track account and associated personal data.
+            </p>
+          </div>
+          <Link
+            href="/account-deletion"
+            className="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#5DD62C] px-4 py-2.5 text-sm font-semibold text-[#0f0f0f] transition hover:bg-[#337418] hover:text-white"
+          >
+            Request account deletion
+          </Link>
         </div>
 
         <nav
