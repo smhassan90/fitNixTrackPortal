@@ -45,6 +45,14 @@ export function expandPermissionKeys(keys: Iterable<string>): Set<string> {
     imply('gym.members.manage', 'gym.members.read');
     imply('gym.trainers.delete', 'gym.trainers.manage', 'gym.trainers.read');
     imply('gym.trainers.manage', 'gym.trainers.read');
+    imply('gym.employees.delete', 'gym.employees.manage', 'gym.employees.read');
+    imply('gym.employees.manage', 'gym.employees.read');
+    imply(
+      'gym.employeeAttendance.manage',
+      'gym.employeeAttendance.read',
+      'gym.employees.read'
+    );
+    imply('gym.employeeAttendance.read', 'gym.employees.read');
     imply('gym.packages.manage', 'gym.packages.read');
     imply('gym.packageFeatures.manage', 'gym.packages.read');
     imply('gym.payments.delete', 'gym.payments.manage', 'gym.payments.read');
@@ -69,6 +77,11 @@ const LEGACY_MANAGER_KEYS = [
   'gym.trainers.read',
   'gym.trainers.manage',
   'gym.trainers.delete',
+  'gym.employees.read',
+  'gym.employees.manage',
+  'gym.employees.delete',
+  'gym.employeeAttendance.read',
+  'gym.employeeAttendance.manage',
   'gym.packages.read',
   'gym.packages.manage',
   'gym.payments.read',
@@ -84,6 +97,8 @@ const LEGACY_STAFF_KEYS = [
   'gym.dashboard.read',
   'gym.members.read',
   'gym.trainers.read',
+  'gym.employees.read',
+  'gym.employeeAttendance.read',
   'gym.packages.read',
   'gym.payments.read',
   'gym.devices.read',

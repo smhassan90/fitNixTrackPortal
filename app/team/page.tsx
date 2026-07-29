@@ -27,6 +27,7 @@ import {
 import { getErrorMessage } from '@/lib/errorHandler';
 import { isGymAdmin } from '@/lib/gymRoles';
 import { POS_TEAM_PERMISSION_DEFS } from '@/lib/pos/permissions';
+import { EMPLOYEE_TEAM_PERMISSION_DEFS } from '@/lib/employeePermissions';
 
 const emptyForm = () => ({
   name: '',
@@ -87,13 +88,13 @@ export default function TeamPage() {
       const data = await fetchGymPermissionsCatalog();
       const merged = [...data.permissions];
       const keys = new Set(merged.map((p) => p.key));
-      for (const p of POS_TEAM_PERMISSION_DEFS) {
+      for (const p of [...POS_TEAM_PERMISSION_DEFS, ...EMPLOYEE_TEAM_PERMISSION_DEFS]) {
         if (!keys.has(p.key)) merged.push({ ...p });
       }
       setCatalog(merged);
       setAlwaysAvailable(data.alwaysAvailable);
     } catch {
-      setCatalog([...POS_TEAM_PERMISSION_DEFS]);
+      setCatalog([...POS_TEAM_PERMISSION_DEFS, ...EMPLOYEE_TEAM_PERMISSION_DEFS]);
       setAlwaysAvailable([
         {
           key: 'gym.attendance.read',

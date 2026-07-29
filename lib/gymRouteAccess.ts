@@ -27,6 +27,8 @@ export const GYM_ROUTE_ACCESS: RouteAccessRule[] = [
   { prefix: '/dashboard', permission: 'gym.dashboard.read' },
   { prefix: '/members', permission: 'gym.members.read' },
   { prefix: '/trainers', permission: 'gym.trainers.read' },
+  { prefix: '/employees', permission: 'gym.employees.read' },
+  { prefix: '/employee-attendance', permission: 'gym.employeeAttendance.read' },
   { prefix: '/packages', permission: 'gym.packages.read' },
   { prefix: '/attendance', /* always */ },
   { prefix: '/payments', permission: 'gym.payments.read' },
@@ -72,6 +74,8 @@ export function firstAllowedGymPath(
   if (can('gym.pos.revenue.read')) return '/pos/reports';
   if (can('gym.pos.products.manage')) return '/pos/setup';
   if (can('gym.trainers.read')) return '/trainers';
+  if (can('gym.employees.read')) return '/employees';
+  if (can('gym.employeeAttendance.read')) return '/employee-attendance';
   if (can('gym.packages.read')) return '/packages';
   if (can('gym.financialReports.read')) return '/reports';
   if (can('gym.settings.read')) return '/settings';

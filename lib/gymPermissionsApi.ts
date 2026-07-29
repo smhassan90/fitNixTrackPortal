@@ -120,6 +120,10 @@ export function togglePermissionKeyWithCascade(
     } else if (key.endsWith('.manage')) {
       if (hasRead) set.add(readKey);
     }
+    // Employee attendance manage also needs employee roster read
+    if (key === 'gym.employeeAttendance.manage' || key === 'gym.employeeAttendance.read') {
+      if (allKeys.includes('gym.employees.read')) set.add('gym.employees.read');
+    }
   } else {
     set.delete(key);
     if (key.endsWith('.read')) {
