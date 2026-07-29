@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
 import PosMemberPicker from '@/components/pos/PosMemberPicker';
+import PosNutrientFormTabs from '@/components/pos/PosNutrientFormTabs';
 import PosPermissionGate from '@/components/pos/PosPermissionGate';
 import PosReceiptModal from '@/components/pos/PosReceiptModal';
 import PosProductTypeTabs from '@/components/pos/PosProductTypeTabs';
@@ -15,9 +16,15 @@ import {
   posErrorMessage,
   searchPosCheckoutProducts,
 } from '@/lib/pos/posApi';
+import {
+  buildNutrientSubcategoryIdSets,
+  matchesNutrientSellFilter,
+  nutrientFormBadgeLabel,
+  resolveProductNutrientForm,
+  type PosNutrientSellFilter,
+} from '@/lib/pos/nutrientForm';
 import { POS_PERMISSION_KEYS } from '@/lib/pos/permissions';
 import {
-  applyLineDiscount,
   availableStock,
   canAddToCart,
   cartLineTotal,
@@ -35,6 +42,7 @@ export default function PosCheckoutPage() {
   const { alert, showAlert, closeAlert } = useAlert();
 
   const [productType, setProductType] = useState<PosProductType>('NUTRIENT');
+  const [nutrientFilter, setNutrientFilter] = useState<PosNutrientSellFilter>('ALL');
   const [search, setSearch] = useState('');
   const [subcategoryId, setSubcategoryId] = useState<number | ''>('');
   const [products, setProducts] = useState<PosProduct[]>([]);
@@ -50,22 +58,41 @@ export default function PosCheckoutPage() {
   const [receiptPhone, setReceiptPhone] = useState<string | null>(null);
   const [subcategories, setSubcategories] = useState<Array<{ id: number; name: string }>>([]);
 
+  const { packagedIds, servingIds } = useMemo(
+    () => buildNutrientSubcategoryIdSets(subcategories),
+    [subcategories]
+  );
+
   const loadCatalog = useCallback(async () => {
     const cats = await fetchPosCatalog(false);
     const subs: Array<{ id: number; name: string; productType: PosProductType }> = [];
     for (const c of cats) {
       for (const s of c.subcategories ?? []) {
-        if (s.enabledForGym !== false) subs.push({ id: s.id, name: s.name, productType: c.productType });
+        if (s.enabledForGym !== false) {
+          subs.push({
+            id: s.id,
+            name: s.name,
+            productType: (s.productType ?? c.productType) as PosProductType,
+          });
+        }
       }
     }
-    setSubcategories(subs.filter((s) => s.productType === productType).map(({ id, name }) => ({ id, name })));
+    setSubcategories(
+      subs.filter((s) => s.productType === productType).map(({ id, name }) => ({ id, name }))
+    );
   }, [productType]);
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
     try {
-      let list = await searchPosCheckoutProducts({ search, productType });
-      if (subcategoryId) list = list.filter((p) => p.subcategoryId === subcategoryId);
+      // Load full nutrient/accessory list; All | Nutrient | Serving is applied client-side
+      // (works even when API `form` is missing or not yet deployed).
+      const list = await searchPosCheckoutProducts({
+        search,
+        productType,
+        subcategoryId:
+          productType === 'ACCESSORY' && subcategoryId ? Number(subcategoryId) : undefined,
+      });
       setProducts(list);
     } catch (e) {
       showAlert('error', 'Could not load products', posErrorMessage(e));
@@ -73,6 +100,13 @@ export default function PosCheckoutPage() {
       setLoading(false);
     }
   }, [search, productType, subcategoryId, showAlert]);
+
+  const visibleProducts = useMemo(() => {
+    if (productType !== 'NUTRIENT' || nutrientFilter === 'ALL') return products;
+    return products.filter((p) =>
+      matchesNutrientSellFilter(p, nutrientFilter, packagedIds, servingIds)
+    );
+  }, [products, productType, nutrientFilter, packagedIds, servingIds]);
 
   useEffect(() => {
     if (canSell) void loadCatalog();
@@ -84,6 +118,7 @@ export default function PosCheckoutPage() {
 
   useEffect(() => {
     setSubcategoryId('');
+    setNutrientFilter('ALL');
   }, [productType]);
 
   const totals = useMemo(() => cartTotals(cart), [cart]);
@@ -200,24 +235,48 @@ export default function PosCheckoutPage() {
           <div className="lg:col-span-2 space-y-4">
             <div className="flex flex-wrap gap-3">
               <PosProductTypeTabs value={productType} onChange={setProductType} />
-              <select
+              {productType === 'NUTRIENT' ? (
+                <PosNutrientFormTabs value={nutrientFilter} onChange={setNutrientFilter} />
+              ) : (
+                <select
+                  className="rounded-lg border px-3 py-2 text-sm"
+                  value={subcategoryId}
+                  onChange={(e) => setSubcategoryId(e.target.value ? Number(e.target.value) : '')}
+                >
+                  <option value="">All subcategories</option>
+                  {subcategories.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <input
                 className="rounded-lg border px-3 py-2 text-sm"
-                value={subcategoryId}
-                onChange={(e) => setSubcategoryId(e.target.value ? Number(e.target.value) : '')}
-              >
-                <option value="">All subcategories</option>
-                {subcategories.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              <input className="rounded-lg border px-3 py-2 text-sm" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
+                placeholder="Search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
             {loading ? (
               <Loading message="Loading products…" />
+            ) : visibleProducts.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500">
+                No products in this view.
+                {productType === 'NUTRIENT' && nutrientFilter !== 'ALL'
+                  ? ' Try All, or check POS Setup has Packaged and Serving enabled.'
+                  : null}
+              </p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {products.map((p) => {
+                {visibleProducts.map((p) => {
                   const stock = availableStock(p);
+                  const formBadge =
+                    productType === 'NUTRIENT'
+                      ? nutrientFormBadgeLabel(
+                          resolveProductNutrientForm(p, packagedIds, servingIds)
+                        )
+                      : null;
                   return (
                     <button
                       key={p.id}
@@ -225,7 +284,20 @@ export default function PosCheckoutPage() {
                       onClick={() => addToCart(p)}
                       className="rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm hover:border-primary/40"
                     >
-                      <p className="font-medium text-dark-gray">{p.name}</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-medium text-dark-gray">{p.name}</p>
+                        {formBadge && (
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                              formBadge === 'Serving'
+                                ? 'bg-sky-100 text-sky-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {formBadge}
+                          </span>
+                        )}
+                      </div>
                       <p className="mt-1 text-sm text-primary">{formatMoney(p.price)}</p>
                       {stock != null && <p className="mt-1 text-xs text-gray-500">Stock: {stock}</p>}
                     </button>

@@ -146,11 +146,26 @@ export function normalizeProduct(row: unknown): PosProduct | null {
   const id = num(o.id);
   if (!id) return null;
   const productType = pickStr(o.productType).toUpperCase() as PosProductType;
+
+  const subObj = asObj(o.subcategory) ?? asObj(o.Subcategory);
+  const subcategoryId = num(o.subcategoryId ?? subObj?.id);
+  const subcategoryName =
+    pickStr(o.subcategoryName ?? o.subCategoryName ?? subObj?.name) || undefined;
+
+  const formRaw = pickStr(o.form ?? o.nutrientForm ?? subObj?.form).toUpperCase();
+  let form: NutrientForm | null =
+    formRaw === 'PACKAGED' || formRaw === 'SERVING' ? formRaw : null;
+  if (!form && subcategoryName) {
+    const n = subcategoryName.trim().toLowerCase();
+    if (n === 'packaged' || n.includes('packaged')) form = 'PACKAGED';
+    else if (n === 'serving' || n.includes('serving')) form = 'SERVING';
+  }
+
   return {
     id,
     productType: productType === 'ACCESSORY' ? 'ACCESSORY' : 'NUTRIENT',
-    subcategoryId: num(o.subcategoryId),
-    subcategoryName: pickStr(o.subcategoryName) || undefined,
+    subcategoryId,
+    subcategoryName,
     categoryName: pickStr(o.categoryName) || undefined,
     name: pickStr(o.name) || '—',
     sku: pickStr(o.sku) || null,
@@ -158,7 +173,7 @@ export function normalizeProduct(row: unknown): PosProduct | null {
     price: num(o.price),
     discount: o.discount != null ? num(o.discount) : null,
     isActive: o.isActive !== false,
-    form: (pickStr(o.form).toUpperCase() as NutrientForm) || null,
+    form,
     brand: pickStr(o.brand) || null,
     description: pickStr(o.description) || null,
     servingSizeG: o.servingSizeG != null ? num(o.servingSizeG) : null,
@@ -255,6 +270,9 @@ export async function saveGymSubcategories(subcategoryIds: number[]): Promise<vo
 
 export async function fetchPosProducts(params: {
   productType?: PosProductType;
+  /** PACKAGED | SERVING — backend filters nutrients; do not combine with ACCESSORY. */
+  form?: NutrientForm;
+  subcategoryId?: number;
   search?: string;
   page?: number;
   limit?: number;
@@ -265,6 +283,8 @@ export async function fetchPosProducts(params: {
   const res = await api.get('/api/pos/products', {
     params: {
       productType: params.productType,
+      form: params.form || undefined,
+      subcategoryId: params.subcategoryId || undefined,
       search: params.search || undefined,
       page,
       limit,
@@ -466,9 +486,12 @@ export async function searchPosCheckoutProducts(params: {
   search?: string;
   subcategoryId?: number;
   productType?: PosProductType;
+  form?: NutrientForm;
 }): Promise<PosProduct[]> {
   const { products } = await fetchPosProducts({
     productType: params.productType,
+    form: params.form,
+    subcategoryId: params.subcategoryId,
     search: params.search,
     page: 1,
     limit: 200,

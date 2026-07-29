@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
+import PosNutrientFormTabs from '@/components/pos/PosNutrientFormTabs';
 import PosPermissionGate from '@/components/pos/PosPermissionGate';
 import PosProductForm, {
   buildProductPayload,
@@ -22,6 +23,14 @@ import {
   posErrorMessage,
   updatePosProduct,
 } from '@/lib/pos/posApi';
+import {
+  buildNutrientSubcategoryIdSets,
+  matchesNutrientSellFilter,
+  nutrientFormBadgeLabel,
+  nutrientSellFilterToApiForm,
+  resolveProductNutrientForm,
+  type PosNutrientSellFilter,
+} from '@/lib/pos/nutrientForm';
 import { posProductImageErrorMessage, uploadPosProductImage } from '@/lib/pos/productImage';
 import { POS_PERMISSION_KEYS } from '@/lib/pos/permissions';
 import { formatMoney } from '@/lib/pos/utils';
@@ -34,6 +43,7 @@ export default function PosProductsPage() {
   const { alert, showAlert, closeAlert } = useAlert();
 
   const [productType, setProductType] = useState<PosProductType>('NUTRIENT');
+  const [nutrientFilter, setNutrientFilter] = useState<PosNutrientSellFilter>('ALL');
   const [search, setSearch] = useState('');
   const [searchApplied, setSearchApplied] = useState('');
   const [page, setPage] = useState(1);
@@ -55,6 +65,14 @@ export default function PosProductsPage() {
     [subcategories, productType]
   );
 
+  const { packagedIds, servingIds } = useMemo(
+    () =>
+      buildNutrientSubcategoryIdSets(
+        enabledSubs.map((s) => ({ id: s.id, name: s.name }))
+      ),
+    [enabledSubs]
+  );
+
   const loadCatalog = useCallback(async () => {
     // Enabled-only catalog for product form dropdowns (not platform catalog).
     const cats = await fetchPosCatalog(false);
@@ -74,21 +92,51 @@ export default function PosProductsPage() {
   const loadProducts = useCallback(async () => {
     setLoading(true);
     try {
+      const apiForm =
+        productType === 'NUTRIENT' ? nutrientSellFilterToApiForm(nutrientFilter) : undefined;
+
+      // When filtering Nutrient/Serving, load a larger unfiltered page then filter client-side
+      // so the UI works even if the API ignores `form` (pagination totals may be approximate).
+      const useClientFormFilter = productType === 'NUTRIENT' && nutrientFilter !== 'ALL';
       const result = await fetchPosProducts({
         productType,
+        form: useClientFormFilter ? undefined : apiForm,
         search: searchApplied || undefined,
-        page,
-        limit: 20,
+        page: useClientFormFilter ? 1 : page,
+        limit: useClientFormFilter ? 200 : 20,
         includeInactive: true,
       });
-      setProducts(result.products);
-      setPagination(result.pagination);
+
+      let list = result.products;
+      if (useClientFormFilter) {
+        list = list.filter((p) =>
+          matchesNutrientSellFilter(p, nutrientFilter, packagedIds, servingIds)
+        );
+        const limit = 20;
+        const total = list.length;
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+        const safePage = Math.min(page, totalPages);
+        const start = (safePage - 1) * limit;
+        setProducts(list.slice(start, start + limit));
+        setPagination({ page: safePage, limit, total, totalPages });
+      } else {
+        setProducts(list);
+        setPagination(result.pagination);
+      }
     } catch (e) {
       showAlert('error', 'Could not load products', posErrorMessage(e));
     } finally {
       setLoading(false);
     }
-  }, [productType, searchApplied, page, showAlert]);
+  }, [
+    productType,
+    nutrientFilter,
+    searchApplied,
+    page,
+    packagedIds,
+    servingIds,
+    showAlert,
+  ]);
 
   useEffect(() => {
     if (!canView) {
@@ -107,7 +155,12 @@ export default function PosProductsPage() {
     setEditing(null);
     setShowForm(false);
     setPage(1);
+    setNutrientFilter('ALL');
   }, [productType]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [nutrientFilter]);
 
   const startAdd = () => {
     setEditing(null);
@@ -179,7 +232,8 @@ export default function PosProductsPage() {
         <div>
           <h1 className="text-2xl font-bold text-dark-gray">POS Products</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Manage gym products in enabled subcategories. For nutrients, add products under Packaged or Serving.
+            Manage gym products in enabled subcategories. For nutrients, use All / Nutrient / Serving
+            to separate packaged products from scoop servings.
           </p>
         </div>
         {canManage && (
@@ -192,6 +246,9 @@ export default function PosProductsPage() {
       <PosPermissionGate allowed={canView}>
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <PosProductTypeTabs value={productType} onChange={setProductType} />
+          {productType === 'NUTRIENT' && (
+            <PosNutrientFormTabs value={nutrientFilter} onChange={setNutrientFilter} />
+          )}
           <input
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
             placeholder="Search name or SKU"
@@ -257,6 +314,7 @@ export default function PosProductsPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Name</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">Type</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">SKU</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Price</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Stock</th>
@@ -267,12 +325,34 @@ export default function PosProductsPage() {
               <tbody className="divide-y divide-gray-100">
                 {products.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No products found.</td>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No products found.</td>
                   </tr>
                 ) : (
-                  products.map((p) => (
+                  products.map((p) => {
+                    const formBadge =
+                      p.productType === 'NUTRIENT'
+                        ? nutrientFormBadgeLabel(
+                            resolveProductNutrientForm(p, packagedIds, servingIds)
+                          )
+                        : null;
+                    return (
                     <tr key={p.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 font-medium">{p.name}</td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {formBadge ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                              formBadge === 'Serving'
+                                ? 'bg-sky-100 text-sky-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {formBadge}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-gray-500">{p.sku || '—'}</td>
                       <td className="px-4 py-3">{formatMoney(p.price)}</td>
                       <td className="px-4 py-3">
@@ -297,7 +377,8 @@ export default function PosProductsPage() {
                         )}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
