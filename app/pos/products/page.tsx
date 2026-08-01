@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
+import Toast from '@/components/Toast';
 import PosNutrientFormTabs from '@/components/pos/PosNutrientFormTabs';
 import PosPermissionGate from '@/components/pos/PosPermissionGate';
 import PosProductForm, {
@@ -13,9 +14,11 @@ import PosProductForm, {
   validateProductForm,
   type PosProductFormState,
 } from '@/components/pos/PosProductForm';
+import type { PendingPosProductImage } from '@/components/pos/PosProductImageGallery';
 import PosProductTypeTabs from '@/components/pos/PosProductTypeTabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAlert } from '@/hooks/useAlert';
+import { useToast } from '@/hooks/useToast';
 import {
   createPosProduct,
   fetchPosCatalog,
@@ -31,16 +34,21 @@ import {
   resolveProductNutrientForm,
   type PosNutrientSellFilter,
 } from '@/lib/pos/nutrientForm';
-import { posProductImageErrorMessage, uploadPosProductImage } from '@/lib/pos/productImage';
+import {
+  posProductImageErrorMessage,
+  resolveProductImageUrl,
+  uploadPosProductImages,
+} from '@/lib/pos/productImage';
 import { POS_PERMISSION_KEYS } from '@/lib/pos/permissions';
 import { formatMoney } from '@/lib/pos/utils';
-import type { PosProduct, PosProductType, PosSubcategory } from '@/lib/pos/types';
+import type { PosProduct, PosProductImage, PosProductType, PosSubcategory } from '@/lib/pos/types';
 
 export default function PosProductsPage() {
   const { can } = useAuth();
   const canView = can(POS_PERMISSION_KEYS.catalogRead);
   const canManage = can(POS_PERMISSION_KEYS.productsManage);
   const { alert, showAlert, closeAlert } = useAlert();
+  const { toast, showToast, closeToast } = useToast();
 
   const [productType, setProductType] = useState<PosProductType>('NUTRIENT');
   const [nutrientFilter, setNutrientFilter] = useState<PosNutrientSellFilter>('ALL');
@@ -55,7 +63,8 @@ export default function PosProductsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<PosProduct | null>(null);
   const [form, setForm] = useState<PosProductFormState>(emptyProductForm('NUTRIENT'));
-  const [pendingImageBlob, setPendingImageBlob] = useState<Blob | null>(null);
+  const [pendingImages, setPendingImages] = useState<PendingPosProductImage[]>([]);
+  const [editingImages, setEditingImages] = useState<PosProductImage[]>([]);
 
   const enabledSubs = useMemo(
     () =>
@@ -162,9 +171,15 @@ export default function PosProductsPage() {
     setPage(1);
   }, [nutrientFilter]);
 
+  const clearPendingPreviews = (list: PendingPosProductImage[]) => {
+    for (const p of list) URL.revokeObjectURL(p.previewUrl);
+  };
+
   const startAdd = () => {
     setEditing(null);
-    setPendingImageBlob(null);
+    clearPendingPreviews(pendingImages);
+    setPendingImages([]);
+    setEditingImages([]);
     setForm(emptyProductForm(productType));
     setShowForm(true);
     void loadCatalog().catch((e) => {
@@ -174,7 +189,9 @@ export default function PosProductsPage() {
 
   const startEdit = (p: PosProduct) => {
     setEditing(p);
-    setPendingImageBlob(null);
+    clearPendingPreviews(pendingImages);
+    setPendingImages([]);
+    setEditingImages(p.images ?? []);
     setForm(productToForm(p));
     setShowForm(true);
   };
@@ -196,16 +213,24 @@ export default function PosProductsPage() {
         showAlert('success', 'Updated', 'Product saved.');
       } else {
         const created = await createPosProduct(payload);
-        if (pendingImageBlob) {
+        if (pendingImages.length > 0) {
           try {
-            await uploadPosProductImage(created.id, pendingImageBlob, 'product.jpg');
+            const featuredFirst = [...pendingImages].sort(
+              (a, b) => Number(b.featured) - Number(a.featured)
+            );
+            await uploadPosProductImages(
+              created.id,
+              featuredFirst.map((p) => p.file),
+              { isFeatured: true }
+            );
           } catch (imgErr) {
             showAlert(
               'warning',
               'Product created',
-              `Product was saved but the image could not be uploaded: ${posProductImageErrorMessage(imgErr)}`
+              `Product was saved but images could not be uploaded: ${posProductImageErrorMessage(imgErr)}`
             );
-            setPendingImageBlob(null);
+            clearPendingPreviews(pendingImages);
+            setPendingImages([]);
             setShowForm(false);
             setEditing(null);
             await loadProducts();
@@ -214,7 +239,9 @@ export default function PosProductsPage() {
         }
         showAlert('success', 'Created', 'Product added.');
       }
-      setPendingImageBlob(null);
+      clearPendingPreviews(pendingImages);
+      setPendingImages([]);
+      setEditingImages([]);
       setShowForm(false);
       setEditing(null);
       await loadProducts();
@@ -228,6 +255,14 @@ export default function PosProductsPage() {
   return (
     <>
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
+      <Toast
+        isOpen={toast.isOpen}
+        onClose={closeToast}
+        type={toast.type}
+        message={toast.message}
+        title={toast.title}
+        duration={3200}
+      />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-dark-gray">POS Products</h1>
@@ -278,9 +313,20 @@ export default function PosProductsPage() {
               setForm={setForm}
               subcategories={enabledSubs}
               productId={editing?.id}
-              onPendingImageChange={setPendingImageBlob}
-              onImageError={(message) => showAlert('error', 'Image', message)}
-              onImageSuccess={(message) => showAlert('success', 'Image', message)}
+              images={editingImages}
+              onGalleryChange={(next) => {
+                setEditingImages(next.images);
+                setForm((f) => ({ ...f, imageUrl: next.imageUrl ?? '' }));
+                setEditing((prev) =>
+                  prev
+                    ? { ...prev, images: next.images, imageUrl: next.imageUrl }
+                    : prev
+                );
+              }}
+              pendingImages={pendingImages}
+              onPendingImagesChange={setPendingImages}
+              onImageError={(message) => showToast('error', message)}
+              onImageSuccess={(message) => showToast('success', message)}
               disabled={saving || enabledSubs.length === 0}
               isEdit={Boolean(editing)}
             />
@@ -296,7 +342,9 @@ export default function PosProductsPage() {
                 type="button"
                 onClick={() => {
                   setShowForm(false);
-                  setPendingImageBlob(null);
+                  clearPendingPreviews(pendingImages);
+                  setPendingImages([]);
+                  setEditingImages([]);
                 }}
                 className="rounded-lg border px-4 py-2 text-sm"
               >
@@ -313,6 +361,7 @@ export default function PosProductsPage() {
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-600">Image</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Name</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">Type</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-600">SKU</th>
@@ -325,7 +374,7 @@ export default function PosProductsPage() {
               <tbody className="divide-y divide-gray-100">
                 {products.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No products found.</td>
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No products found.</td>
                   </tr>
                 ) : (
                   products.map((p) => {
@@ -335,8 +384,21 @@ export default function PosProductsPage() {
                             resolveProductNutrientForm(p, packagedIds, servingIds)
                           )
                         : null;
+                    const thumb = resolveProductImageUrl(p.imageUrl);
                     return (
                     <tr key={p.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="h-10 w-10 overflow-hidden rounded-lg bg-gray-100">
+                          {thumb ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={thumb} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-400">
+                              —
+                            </div>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 font-medium">{p.name}</td>
                       <td className="px-4 py-3 text-gray-600">
                         {formBadge ? (

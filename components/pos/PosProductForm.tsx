@@ -1,8 +1,16 @@
 'use client';
 
 import type { Dispatch, SetStateAction } from 'react';
-import PosProductImageEditor from '@/components/pos/PosProductImageEditor';
-import type { NutrientForm, PosProduct, PosProductType, PosSubcategory } from '@/lib/pos/types';
+import PosProductImageGallery, {
+  type PendingPosProductImage,
+} from '@/components/pos/PosProductImageGallery';
+import type {
+  NutrientForm,
+  PosProduct,
+  PosProductImage,
+  PosProductType,
+  PosSubcategory,
+} from '@/lib/pos/types';
 
 export type PosProductFormState = {
   productType: PosProductType;
@@ -190,7 +198,10 @@ type Props = {
   setForm: Dispatch<SetStateAction<PosProductFormState>>;
   subcategories: PosSubcategory[];
   productId?: string | number | null;
-  onPendingImageChange?: (blob: Blob | null) => void;
+  images?: PosProductImage[];
+  onGalleryChange?: (next: { images: PosProductImage[]; imageUrl: string | null }) => void;
+  pendingImages?: PendingPosProductImage[];
+  onPendingImagesChange?: (next: PendingPosProductImage[]) => void;
   onImageError?: (message: string) => void;
   onImageSuccess?: (message: string) => void;
   disabled?: boolean;
@@ -202,7 +213,10 @@ export default function PosProductForm({
   setForm,
   subcategories,
   productId,
-  onPendingImageChange,
+  images = [],
+  onGalleryChange,
+  pendingImages = [],
+  onPendingImagesChange,
   onImageError,
   onImageSuccess,
   disabled,
@@ -260,12 +274,17 @@ export default function PosProductForm({
         />
       </label>
 
-      <PosProductImageEditor
+      <PosProductImageGallery
         productId={productId}
+        images={images}
         imageUrl={form.imageUrl || null}
         disabled={disabled}
-        onImageUrlChange={(url) => set({ imageUrl: url ?? '' })}
-        onPendingImageChange={onPendingImageChange}
+        onGalleryChange={(next) => {
+          set({ imageUrl: next.imageUrl ?? '' });
+          onGalleryChange?.(next);
+        }}
+        pendingImages={pendingImages}
+        onPendingImagesChange={onPendingImagesChange}
         onError={onImageError}
         onSuccess={onImageSuccess}
       />

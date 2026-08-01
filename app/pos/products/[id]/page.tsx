@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Alert from '@/components/Alert';
 import Loading from '@/components/Loading';
@@ -17,6 +17,7 @@ import {
   posErrorMessage,
   restockProduct,
 } from '@/lib/pos/posApi';
+import { resolveProductImageUrl } from '@/lib/pos/productImage';
 import { POS_PERMISSION_KEYS } from '@/lib/pos/permissions';
 import { formatMoney } from '@/lib/pos/utils';
 import type { PosProduct, PosStockHistoryEntry } from '@/lib/pos/types';
@@ -35,6 +36,7 @@ export default function PosProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [restockOpen, setRestockOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [activeImageId, setActiveImageId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -43,6 +45,8 @@ export default function PosProductDetailPage() {
       const [p, h] = await Promise.all([fetchPosProduct(id), fetchStockHistory(id)]);
       setProduct(p);
       setHistory(h);
+      const featured = p.images?.find((i) => i.isFeatured) ?? p.images?.[0];
+      setActiveImageId(featured?.id ?? null);
     } catch (e) {
       showAlert('error', 'Could not load product', posErrorMessage(e));
     } finally {
@@ -55,34 +59,125 @@ export default function PosProductDetailPage() {
     else setLoading(false);
   }, [canView, id, load]);
 
+  const gallery = useMemo(() => {
+    if (!product) return [];
+    if (product.images?.length) {
+      return [...product.images].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    }
+    if (product.imageUrl) {
+      return [{ id: 0, url: product.imageUrl, isFeatured: true, sortOrder: 0 }];
+    }
+    return [];
+  }, [product]);
+
+  const activeImage = gallery.find((i) => i.id === activeImageId) ?? gallery[0] ?? null;
+  const heroUrl = resolveProductImageUrl(activeImage?.url ?? product?.imageUrl);
+
   const trackInventory = product?.trackInventory !== false;
 
   return (
     <>
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
-      <Link href="/pos/products" className="text-sm text-primary hover:underline">← Back to products</Link>
+      <Link href="/pos/products" className="text-sm text-primary hover:underline">
+        ← Back to products
+      </Link>
       <PosPermissionGate allowed={canView}>
         {loading || !product ? (
           <Loading message="Loading product…" />
         ) : (
           <div className="mt-4 space-y-6">
             <div className="rounded-xl border border-gray-200 bg-white p-5">
-              <h1 className="text-xl font-bold text-dark-gray">{product.name}</h1>
-              <p className="mt-1 text-sm text-gray-500">{product.productType} · {product.form ?? '—'}</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
-                <div><span className="text-gray-500">Price</span><p className="font-medium">{formatMoney(product.price)}</p></div>
-                <div><span className="text-gray-500">Stock</span><p className="font-medium">{trackInventory ? product.stockQuantity ?? 0 : 'Not tracked'}</p></div>
-                <div><span className="text-gray-500">Low stock</span><p className="font-medium">{product.isLowStock ? 'Yes' : 'No'}</p></div>
-              </div>
-              {canInventory && trackInventory && (
-                <div className="mt-4 flex gap-2">
-                  <button type="button" onClick={() => setRestockOpen(true)} className="rounded-lg bg-primary px-3 py-1.5 text-sm text-white">Restock</button>
-                  <button type="button" onClick={() => setAdjustOpen(true)} className="rounded-lg border px-3 py-1.5 text-sm">Adjust stock</button>
+              <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+                <div>
+                  <div className="aspect-square overflow-hidden rounded-xl bg-gray-100">
+                    {heroUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={heroUrl} alt={product.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm text-gray-400">
+                        No image
+                      </div>
+                    )}
+                  </div>
+                  {gallery.length > 1 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {gallery.map((img) => {
+                        const src = resolveProductImageUrl(img.url);
+                        const selected = (activeImage?.id ?? null) === img.id;
+                        return (
+                          <button
+                            key={img.id}
+                            type="button"
+                            onClick={() => setActiveImageId(img.id)}
+                            className={`relative h-14 w-14 overflow-hidden rounded-lg border-2 ${
+                              selected ? 'border-primary' : 'border-transparent'
+                            }`}
+                          >
+                            {src ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={src} alt="" className="h-full w-full object-cover" />
+                            ) : null}
+                            {img.isFeatured && (
+                              <span className="absolute bottom-0 left-0 right-0 bg-primary/90 text-[8px] font-bold uppercase text-ink">
+                                Featured
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-              {canInventory && !trackInventory && (
-                <p className="mt-3 text-xs text-gray-500">Restock is disabled when inventory is not tracked.</p>
-              )}
+
+                <div>
+                  <h1 className="text-xl font-bold text-dark-gray">{product.name}</h1>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {product.productType} · {product.form ?? '—'}
+                    {gallery.length > 0
+                      ? ` · ${gallery.length} image${gallery.length === 1 ? '' : 's'}`
+                      : ''}
+                  </p>
+                  <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                    <div>
+                      <span className="text-gray-500">Price</span>
+                      <p className="font-medium">{formatMoney(product.price)}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Stock</span>
+                      <p className="font-medium">
+                        {trackInventory ? product.stockQuantity ?? 0 : 'Not tracked'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Low stock</span>
+                      <p className="font-medium">{product.isLowStock ? 'Yes' : 'No'}</p>
+                    </div>
+                  </div>
+                  {canInventory && trackInventory && (
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRestockOpen(true)}
+                        className="rounded-lg bg-primary px-3 py-1.5 text-sm text-white"
+                      >
+                        Restock
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAdjustOpen(true)}
+                        className="rounded-lg border px-3 py-1.5 text-sm"
+                      >
+                        Adjust stock
+                      </button>
+                    </div>
+                  )}
+                  {canInventory && !trackInventory && (
+                    <p className="mt-3 text-xs text-gray-500">
+                      Restock is disabled when inventory is not tracked.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white">
@@ -105,7 +200,9 @@ export default function PosProductDetailPage() {
                       <tr key={h.id}>
                         <td className="px-4 py-2">{formatDate(h.createdAt)}</td>
                         <td className="px-4 py-2">{h.changeType}</td>
-                        <td className="px-4 py-2">{h.quantityChange > 0 ? `+${h.quantityChange}` : h.quantityChange}</td>
+                        <td className="px-4 py-2">
+                          {h.quantityChange > 0 ? `+${h.quantityChange}` : h.quantityChange}
+                        </td>
                         <td className="px-4 py-2">{h.stockAfter}</td>
                         <td className="px-4 py-2 text-gray-500">{h.note || '—'}</td>
                       </tr>

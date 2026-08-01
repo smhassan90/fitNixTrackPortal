@@ -6,6 +6,7 @@ import type {
   PosCategory,
   PosPagination,
   PosProduct,
+  PosProductImage,
   PosProductType,
   PosReportSummaryRow,
   PosSale,
@@ -140,6 +141,28 @@ export function normalizePosCatalogResponse(data: unknown): PosCategory[] {
   return flatList.map((row) => normalizeCategory(row)).filter((c): c is PosCategory => c != null);
 }
 
+function normalizeProductImage(row: unknown, index = 0): PosProductImage | null {
+  const o = asObj(row);
+  if (!o) return null;
+  const id = num(o.id);
+  const url = pickStr(o.url ?? o.imageUrl ?? o.path);
+  if (!id || !url) return null;
+  return {
+    id,
+    url,
+    isFeatured: o.isFeatured === true || o.featured === true,
+    sortOrder: o.sortOrder != null ? num(o.sortOrder) : index,
+  };
+}
+
+export function normalizeProductImages(raw: unknown): PosProductImage[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((row, i) => normalizeProductImage(row, i))
+    .filter((img): img is PosProductImage => img != null)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+}
+
 export function normalizeProduct(row: unknown): PosProduct | null {
   const o = asObj(row);
   if (!o) return null;
@@ -161,6 +184,12 @@ export function normalizeProduct(row: unknown): PosProduct | null {
     else if (n === 'serving' || n.includes('serving')) form = 'SERVING';
   }
 
+  const images = normalizeProductImages(o.images);
+  let imageUrl = pickStr(o.imageUrl ?? o.image) || null;
+  if (!imageUrl && images.length) {
+    imageUrl = images.find((i) => i.isFeatured)?.url ?? images[0]?.url ?? null;
+  }
+
   return {
     id,
     productType: productType === 'ACCESSORY' ? 'ACCESSORY' : 'NUTRIENT',
@@ -169,7 +198,8 @@ export function normalizeProduct(row: unknown): PosProduct | null {
     categoryName: pickStr(o.categoryName) || undefined,
     name: pickStr(o.name) || '—',
     sku: pickStr(o.sku) || null,
-    imageUrl: pickStr(o.imageUrl ?? o.image) || null,
+    imageUrl,
+    images,
     price: num(o.price),
     discount: o.discount != null ? num(o.discount) : null,
     isActive: o.isActive !== false,

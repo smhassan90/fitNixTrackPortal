@@ -3,6 +3,13 @@ export type NutrientForm = 'PACKAGED' | 'SERVING';
 export type PosSaleStatus = 'COMPLETED' | 'VOIDED' | 'PENDING';
 export type PosDiscountType = 'PERCENT' | 'FLAT';
 
+export interface PosProductImage {
+  id: number;
+  url: string;
+  isFeatured: boolean;
+  sortOrder: number;
+}
+
 export interface PosCategory {
   id: number;
   name: string;
@@ -30,6 +37,8 @@ export interface PosProduct {
   name: string;
   sku?: string | null;
   imageUrl?: string | null;
+  /** Gallery images (max 5). Exactly one should be featured when non-empty. */
+  images?: PosProductImage[];
   price: number;
   discount?: number | null;
   isActive: boolean;
