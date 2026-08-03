@@ -62,6 +62,35 @@ function hexToRgbChannels(hex: string): string {
   return `${r} ${g} ${b}`;
 }
 
+function hexToRgb(hex: string): [number, number, number] | null {
+  const normalized = normalizeHexColor(hex, '');
+  if (!normalized || !isValidHexColor(normalized)) return null;
+  const h = normalized.slice(1);
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** WCAG relative luminance (0 = black, 1 = white). */
+export function relativeLuminance(hex: string): number {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return 0;
+  const [r, g, b] = rgb.map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** True when background is light enough that dark text reads better. */
+export function isLightColor(hex: string, threshold = 0.45): boolean {
+  return relativeLuminance(hex) > threshold;
+}
+
+/** Tailwind text class for readable contrast on a hex background. */
+export function contrastTextClassOn(bgHex: string): 'text-white' | 'text-ink' {
+  return isLightColor(bgHex) ? 'text-ink' : 'text-white';
+}
+
 /** Merge partial theme with defaults. */
 export function resolveTheme(partial?: Partial<GymThemeColors> | null): GymThemeColors {
   return {

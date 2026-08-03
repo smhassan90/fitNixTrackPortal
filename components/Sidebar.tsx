@@ -9,6 +9,7 @@ import FitNixLogo from '@/components/FitNixLogo';
 import { isGymAdmin } from '@/lib/gymRoles';
 import { firstPosPath, hasAnyPosPermission } from '@/lib/pos/permissions';
 import { resolveGymLogoUrl } from '@/lib/resolveMediaUrl';
+import { contrastTextClassOn, isLightColor, resolveTheme } from '@/lib/theme';
 
 type NavItem = {
   name: string;
@@ -185,12 +186,20 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout, can } = useAuth();
-  const { settings } = useGymSettings();
+  const { settings, gymTheme } = useGymSettings();
   const admin = isGymAdmin(user?.role);
 
   const gymLogoUrl = resolveGymLogoUrl(settings?.gym.logoUrl || user?.gymLogoUrl);
   const gymDisplayName = settings?.gym.name?.trim() || user?.gymName?.trim() || 'Gym';
   const [logoFailed, setLogoFailed] = useState(false);
+
+  const primary = resolveTheme(gymTheme).primary;
+  const activeNavTextClass = contrastTextClassOn(primary);
+  const activeNavBarClass = isLightColor(primary) ? 'bg-ink/40' : 'bg-white/50';
+  const primaryOnDarkHover =
+    activeNavTextClass === 'text-ink'
+      ? 'hover:bg-primary-dark hover:text-white active:bg-primary-dark'
+      : 'hover:bg-primary-dark active:bg-primary-dark';
 
   useEffect(() => {
     setLogoFailed(false);
@@ -350,16 +359,16 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                     }}
                     className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 group ${
                       isActive
-                        ? 'bg-primary text-ink shadow-md shadow-primary/20'
-                        : 'text-white/70 hover:bg-white/10 hover:text-white hover:translate-x-1'
+                        ? `bg-primary ${activeNavTextClass} shadow-md shadow-primary/20`
+                        : 'text-white hover:bg-white/10 hover:translate-x-1'
                     }`}
                   >
-                    <span className={`mr-3 ${isActive ? 'text-ink' : 'text-white/45 group-hover:text-white'}`}>
+                    <span className={`mr-3 ${isActive ? activeNavTextClass : 'text-white'}`}>
                       {item.icon}
                     </span>
                     <span className="font-medium">{item.name}</span>
                     {isActive && (
-                      <span className="ml-auto w-1.5 h-6 bg-ink/40 rounded-full"></span>
+                      <span className={`ml-auto h-6 w-1.5 rounded-full ${activeNavBarClass}`} />
                     )}
                   </Link>
                 </li>
@@ -380,7 +389,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         <div className="mb-4 p-3 bg-white/5 rounded-xl ring-1 ring-white/10">
           <div className="flex items-center space-x-3 mb-2">
             <div className="bg-primary w-10 h-10 rounded-full flex items-center justify-center">
-              <span className="text-ink font-semibold text-sm">
+              <span className={`${activeNavTextClass} font-semibold text-sm`}>
                 {user?.name?.charAt(0).toUpperCase() || 'A'}
               </span>
             </div>
@@ -392,7 +401,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         </div>
         <button
           onClick={logout}
-          className="w-full bg-primary text-ink py-2.5 px-4 rounded-xl hover:bg-primary-dark active:bg-primary-dark hover:text-white transition-all duration-200 text-sm font-semibold shadow-lg flex items-center justify-center space-x-2"
+          className={`w-full bg-primary ${activeNavTextClass} py-2.5 px-4 rounded-xl ${primaryOnDarkHover} transition-all duration-200 text-sm font-semibold shadow-lg flex items-center justify-center space-x-2`}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
