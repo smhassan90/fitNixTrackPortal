@@ -6,6 +6,7 @@ import Alert from '@/components/Alert';
 import Layout from '@/components/Layout';
 import Loading from '@/components/Loading';
 import { useAuth } from '@/contexts/AuthContext';
+import { useGymTimezone } from '@/contexts/GymSettingsContext';
 import { useAlert } from '@/hooks/useAlert';
 import {
   bulkMarkEmployeeAttendance,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/employeeAttendanceApi';
 import { EMPLOYEE_PERMISSION_KEYS } from '@/lib/employeePermissions';
 import { formatDate } from '@/lib/dateUtils';
+import { displayAttendanceTime } from '@/lib/gymTimezone';
 import { getErrorMessage } from '@/lib/errorHandler';
 
 type Tab = 'daily' | 'history';
@@ -69,6 +71,7 @@ function statusBadge(status: EmployeeAttendanceStatus | null | undefined) {
 
 export default function EmployeeAttendancePage() {
   const { can } = useAuth();
+  const gymTimezone = useGymTimezone();
   const canRead = can(EMPLOYEE_PERMISSION_KEYS.attendanceRead);
   const canManage = can(EMPLOYEE_PERMISSION_KEYS.attendanceManage);
   const canEmployees = can(EMPLOYEE_PERMISSION_KEYS.read);
@@ -436,10 +439,10 @@ export default function EmployeeAttendancePage() {
                               )}
                             </td>
                             <td className="px-4 py-3 text-gray-600">
-                              {row.checkIn || row.checkInTime || '—'}
+                              {displayAttendanceTime(row.checkIn, row.checkInTime, gymTimezone)}
                             </td>
                             <td className="px-4 py-3 text-gray-600">
-                              {row.checkOut || row.checkOutTime || '—'}
+                              {displayAttendanceTime(row.checkOut, row.checkOutTime, gymTimezone)}
                             </td>
                             <td className="px-4 py-3">
                               {canManage && row.isActive ? (
@@ -566,10 +569,10 @@ export default function EmployeeAttendancePage() {
                         </td>
                         <td className="px-4 py-3">{statusBadge(rec.status)}</td>
                         <td className="px-4 py-3 text-gray-600">
-                          {rec.checkIn || rec.checkInTime || '—'}
+                          {displayAttendanceTime(rec.checkIn, rec.checkInTime, gymTimezone)}
                         </td>
                         <td className="px-4 py-3 text-gray-600">
-                          {rec.checkOut || rec.checkOutTime || '—'}
+                          {displayAttendanceTime(rec.checkOut, rec.checkOutTime, gymTimezone)}
                         </td>
                         <td className="px-4 py-3 text-gray-600">{rec.notes || '—'}</td>
                       </tr>

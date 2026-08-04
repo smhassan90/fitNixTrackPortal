@@ -18,6 +18,8 @@ import {
   type NoSignInReport,
 } from '@/lib/attendanceApi';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
+import { displayAttendanceTime } from '@/lib/gymTimezone';
+import { useGymTimezone } from '@/contexts/GymSettingsContext';
 import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
 import MemberAvatar from '@/components/MemberAvatar';
 import { photoUrlFromMap, useMemberPhotoMap } from '@/hooks/useMemberPhotoMap';
@@ -106,6 +108,7 @@ function recordNeedsManualCheckout(record: AttendanceRecord): boolean {
 
 function AttendancePageContent() {
   const { alert, showAlert, closeAlert } = useAlert();
+  const gymTimezone = useGymTimezone();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<AttendanceTab>(() =>
@@ -968,7 +971,9 @@ function AttendancePageContent() {
                       <div className="text-sm text-gray-500">{record.contact || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{record.checkIn || 'N/A'}</div>
+                      <div className="text-sm text-gray-900">
+                        {displayAttendanceTime(record.checkIn, record.checkInTime, gymTimezone, 'N/A')}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {recordNeedsManualCheckout(record) ? (
@@ -981,7 +986,14 @@ function AttendancePageContent() {
                           {checkingOutMemberId === record.memberId ? 'Checking out…' : 'Checkout'}
                         </button>
                       ) : (
-                        <div className="text-sm text-gray-900">{record.checkOut || 'N/A'}</div>
+                        <div className="text-sm text-gray-900">
+                          {displayAttendanceTime(
+                            record.checkOut,
+                            record.checkOutTime,
+                            gymTimezone,
+                            'N/A'
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

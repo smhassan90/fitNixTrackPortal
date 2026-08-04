@@ -22,6 +22,7 @@ import {
   isValidDeviceIpAddress,
   type TabletSyncSetup,
 } from '@/lib/deviceApi';
+import { DEFAULT_GYM_TIMEZONE, isUtcLikeTimezone } from '@/lib/gymTimezone';
 
 type SettingsTab = 'general' | 'attendance' | 'devices';
 
@@ -313,9 +314,25 @@ export default function SettingsPage() {
             <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-lg border border-gray-200">
               <h2 className="text-xl font-bold text-dark-gray">Gym timezone</h2>
               <p className="text-sm text-gray-500 mt-1">
-                Used for attendance dates and formatted times. Set by your platform admin when the gym was created.
+                Used for attendance dates and formatted check-in / check-out times. Set by your
+                platform admin when the gym was created.
               </p>
               <p className="mt-3 font-mono text-sm text-dark-gray">{gymTimezone || '—'}</p>
+              {isUtcLikeTimezone(gymTimezone) && (
+                <div
+                  role="status"
+                  className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                >
+                  This gym is set to <strong>UTC</strong>. If you operate in Pakistan, ask your
+                  platform admin to set the timezone to{' '}
+                  <span className="font-mono">{DEFAULT_GYM_TIMEZONE}</span> so device punches match
+                  the clock on site.
+                </div>
+              )}
+              <p className="mt-3 text-xs text-gray-500">
+                After a timezone fix on the backend, re-sync device attendance so older punches
+                refresh correctly.
+              </p>
             </div>
             <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-lg border border-gray-200">
               <h2 className="text-xl font-bold text-dark-gray">Brand colors</h2>
@@ -695,7 +712,7 @@ export default function SettingsPage() {
                 <Link href="/attendance?tab=sync-users" className="text-primary font-medium hover:underline">
                   Attendance → Sync users
                 </Link>
-                .
+                . Re-sync device attendance after a timezone fix so older punches refresh correctly.
               </p>
             </div>
               </>

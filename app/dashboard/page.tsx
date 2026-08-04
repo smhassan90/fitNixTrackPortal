@@ -27,7 +27,7 @@ import {
 import { displayMemberId } from '@/lib/displayMemberId';
 import { DASHBOARD_STATS_REFRESH_EVENT } from '@/lib/dashboardEvents';
 import { formatDate } from '@/lib/dateUtils';
-import { formatTimeInGymTimezone } from '@/lib/gymTimezone';
+import { displayAttendanceTime } from '@/lib/gymTimezone';
 import {
   fetchCurrentlyInGym,
   normalizeDashboardAttendanceStats,
@@ -266,6 +266,7 @@ export default function DashboardPage() {
         overdueCount={attendanceStats?.currentlyInGymOverdueCount ?? 0}
         autoCheckoutHours={attendanceStats?.attendancePolicy.autoCheckoutHours ?? 6}
         loading={inGymLoading}
+        gymTimezone={gymTimezone}
       />
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -508,9 +509,7 @@ export default function DashboardPage() {
                     >
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.memberName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {row.checkInTime
-                          ? formatTimeInGymTimezone(row.checkInTime, gymTimezone)
-                          : '—'}
+                        {displayAttendanceTime(row.checkInFormatted, row.checkInTime, gymTimezone)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{row.durationFormatted || '—'}</td>
                       <td className="px-4 py-3">

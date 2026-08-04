@@ -63,6 +63,9 @@ export interface CurrentlyInGymResponse {
 export interface RecentCheckInWithOverdue {
   memberId: number;
   memberName: string;
+  /** Gym-formatted check-in (prefer for display). */
+  checkInFormatted: string | null;
+  /** Raw UTC ISO — do not show as-is. */
   checkInTime: string;
   durationFormatted: string;
   hasOverduePayment: boolean;
@@ -228,6 +231,12 @@ export function normalizeDashboardAttendanceStats(raw: Record<string, unknown>):
       return {
         memberId: Number(o.memberId),
         memberName: String(o.memberName ?? ''),
+        checkInFormatted:
+          o.checkInFormatted != null && String(o.checkInFormatted).trim() !== ''
+            ? String(o.checkInFormatted)
+            : o.checkIn != null && String(o.checkIn).trim() !== ''
+              ? String(o.checkIn)
+              : null,
         checkInTime: String(o.checkInTime ?? ''),
         durationFormatted: String(o.durationFormatted ?? ''),
         hasOverduePayment: o.hasOverduePayment === true,

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import type { MemberInGym } from '@/lib/attendanceApi';
 import { displayMemberId } from '@/lib/displayMemberId';
+import { displayAttendanceTime } from '@/lib/gymTimezone';
 
 interface CurrentlyInGymModalProps {
   isOpen: boolean;
@@ -12,6 +13,8 @@ interface CurrentlyInGymModalProps {
   overdueCount?: number;
   autoCheckoutHours?: number;
   loading?: boolean;
+  /** Gym IANA timezone for fallback formatting of UTC ISO times. */
+  gymTimezone?: string | null;
 }
 
 export default function CurrentlyInGymModal({
@@ -22,6 +25,7 @@ export default function CurrentlyInGymModal({
   overdueCount = 0,
   autoCheckoutHours = 6,
   loading = false,
+  gymTimezone = null,
 }: CurrentlyInGymModalProps) {
   if (!isOpen) return null;
 
@@ -153,7 +157,14 @@ export default function CurrentlyInGymModal({
                         <div className="text-sm text-gray-900">{member.contact || 'N/A'}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{member.checkInFormatted || 'N/A'}</div>
+                        <div className="text-sm text-gray-900">
+                          {displayAttendanceTime(
+                            member.checkInFormatted,
+                            member.checkInTime,
+                            gymTimezone,
+                            'N/A'
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">

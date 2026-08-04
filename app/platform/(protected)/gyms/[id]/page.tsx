@@ -36,7 +36,7 @@ import {
   withFallbackCatalog,
   type LocationCatalog,
 } from '@/lib/platform/locationCatalog';
-import { DEFAULT_GYM_TIMEZONE } from '@/lib/gymTimezone';
+import { DEFAULT_GYM_TIMEZONE, isUtcLikeTimezone } from '@/lib/gymTimezone';
 import { resolveTimezoneOptions, withTimezoneValue } from '@/lib/platform/timezoneCatalog';
 import { DEFAULT_THEME, parseThemeFromUnknown, themeToApiPayload, type GymThemeColors } from '@/lib/theme';
 
@@ -715,6 +715,13 @@ export default function PlatformGymDetailPage() {
                     loading={timezonesLoading}
                     disabled={!isSuper}
                   />
+                  {isUtcLikeTimezone(profileDraft.timezone) && (
+                    <p className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                      UTC is set. Pakistan gyms should use{' '}
+                      <span className="font-mono">{DEFAULT_GYM_TIMEZONE}</span> so device punches
+                      match the local clock. Re-sync device attendance after changing timezone.
+                    </p>
+                  )}
                 </div>
                 <div className="pt-2 border-t border-light-gray">
                   <GymThemeColorFields
