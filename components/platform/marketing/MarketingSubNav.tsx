@@ -18,9 +18,11 @@ function buildItems(gymId: string): NavItem[] {
     { href: base, label: 'Overview', exact: true },
     { href: `${base}/profile`, label: 'Profile' },
     { href: `${base}/opportunities`, label: 'Opportunities' },
-    { href: `${base}/social`, label: 'Social Media', disabled: true },
-    { href: `${base}/blogs`, label: 'Blogs & SEO', disabled: true },
-    { href: `${base}/calendar`, label: 'Calendar', disabled: true },
+    { href: `${base}/social`, label: 'Social Media' },
+    { href: `${base}/blogs`, label: 'Blogs & SEO' },
+    { href: `${base}/calendar`, label: 'Calendar' },
+    { href: `${base}/usage`, label: 'Usage & Audit' },
+    { href: '/platform/marketing/settings', label: 'Settings' },
   ];
 }
 

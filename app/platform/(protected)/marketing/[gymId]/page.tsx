@@ -183,6 +183,30 @@ export default function MarketingOverviewPage() {
               Content opportunities
             </Link>
             <Link
+              href={`/platform/marketing/${gymId}/social`}
+              className="rounded-lg border border-light-gray-dark bg-white px-4 py-2 text-sm text-dark-gray hover:bg-[#f8f8f8]"
+            >
+              Social accounts
+            </Link>
+            <Link
+              href={`/platform/marketing/${gymId}/calendar`}
+              className="rounded-lg border border-light-gray-dark bg-white px-4 py-2 text-sm text-dark-gray hover:bg-[#f8f8f8]"
+            >
+              Calendar
+            </Link>
+            <Link
+              href={`/platform/marketing/${gymId}/blogs`}
+              className="rounded-lg border border-light-gray-dark bg-white px-4 py-2 text-sm text-dark-gray hover:bg-[#f8f8f8]"
+            >
+              Blogs & SEO
+            </Link>
+            <Link
+              href={`/platform/marketing/${gymId}/usage`}
+              className="rounded-lg border border-light-gray-dark bg-white px-4 py-2 text-sm text-dark-gray hover:bg-[#f8f8f8]"
+            >
+              Usage & audit
+            </Link>
+            <Link
               href={`/platform/gyms/${gymId}`}
               className="rounded-lg border border-light-gray-dark bg-white px-4 py-2 text-sm text-dark-gray hover:bg-[#f8f8f8]"
             >

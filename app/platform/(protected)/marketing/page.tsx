@@ -72,6 +72,12 @@ export default function MarketingGymSelectPage() {
             see this area.
           </p>
         </div>
+        <Link
+          href="/platform/marketing/settings"
+          className="rounded-lg border border-light-gray-dark bg-white px-4 py-2 text-sm text-dark-gray hover:bg-[#f8f8f8]"
+        >
+          Marketing settings
+        </Link>
       </div>
 
       <Alert

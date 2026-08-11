@@ -69,3 +69,25 @@ export function ImageStatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
+const socialTone: Record<string, string> = {
+  CONNECTED: 'bg-primary/20 text-ink',
+  DISCONNECTED: 'bg-light-gray text-dark-gray',
+  ERROR: 'bg-error-light/30 text-error-dark',
+  PENDING: 'bg-warning/20 text-warning-dark',
+};
+
+export function SocialAccountStatusBadge({ status }: { status: string }) {
+  const labels: Record<string, string> = {
+    CONNECTED: 'Connected',
+    DISCONNECTED: 'Not connected',
+    ERROR: 'Needs attention',
+    PENDING: 'Connecting…',
+  };
+  const tone = socialTone[status] || 'bg-light-gray text-dark-gray';
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
+      {labels[status] || status}
+    </span>
+  );
+}

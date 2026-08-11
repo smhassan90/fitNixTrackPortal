@@ -346,6 +346,12 @@ export default function MarketingContentEditorPage() {
                   Reject
                 </button>
               )}
+              <Link
+                href={`/platform/marketing/${gymId}/content/${contentId}/publish`}
+                className="rounded-lg border border-light-gray-dark bg-white px-4 py-2 text-sm hover:bg-[#f8f8f8]"
+              >
+                Final review / Publish
+              </Link>
             </div>
           </div>
 

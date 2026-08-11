@@ -13,6 +13,21 @@ import type {
   MarketingProfile,
   MarketingProfileUpdate,
   MarketingRegenerateImageMode,
+  MarketingSocialAccount,
+  MarketingSocialAccountsListData,
+  MarketingSocialConnectResult,
+  MarketingSocialPlatform,
+  MarketingPlatformSettings,
+  MarketingPlatformSettingsUpdate,
+  MarketingPublishResult,
+  MarketingScheduleResult,
+  MarketingCalendarData,
+  MarketingBlog,
+  MarketingBlogsListData,
+  MarketingBlogUpdate,
+  MarketingAiUsageSummary,
+  MarketingAuditLogData,
+  MarketingPublishAttempt,
 } from './marketingTypes';
 
 /**
@@ -237,6 +252,215 @@ export async function rejectMarketingImageVersion(
   >(
     `/api/platform/marketing/contents/${contentId}/images/${imageVersionId}/reject`,
     body ?? {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+/* ─── Phase 4: social accounts (OAuth; tokens never returned) ─── */
+
+export async function listMarketingSocialAccounts(gymId: string | number) {
+  const res = await platformClient.get<PlatformApiEnvelope<MarketingSocialAccountsListData>>(
+    `/api/platform/marketing/gyms/${gymId}/social-accounts`
+  );
+  return assertPlatformSuccess(res);
+}
+
+/**
+ * Starts OAuth for a platform. Returns authorizeUrl — redirect the browser there.
+ * Never returns access tokens.
+ */
+export async function connectMarketingSocialAccount(
+  gymId: string | number,
+  platform: MarketingSocialPlatform,
+  body?: { returnPath?: string }
+) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingSocialConnectResult>>(
+    `/api/platform/marketing/gyms/${gymId}/social-accounts/${platform}/connect`,
+    body ?? {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function disconnectMarketingSocialAccount(accountId: string | number) {
+  const res = await platformClient.delete<
+    PlatformApiEnvelope<{ id: number; status: string }>
+  >(`/api/platform/marketing/social-accounts/${accountId}`);
+  return assertPlatformSuccess(res);
+}
+
+/** Optional: re-check token health / mark ERROR without exposing tokens. */
+export async function refreshMarketingSocialAccountStatus(accountId: string | number) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingSocialAccount>>(
+    `/api/platform/marketing/social-accounts/${accountId}/refresh-status`,
+    {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+/* ─── Platform marketing settings (DB; no marketing env vars) ─── */
+
+export async function getMarketingPlatformSettings() {
+  const res = await platformClient.get<PlatformApiEnvelope<MarketingPlatformSettings>>(
+    '/api/platform/marketing/settings'
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function updateMarketingPlatformSettings(body: MarketingPlatformSettingsUpdate) {
+  const res = await platformClient.put<PlatformApiEnvelope<MarketingPlatformSettings>>(
+    '/api/platform/marketing/settings',
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+/* ─── Phase 5: publish / schedule / calendar ─── */
+
+/** Explicit Super Admin action — never auto-called by AI. */
+export async function publishMarketingContent(
+  contentId: string | number,
+  body: { socialAccountIds: number[] }
+) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingPublishResult>>(
+    `/api/platform/marketing/contents/${contentId}/publish`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function scheduleMarketingContent(
+  contentId: string | number,
+  body: { socialAccountIds: number[]; scheduledAt: string }
+) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingScheduleResult>>(
+    `/api/platform/marketing/contents/${contentId}/schedule`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function retryMarketingPublishAttempt(attemptId: string | number) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingPublishAttempt>>(
+    `/api/platform/marketing/publish-attempts/${attemptId}/retry`,
+    {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function listMarketingPublishAttempts(contentId: string | number) {
+  const res = await platformClient.get<
+    PlatformApiEnvelope<{ attempts: MarketingPublishAttempt[] }>
+  >(`/api/platform/marketing/contents/${contentId}/publish-attempts`);
+  return assertPlatformSuccess(res);
+}
+
+export async function getMarketingCalendar(
+  params: Record<string, string | number | undefined>
+) {
+  const res = await platformClient.get<PlatformApiEnvelope<MarketingCalendarData>>(
+    '/api/platform/marketing/calendar',
+    { params }
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function rescheduleMarketingContent(
+  contentId: string | number,
+  body: { scheduledAt: string }
+) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingScheduleResult>>(
+    `/api/platform/marketing/contents/${contentId}/reschedule`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function cancelMarketingSchedule(contentId: string | number) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingContent>>(
+    `/api/platform/marketing/contents/${contentId}/cancel-schedule`,
+    {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function duplicateMarketingContent(contentId: string | number) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingContent>>(
+    `/api/platform/marketing/contents/${contentId}/duplicate`,
+    {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+/* ─── Phase 6: blogs & SEO ─── */
+
+export async function listMarketingBlogs(
+  gymId: string | number,
+  params?: Record<string, string | number | undefined>
+) {
+  const res = await platformClient.get<PlatformApiEnvelope<MarketingBlogsListData>>(
+    `/api/platform/marketing/gyms/${gymId}/blogs`,
+    { params }
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function getMarketingBlog(blogId: string | number) {
+  const res = await platformClient.get<PlatformApiEnvelope<MarketingBlog>>(
+    `/api/platform/marketing/blogs/${blogId}`
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function generateMarketingBlog(
+  gymId: string | number,
+  body?: { opportunityId?: number; topic?: string; targetKeyword?: string }
+) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingBlog>>(
+    `/api/platform/marketing/gyms/${gymId}/blogs/generate`,
+    body ?? {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function updateMarketingBlog(blogId: string | number, body: MarketingBlogUpdate) {
+  const res = await platformClient.put<PlatformApiEnvelope<MarketingBlog>>(
+    `/api/platform/marketing/blogs/${blogId}`,
+    body
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function approveMarketingBlog(blogId: string | number) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingBlog>>(
+    `/api/platform/marketing/blogs/${blogId}/approve`,
+    {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+/** Publish into existing FitNixTrack website blog architecture — explicit click only. */
+export async function publishMarketingBlogToWebsite(blogId: string | number) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingBlog>>(
+    `/api/platform/marketing/blogs/${blogId}/publish-to-website`,
+    {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+/* ─── Phase 7: usage + marketing audit ─── */
+
+export async function getMarketingAiUsage(params: Record<string, string | number | undefined>) {
+  const res = await platformClient.get<PlatformApiEnvelope<MarketingAiUsageSummary>>(
+    '/api/platform/marketing/usage',
+    { params }
+  );
+  return assertPlatformSuccess(res);
+}
+
+export async function getMarketingAuditLog(params: Record<string, string | number | undefined>) {
+  const res = await platformClient.get<PlatformApiEnvelope<MarketingAuditLogData>>(
+    '/api/platform/marketing/audit-log',
+    { params }
   );
   return assertPlatformSuccess(res);
 }
