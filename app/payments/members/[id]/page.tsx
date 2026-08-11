@@ -24,6 +24,7 @@ import {
   type PrintablePaymentRecord,
 } from '@/lib/paymentReceiptUrl';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
+import { markMonthlyPaymentUnpaid, markOneTimePaymentUnpaid } from '@/lib/paymentsUndoApi';
 import { postMarkProjectedMonthPaid } from '@/lib/markProjectedMonthPaidApi';
 import { mergeWithProjectedAdvanceMonths } from '@/lib/projectedMonthlyInstallments';
 import {
@@ -151,6 +152,7 @@ export default function MemberPaymentsDetailPage() {
   const { user, can } = useAuth();
   const { alert, showAlert, closeAlert } = useAlert();
   const canPay = can('gym.payments.manage');
+  const canUndoPayment = can('gym.payments.delete');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +167,9 @@ export default function MemberPaymentsDetailPage() {
   const [singleConfirm, setSingleConfirm] = useState<MonthlyInstallment | null>(null);
   const [oneTimeConfirm, setOneTimeConfirm] = useState(false);
   const [unpaidConfirm, setUnpaidConfirm] = useState<MonthlyInstallment | null>(null);
+  const [oneTimeUnpaidConfirm, setOneTimeUnpaidConfirm] = useState<OneTimePaymentRecord | null>(
+    null
+  );
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusDateMode, setStatusDateMode] = useState<DateMode>('today');
   const [statusCustomDate, setStatusCustomDate] = useState('');
@@ -337,6 +342,29 @@ export default function MemberPaymentsDetailPage() {
     })[0];
   }, [monthlyInstallments]);
 
+  /** Latest PAID signup / one-time row — undo must use PATCH /api/payments/one-time/:id/mark-unpaid. */
+  const latestPaidSignup = useMemo(() => {
+    const paidRows = oneTimeHistory.filter((row) => row.status === 'PAID');
+    if (paidRows.length === 0) return null;
+    return [...paidRows].sort((a, b) => {
+      const da = new Date(a.paidDate || a.createdAt).getTime();
+      const db = new Date(b.paidDate || b.createdAt).getTime();
+      return db - da;
+    })[0];
+  }, [oneTimeHistory]);
+
+  /**
+   * Signup mark-paid seeds month-1 as PAID. Undoing that monthly row alone leaves the signup
+   * fee_collection on the dashboard — route to one-time mark-unpaid when signup is still paid
+   * and month-1 is the only paid installment.
+   */
+  const shouldRouteMonthlyUndoToSignup = useMemo(() => {
+    if (!latestPaidSignup || !latestPaidForUndo) return false;
+    const paidMonthly = monthlyInstallments.filter((i) => i.status === 'PAID' && !i.isProjected);
+    if (paidMonthly.length !== 1) return false;
+    return latestPaidForUndo.id === paidMonthly[0].id;
+  }, [latestPaidSignup, latestPaidForUndo, monthlyInstallments]);
+
   const toggleSelect = (key: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -498,18 +526,45 @@ export default function MemberPaymentsDetailPage() {
   const handleMarkUnpaid = async (inst: MonthlyInstallment) => {
     try {
       setBulkSubmitting(true);
-      const response = await api.patch(`/api/payments/${inst.id}/mark-unpaid`);
-      if (!response.data?.success) {
-        throw new Error(response.data?.error?.message || 'Could not mark unpaid');
-      }
+      await markMonthlyPaymentUnpaid(inst.id);
       showAlert('success', 'Payment undone', 'Installment is unpaid again.');
       setUnpaidConfirm(null);
+      notifyDashboardStatsRefresh();
       await fetchDetail();
     } catch (e: unknown) {
-      showAlert('error', 'Error', getErrorMessage(e));
+      const msg = e instanceof Error && !('response' in e) ? e.message : getErrorMessage(e);
+      showAlert('error', 'Error', msg);
     } finally {
       setBulkSubmitting(false);
     }
+  };
+
+  const handleMarkOneTimeUnpaid = async (row: OneTimePaymentRecord) => {
+    try {
+      setBulkSubmitting(true);
+      await markOneTimePaymentUnpaid(row.id);
+      showAlert(
+        'success',
+        'Signup payment undone',
+        'Signup payment is pending again. Dashboard fee collections and revenue were reversed.'
+      );
+      setOneTimeUnpaidConfirm(null);
+      notifyDashboardStatsRefresh();
+      await fetchDetail();
+    } catch (e: unknown) {
+      const msg = e instanceof Error && !('response' in e) ? e.message : getErrorMessage(e);
+      showAlert('error', 'Cannot undo signup payment', msg);
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  const requestUndoMonthly = (row: MonthlyInstallment) => {
+    if (shouldRouteMonthlyUndoToSignup && latestPaidSignup && row.id === latestPaidForUndo?.id) {
+      setOneTimeUnpaidConfirm(latestPaidSignup);
+      return;
+    }
+    setUnpaidConfirm(row);
   };
 
   const getBucketColor = (bucket: InstallmentUiBucket) => {
@@ -701,14 +756,14 @@ export default function MemberPaymentsDetailPage() {
                           >
                             Receipt
                           </button>
-                          {undoPaidId === row.id && (
+                          {undoPaidId === row.id && canUndoPayment && (
                             <button
                               type="button"
                               disabled={bulkSubmitting}
-                              onClick={() => setUnpaidConfirm(row)}
+                              onClick={() => requestUndoMonthly(row)}
                               className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
                             >
-                              Undo payment
+                              {shouldRouteMonthlyUndoToSignup ? 'Undo signup payment' : 'Undo payment'}
                             </button>
                           )}
                         </div>
@@ -768,6 +823,24 @@ export default function MemberPaymentsDetailPage() {
             : ''
         }
         confirmText="Mark unpaid"
+        cancelText="Cancel"
+        type="warning"
+      />
+      <ConfirmationDialog
+        isOpen={!!oneTimeUnpaidConfirm}
+        onClose={() => setOneTimeUnpaidConfirm(null)}
+        onConfirm={() =>
+          oneTimeUnpaidConfirm && void handleMarkOneTimeUnpaid(oneTimeUnpaidConfirm)
+        }
+        title="Undo signup payment?"
+        message={
+          oneTimeUnpaidConfirm
+            ? shouldRouteMonthlyUndoToSignup && oneTimeUnpaidConfirm.id === latestPaidSignup?.id
+              ? `Undo signup payment of Rs. ${oneTimeUnpaidConfirm.totalAmount.toFixed(2)}? This uses the signup undo API and reverses dashboard fee collections (including month-1). If later monthly installments are still paid, unmark those first.`
+              : `Mark the signup payment of Rs. ${oneTimeUnpaidConfirm.totalAmount.toFixed(2)} as unpaid? This reverses fee collection / dashboard income. If later monthly installments are still paid, unmark those first.`
+            : ''
+        }
+        confirmText={bulkSubmitting ? 'Saving…' : 'Mark unpaid'}
         cancelText="Cancel"
         type="warning"
       />
@@ -981,6 +1054,28 @@ export default function MemberPaymentsDetailPage() {
                     Mark signup paid
                   </button>
                 )}
+                {canUndoPayment && pendingOneTime.status === 'PAID' && (
+                  <button
+                    type="button"
+                    disabled={bulkSubmitting}
+                    onClick={() =>
+                      setOneTimeUnpaidConfirm({
+                        id: pendingOneTime.id,
+                        type: 'one-time',
+                        admissionFee: pendingOneTime.admissionFee,
+                        packageFee: pendingOneTime.packageFee,
+                        trainerFee: pendingOneTime.trainerFee,
+                        totalAmount: pendingOneTime.totalAmount,
+                        status: pendingOneTime.status,
+                        paidDate: null,
+                        createdAt: '',
+                      })
+                    }
+                    className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Undo signup payment
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={bulkSubmitting}
@@ -1028,19 +1123,31 @@ export default function MemberPaymentsDetailPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void handlePrintOneTimeReceipt({
-                              type: row.type,
-                              id: row.id,
-                              receiptPath: row.receiptPath,
-                            })
-                          }
-                          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-gray-800 hover:bg-gray-50"
-                        >
-                          Receipt
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handlePrintOneTimeReceipt({
+                                type: row.type,
+                                id: row.id,
+                                receiptPath: row.receiptPath,
+                              })
+                            }
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-gray-800 hover:bg-gray-50"
+                          >
+                            Receipt
+                          </button>
+                          {canUndoPayment && (
+                            <button
+                              type="button"
+                              disabled={bulkSubmitting}
+                              onClick={() => setOneTimeUnpaidConfirm(row)}
+                              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                            >
+                              Undo payment
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

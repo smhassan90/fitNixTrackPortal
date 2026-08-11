@@ -86,46 +86,59 @@ export default function DashboardPage() {
   const [inGymMembers, setInGymMembers] = useState<MemberInGym[]>([]);
   const [inGymLoading, setInGymLoading] = useState(false);
 
-  const fetchDashboardStats = useCallback(async () => {
-    if (!canViewDashboard) return;
-    try {
-      setLoading(true);
-      setError(null);
+  const fetchDashboardStats = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!canViewDashboard) return;
+      try {
+        if (options?.silent) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
+        setError(null);
 
-      const response = await api.get('/api/dashboard/stats');
+        const response = await api.get('/api/dashboard/stats');
 
-      if (response.data.success) {
-        const data = response.data.data as Record<string, unknown>;
-        const mismatch = assertResponseGymId(data.gymId, user?.gymId);
-        setGymMismatch(mismatch);
+        if (response.data.success) {
+          const data = response.data.data as Record<string, unknown>;
+          const mismatch = assertResponseGymId(data.gymId, user?.gymId);
+          setGymMismatch(mismatch);
 
-        setStats({
-          totalMembers: Number(data.totalMembers) || 0,
-          totalTrainers: Number(data.totalTrainers) || 0,
-          pendingPayments: Number(data.pendingPayments) || 0,
-          overduePayments: Number(data.overduePayments) || 0,
-          totalCollectedThisMonth: parseTotalCollectedThisMonth(data),
-        });
+          setStats({
+            totalMembers: Number(data.totalMembers) || 0,
+            totalTrainers: Number(data.totalTrainers) || 0,
+            pendingPayments: Number(data.pendingPayments) || 0,
+            overduePayments: Number(data.overduePayments) || 0,
+            totalCollectedThisMonth: parseTotalCollectedThisMonth(data),
+          });
 
-        setRecentCollections(normalizeRecentCollections(data.recentCollections));
-        setAttendanceStats(normalizeDashboardAttendanceStats(data));
+          setRecentCollections(normalizeRecentCollections(data.recentCollections));
+          setAttendanceStats(normalizeDashboardAttendanceStats(data));
 
-        setRevenueByMonthFull((prev) => ({
-          ...prev,
-          ...normalizeRevenueFromApiData(data),
-        }));
-      } else {
-        throw new Error('API returned unsuccessful response');
+          setRevenueByMonthFull((prev) => ({
+            ...prev,
+            ...normalizeRevenueFromApiData(data),
+          }));
+        } else {
+          throw new Error('API returned unsuccessful response');
+        }
+      } catch (err: unknown) {
+        if (!isAuthDeniedError(err)) {
+          setError(getErrorMessage(err));
+        }
+        if (!options?.silent) {
+          setStats(null);
+        }
+      } finally {
+        if (options?.silent) {
+          setRefreshing(false);
+        } else {
+          setLoading(false);
+        }
       }
-    } catch (err: unknown) {
-      if (!isAuthDeniedError(err)) {
-        setError(getErrorMessage(err));
-      }
-      setStats(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [canViewDashboard, user?.gymId]);
+    },
+    [canViewDashboard, user?.gymId]
+  );
 
   const fetchRevenueForRange = useCallback(async (start: string, end: string) => {
     if (!canViewDashboard) return;
@@ -145,6 +158,12 @@ export default function DashboardPage() {
       setRevenueLoading(false);
     }
   }, [canViewDashboard, canViewFinancialReports, user?.gymId]);
+
+  const refreshDashboardAfterPaymentChange = useCallback(async () => {
+    if (!canViewDashboard) return;
+    await fetchDashboardStats({ silent: true });
+    await fetchRevenueForRange(revenueRangeStart, revenueRangeEnd);
+  }, [canViewDashboard, fetchDashboardStats, fetchRevenueForRange, revenueRangeStart, revenueRangeEnd]);
 
   const applyRange = useCallback(
     (start: string, end: string, fetchRemote: boolean) => {
@@ -188,11 +207,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const onRefresh = () => {
-      if (canViewDashboard) void fetchDashboardStats();
+      if (canViewDashboard) void refreshDashboardAfterPaymentChange();
     };
     window.addEventListener(DASHBOARD_STATS_REFRESH_EVENT, onRefresh);
     return () => window.removeEventListener(DASHBOARD_STATS_REFRESH_EVENT, onRefresh);
-  }, [fetchDashboardStats, canViewDashboard]);
+  }, [refreshDashboardAfterPaymentChange, canViewDashboard]);
 
   useEffect(() => {
     if (canViewDashboard) void fetchRevenueForRange(ymMonthsAgo(5), currentYm());
