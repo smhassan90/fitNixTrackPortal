@@ -18,7 +18,7 @@ export default function MarketingSuperAdminGate({ children }: { children: React.
         </p>
         <Link
           href="/platform"
-          className="mt-6 inline-block rounded-lg bg-primary px-4 py-2 text-sm font-medium text-ink hover:opacity-90"
+          className="mt-6 inline-block rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
         >
           Back to platform home
         </Link>

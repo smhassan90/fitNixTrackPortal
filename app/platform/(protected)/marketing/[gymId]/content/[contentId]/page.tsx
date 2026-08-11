@@ -17,6 +17,7 @@ import type {
 } from '@/lib/platform/marketingTypes';
 import { mapPlatformErrorToUserMessage } from '@/lib/platform/errors';
 import MarketingSubNav from '@/components/platform/marketing/MarketingSubNav';
+import MarketingImageWorkflow from '@/components/platform/marketing/MarketingImageWorkflow';
 import { ContentStatusBadge } from '@/components/platform/marketing/MarketingStatusBadges';
 import Loading from '@/components/Loading';
 import Alert from '@/components/Alert';
@@ -228,6 +229,12 @@ export default function MarketingContentEditorPage() {
     (content.status === 'DRAFT' ||
       content.status === 'AWAITING_APPROVAL' ||
       content.status === 'REJECTED');
+  /** Image workflow stays available after copy approval (still pre-publish). */
+  const imageEditable =
+    !!content &&
+    content.status !== 'PUBLISHED' &&
+    content.status !== 'SCHEDULED' &&
+    content.status !== 'FAILED';
   const canSubmit = content && content.status === 'DRAFT';
   const canApprove =
     content && (content.status === 'AWAITING_APPROVAL' || content.status === 'DRAFT');
@@ -415,31 +422,25 @@ export default function MarketingContentEditorPage() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-light-gray-dark bg-white p-6 shadow">
-            <h3 className="font-semibold text-dark-gray">Image concept (Phase 3 will generate)</h3>
-            <p className="mt-1 text-xs text-dark-gray-light">
-              Edit the concept and prompt now. Image generation happens in Phase 3 after you review
-              the prompt.
-            </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <Field label="Image concept">
-                <textarea
-                  className={areaClass}
-                  value={draft.imageConcept}
-                  disabled={!editable}
-                  onChange={(e) => setField('imageConcept', e.target.value)}
-                />
-              </Field>
-              <Field label="Image-generation prompt">
-                <textarea
-                  className={areaClass}
-                  value={draft.imagePrompt}
-                  disabled={!editable}
-                  onChange={(e) => setField('imagePrompt', e.target.value)}
-                />
-              </Field>
-            </div>
-          </section>
+          <MarketingImageWorkflow
+            contentId={contentId}
+            gymId={gymId}
+            content={content}
+            imageConcept={draft.imageConcept}
+            imagePrompt={draft.imagePrompt}
+            editable={imageEditable}
+            onConceptChange={(value) => setField('imageConcept', value)}
+            onPromptChange={(value) => setField('imagePrompt', value)}
+            onContentUpdated={(updated) => {
+              setContent(updated);
+              setDraft((d) => ({
+                ...d,
+                imageConcept: updated.imageConcept ?? d.imageConcept,
+                imagePrompt: updated.imagePrompt ?? d.imagePrompt,
+              }));
+            }}
+            onAlert={showAlert}
+          />
 
           <section className="rounded-xl border border-light-gray-dark bg-white p-6 shadow">
             <h3 className="font-semibold text-dark-gray">Platform-specific variants</h3>

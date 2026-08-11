@@ -6,11 +6,13 @@ import type {
   MarketingContentUpdate,
   MarketingGenerateOpportunitiesResult,
   MarketingGymsListData,
+  MarketingImageVersion,
   MarketingOpportunitiesListData,
   MarketingOpportunity,
   MarketingOverviewData,
   MarketingProfile,
   MarketingProfileUpdate,
+  MarketingRegenerateImageMode,
 } from './marketingTypes';
 
 /**
@@ -165,6 +167,75 @@ export async function rejectMarketingContent(
 ) {
   const res = await platformClient.post<PlatformApiEnvelope<MarketingContent>>(
     `/api/platform/marketing/contents/${contentId}/reject`,
+    body ?? {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+/* ─── Phase 3: image prompt + generation ─── */
+
+/** AI (re)generates imageConcept + imagePrompt text only — does not create pixels. */
+export async function generateMarketingImagePrompt(
+  contentId: string | number,
+  body?: { notes?: string }
+) {
+  const res = await platformClient.post<PlatformApiEnvelope<MarketingContent>>(
+    `/api/platform/marketing/contents/${contentId}/generate-image-prompt`,
+    body ?? {}
+  );
+  return assertPlatformSuccess(res);
+}
+
+/**
+ * Generate an image from the reviewed prompt.
+ * Creates a NEW MarketingImageVersion (never overwrites prior versions).
+ */
+export async function generateMarketingImage(
+  contentId: string | number,
+  body?: { prompt?: string }
+) {
+  const res = await platformClient.post<
+    PlatformApiEnvelope<{ content: MarketingContent; imageVersion: MarketingImageVersion }>
+  >(`/api/platform/marketing/contents/${contentId}/generate-image`, body ?? {});
+  return assertPlatformSuccess(res);
+}
+
+export async function regenerateMarketingImage(
+  contentId: string | number,
+  body: { mode: MarketingRegenerateImageMode; instructions?: string; prompt?: string }
+) {
+  const res = await platformClient.post<
+    PlatformApiEnvelope<{ content: MarketingContent; imageVersion: MarketingImageVersion }>
+  >(`/api/platform/marketing/contents/${contentId}/regenerate-image`, body);
+  return assertPlatformSuccess(res);
+}
+
+export async function listMarketingImageVersions(contentId: string | number) {
+  const res = await platformClient.get<
+    PlatformApiEnvelope<{ imageVersions: MarketingImageVersion[] }>
+  >(`/api/platform/marketing/contents/${contentId}/images`);
+  return assertPlatformSuccess(res);
+}
+
+export async function approveMarketingImageVersion(
+  contentId: string | number,
+  imageVersionId: string | number
+) {
+  const res = await platformClient.post<
+    PlatformApiEnvelope<{ content: MarketingContent; imageVersion: MarketingImageVersion }>
+  >(`/api/platform/marketing/contents/${contentId}/images/${imageVersionId}/approve`, {});
+  return assertPlatformSuccess(res);
+}
+
+export async function rejectMarketingImageVersion(
+  contentId: string | number,
+  imageVersionId: string | number,
+  body?: { reason?: string }
+) {
+  const res = await platformClient.post<
+    PlatformApiEnvelope<{ content: MarketingContent; imageVersion: MarketingImageVersion }>
+  >(
+    `/api/platform/marketing/contents/${contentId}/images/${imageVersionId}/reject`,
     body ?? {}
   );
   return assertPlatformSuccess(res);

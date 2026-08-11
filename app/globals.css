@@ -34,7 +34,7 @@ body {
    * Prefer this (or hover:bg-primary-dark active:bg-primary-dark) over hover:bg-opacity-90.
    */
   .btn-primary {
-    @apply bg-primary font-medium text-ink shadow-sm transition-colors;
+    @apply bg-primary font-medium text-white shadow-sm transition-colors;
   }
   .btn-primary:hover:not(:disabled) {
     background-color: rgb(var(--theme-primary-dark-rgb) / 1);

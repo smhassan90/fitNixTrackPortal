@@ -150,7 +150,7 @@ export default function MarketingGymSelectPage() {
                       <td className="px-4 py-3 text-right">
                         <Link
                           href={`/platform/marketing/${g.id}`}
-                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-ink hover:opacity-90"
+                          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
                         >
                           Open
                         </Link>

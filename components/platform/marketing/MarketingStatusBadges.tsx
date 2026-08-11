@@ -48,3 +48,24 @@ export function ContentStatusBadge({ status }: { status: MarketingContentStatus 
     </span>
   );
 }
+
+const imageTone: Record<string, string> = {
+  PENDING: 'bg-light-gray text-dark-gray',
+  READY: 'bg-warning/20 text-warning-dark',
+  APPROVED: 'bg-primary/20 text-ink',
+  REJECTED: 'bg-error-light/30 text-error-dark',
+  FAILED: 'bg-error-light/30 text-error-dark',
+};
+
+export function ImageStatusBadge({ status }: { status: string }) {
+  const label =
+    status === 'READY'
+      ? 'Generated'
+      : status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, ' ');
+  const tone = imageTone[status] || 'bg-light-gray text-dark-gray';
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
+      {label}
+    </span>
+  );
+}

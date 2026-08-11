@@ -27,17 +27,17 @@ export default function ConfirmationDialog({
     warning: {
       iconBg: 'bg-yellow-500',
       iconColor: 'text-white',
-      confirmBg: 'bg-green-600 hover:bg-green-700',
+      confirmBg: 'bg-green-600 hover:bg-green-700 text-white',
     },
     danger: {
       iconBg: 'bg-red-500',
       iconColor: 'text-white',
-      confirmBg: 'bg-red-600 hover:bg-red-700',
+      confirmBg: 'bg-red-600 hover:bg-red-700 text-white',
     },
     info: {
-      iconBg: 'bg-blue-500',
+      iconBg: 'bg-info',
       iconColor: 'text-white',
-      confirmBg: 'bg-blue-600 hover:bg-blue-700',
+      confirmBg: 'bg-info hover:bg-info-dark text-white',
     },
   };
 
@@ -106,7 +106,7 @@ export default function ConfirmationDialog({
           </button>
           <button
             onClick={handleConfirm}
-            className={`flex-1 ${styles.confirmBg} py-2.5 px-4 rounded-lg transition-colors font-medium shadow-sm text-white`}
+            className={`flex-1 ${styles.confirmBg} py-2.5 px-4 rounded-lg transition-colors font-medium shadow-sm`}
           >
             {confirmText}
           </button>

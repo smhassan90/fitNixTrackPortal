@@ -164,6 +164,29 @@ export interface MarketingPlatformVariants {
   [key: string]: string | null | undefined;
 }
 
+/**
+ * Image version statuses (align with Prisma after Phase 3 migration).
+ * READY = successfully generated (product “GENERATED”).
+ */
+export type MarketingImageStatus =
+  | 'PENDING'
+  | 'READY'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'FAILED';
+
+export interface MarketingImageVersion {
+  id: number;
+  contentId: number;
+  prompt?: string | null;
+  modifiedPrompt?: string | null;
+  imageUrl?: string | null;
+  status: MarketingImageStatus;
+  provider?: string | null;
+  model?: string | null;
+  createdAt?: string;
+}
+
 export interface MarketingContent {
   id: number;
   gymId: number;
@@ -179,11 +202,14 @@ export interface MarketingContent {
   cta?: string | null;
   hashtags?: string | null;
   imageConcept?: string | null;
-  /** Editable prompt — image generation is Phase 3 */
+  /** Editable prompt — reviewed before Generate Image */
   imagePrompt?: string | null;
   suggestedPlatforms?: string[] | string | null;
   platformVariants?: MarketingPlatformVariants | null;
   opportunity?: Pick<MarketingOpportunity, 'id' | 'title' | 'status'> | null;
+  /** Newest first when returned by GET content / list images */
+  imageVersions?: MarketingImageVersion[];
+  approvedImageVersionId?: number | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -229,3 +255,13 @@ export const CONTENT_STATUS_LABELS: Record<MarketingContentStatus, string> = {
   FAILED: 'Failed',
   REJECTED: 'Rejected',
 };
+
+export const IMAGE_STATUS_LABELS: Record<MarketingImageStatus, string> = {
+  PENDING: 'Pending',
+  READY: 'Generated',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+  FAILED: 'Failed',
+};
+
+export type MarketingRegenerateImageMode = 'quick' | 'custom';

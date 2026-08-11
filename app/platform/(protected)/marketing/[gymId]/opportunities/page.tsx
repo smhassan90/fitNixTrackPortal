@@ -131,7 +131,7 @@ export default function MarketingOpportunitiesPage() {
             onClick={() => setStatus(value)}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
               status === value
-                ? 'bg-primary text-ink'
+                ? 'bg-primary text-white'
                 : 'border border-light-gray-dark bg-white text-dark-gray-light hover:bg-[#f8f8f8]'
             }`}
           >
@@ -184,7 +184,7 @@ export default function MarketingOpportunitiesPage() {
                     <td className="px-4 py-3 text-right">
                       <Link
                         href={`/platform/marketing/${gymId}/opportunities/${row.id}`}
-                        className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-ink hover:opacity-90"
+                        className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
                       >
                         Review
                       </Link>
