@@ -125,6 +125,19 @@ export default function PlatformSidebar({
           {isSuper && (
             <>
               <Link
+                href="/platform/marketing"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();
+                }}
+                className={`block rounded-lg px-3 py-2 text-sm transition-colors ${
+                  pathname.startsWith('/platform/marketing')
+                    ? 'bg-primary text-ink'
+                    : 'text-white/80 hover:bg-white/10'
+                }`}
+              >
+                Marketing
+              </Link>
+              <Link
                 href="/platform/pos/catalog"
                 onClick={() => {
                   if (typeof window !== 'undefined' && window.innerWidth < 1024) onToggle();
