@@ -1,24 +1,26 @@
-/** Marketing domain types — Super Admin internal workstation (Phase 1+) */
+/** Marketing domain types — Super Admin internal workstation */
 
+/** Matches Prisma `MarketingOpportunityStatus` */
 export type MarketingOpportunityStatus =
-  | 'NEW'
-  | 'REVIEWED'
-  | 'APPROVED'
-  | 'IN_PROGRESS'
-  | 'PUBLISHED'
-  | 'REJECTED';
-
-export type MarketingContentStatus =
   | 'DRAFT'
   | 'AWAITING_REVIEW'
   | 'APPROVED'
+  | 'REJECTED'
+  | 'CONVERTED';
+
+/** Matches Prisma `MarketingContentStatus` (extended for UI clarity) */
+export type MarketingContentStatus =
+  | 'DRAFT'
+  | 'AWAITING_APPROVAL'
+  | 'APPROVED'
   | 'SCHEDULED'
-  | 'PUBLISHING'
   | 'PUBLISHED'
   | 'FAILED'
-  | 'CANCELLED';
+  | 'REJECTED';
 
-/** Gym row for marketing gym picker (subset of platform gym + marketing flags). */
+export type MarketingContentKind = 'SOCIAL_POST' | 'BLOG' | 'GOOGLE_BUSINESS' | string;
+
+/** Gym row for marketing gym picker */
 export interface MarketingGymSummary {
   id: number;
   name: string;
@@ -27,9 +29,7 @@ export interface MarketingGymSummary {
   country?: string | null;
   tenantStatus?: 'ACTIVE' | 'SUSPENDED' | string;
   logoUrl?: string | null;
-  /** True when a MarketingProfile row exists */
   hasMarketingProfile?: boolean;
-  /** Connected social account count (0 until Phase 4) */
   connectedAccountsCount?: number;
   [key: string]: unknown;
 }
@@ -46,12 +46,11 @@ export interface MarketingGymsListData {
 
 /**
  * Marketing Profile — AI source of truth for a gym.
- * Empty strings / null mean “unknown”; AI must not invent facts.
+ * Empty / null = unknown; AI must not invent facts.
  */
 export interface MarketingProfile {
   id?: number;
   gymId: number;
-  /** Denormalized / mirrored from Gym when useful for display */
   gymName?: string;
   description?: string | null;
   location?: string | null;
@@ -60,7 +59,6 @@ export interface MarketingProfile {
   address?: string | null;
   phone?: string | null;
   website?: string | null;
-  /** Free-text or JSON-friendly lists stored as text on backend */
   services?: string | null;
   membershipPackages?: string | null;
   targetAudience?: string | null;
@@ -72,7 +70,6 @@ export interface MarketingProfile {
   preferredLanguage?: string | null;
   keywords?: string | null;
   seoTopics?: string | null;
-  /** Claims / facilities / stats the AI must never invent */
   doNotClaim?: string | null;
   additionalInstructions?: string | null;
   createdAt?: string;
@@ -83,7 +80,6 @@ export type MarketingProfileUpdate = Partial<
   Omit<MarketingProfile, 'id' | 'gymId' | 'createdAt' | 'updatedAt' | 'gymName'>
 >;
 
-/** Overview dashboard metrics for a selected gym (Phase 1 shell; later phases fill real counts). */
 export interface MarketingOverviewAttentionItem {
   type: string;
   message: string;
@@ -120,3 +116,116 @@ export interface MarketingOverviewData {
   opportunitiesAwaitingReview: number;
   postsAwaitingApproval: number;
 }
+
+/* ─── Phase 2: opportunities + social content ─── */
+
+export interface MarketingOpportunity {
+  id: number;
+  gymId: number;
+  title: string;
+  reason?: string | null;
+  audience?: string | null;
+  /** e.g. SOCIAL_POST | BLOG | GOOGLE_BUSINESS */
+  contentType?: string | null;
+  suggestedPlatform?: string | null;
+  seoIntent?: string | null;
+  priority?: number;
+  keywords?: string | null;
+  status: MarketingOpportunityStatus;
+  createdAt?: string;
+  updatedAt?: string;
+  /** Linked content count when list includes it */
+  contentsCount?: number;
+}
+
+export interface MarketingOpportunitiesListData {
+  opportunities: MarketingOpportunity[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface MarketingGenerateOpportunitiesResult {
+  opportunities: MarketingOpportunity[];
+  generatedCount: number;
+  provider?: string;
+  model?: string;
+}
+
+/** Platform-specific caption variants (not published until later phases). */
+export interface MarketingPlatformVariants {
+  facebook?: string | null;
+  instagram?: string | null;
+  linkedin?: string | null;
+  googleBusiness?: string | null;
+  [key: string]: string | null | undefined;
+}
+
+export interface MarketingContent {
+  id: number;
+  gymId: number;
+  opportunityId?: number | null;
+  title: string;
+  status: MarketingContentStatus;
+  /** SOCIAL_POST etc. */
+  contentKind?: MarketingContentKind | null;
+  topic?: string | null;
+  headline?: string | null;
+  caption?: string | null;
+  captionShort?: string | null;
+  cta?: string | null;
+  hashtags?: string | null;
+  imageConcept?: string | null;
+  /** Editable prompt — image generation is Phase 3 */
+  imagePrompt?: string | null;
+  suggestedPlatforms?: string[] | string | null;
+  platformVariants?: MarketingPlatformVariants | null;
+  opportunity?: Pick<MarketingOpportunity, 'id' | 'title' | 'status'> | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MarketingContentUpdate {
+  title?: string;
+  topic?: string | null;
+  headline?: string | null;
+  caption?: string | null;
+  captionShort?: string | null;
+  cta?: string | null;
+  hashtags?: string | null;
+  imageConcept?: string | null;
+  imagePrompt?: string | null;
+  suggestedPlatforms?: string[] | string | null;
+  platformVariants?: MarketingPlatformVariants | null;
+}
+
+export interface MarketingContentsListData {
+  contents: MarketingContent[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export const OPPORTUNITY_STATUS_LABELS: Record<MarketingOpportunityStatus, string> = {
+  DRAFT: 'Draft',
+  AWAITING_REVIEW: 'Awaiting review',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+  CONVERTED: 'Converted',
+};
+
+export const CONTENT_STATUS_LABELS: Record<MarketingContentStatus, string> = {
+  DRAFT: 'Draft',
+  AWAITING_APPROVAL: 'Awaiting approval',
+  APPROVED: 'Approved',
+  SCHEDULED: 'Scheduled',
+  PUBLISHED: 'Published',
+  FAILED: 'Failed',
+  REJECTED: 'Rejected',
+};
