@@ -311,7 +311,8 @@ export default function DashboardPage() {
               <p className="mb-2 font-semibold text-red-600">Failed to load dashboard</p>
               <p className="mb-4 text-sm text-red-500">{error || 'Unknown error'}</p>
               <button
-                onClick={fetchDashboardStats}
+                type="button"
+                onClick={() => void fetchDashboardStats()}
                 className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-primary-dark active:bg-primary-dark"
               >
                 Retry
