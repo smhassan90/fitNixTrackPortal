@@ -116,7 +116,7 @@ function SocialMediaContent() {
     if (!target) return;
     setBusyPlatform(String(target.platform));
     try {
-      await disconnectMarketingSocialAccount(target.id);
+      await disconnectMarketingSocialAccount(gymId, target.id);
       showAlert('success', 'Disconnected', `${target.accountName || target.platform} disconnected.`);
       await load();
     } catch (e) {
@@ -129,7 +129,7 @@ function SocialMediaContent() {
   async function handleRefreshStatus(account: MarketingSocialAccount) {
     setBusyPlatform(`refresh-${account.id}`);
     try {
-      const updated = await refreshMarketingSocialAccountStatus(account.id);
+      const updated = await refreshMarketingSocialAccountStatus(gymId, account.id);
       setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
       showAlert(
         updated.status === 'CONNECTED' ? 'success' : 'warning',

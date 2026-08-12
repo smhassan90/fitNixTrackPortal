@@ -1,4 +1,5 @@
 import platformClient, { assertPlatformSuccess } from './platformClient';
+import { PlatformApiError } from './errors';
 import type { PlatformApiEnvelope } from './types';
 import type {
   MarketingContent,
@@ -267,34 +268,42 @@ export async function listMarketingSocialAccounts(gymId: string | number) {
 
 /**
  * Starts OAuth for a platform. Returns authorizeUrl — redirect the browser there.
+ * Backend: POST /gyms/:gymId/social-accounts/connect  body: { platform }
  * Never returns access tokens.
  */
 export async function connectMarketingSocialAccount(
   gymId: string | number,
   platform: MarketingSocialPlatform,
-  body?: { returnPath?: string }
+  _body?: { returnPath?: string }
 ) {
   const res = await platformClient.post<PlatformApiEnvelope<MarketingSocialConnectResult>>(
-    `/api/platform/marketing/gyms/${gymId}/social-accounts/${platform}/connect`,
-    body ?? {}
+    `/api/platform/marketing/gyms/${gymId}/social-accounts/connect`,
+    { platform }
   );
   return assertPlatformSuccess(res);
 }
 
-export async function disconnectMarketingSocialAccount(accountId: string | number) {
+export async function disconnectMarketingSocialAccount(
+  gymId: string | number,
+  accountId: string | number
+) {
   const res = await platformClient.delete<
     PlatformApiEnvelope<{ id: number; status: string }>
-  >(`/api/platform/marketing/social-accounts/${accountId}`);
+  >(`/api/platform/marketing/gyms/${gymId}/social-accounts/${accountId}`);
   return assertPlatformSuccess(res);
 }
 
-/** Optional: re-check token health / mark ERROR without exposing tokens. */
-export async function refreshMarketingSocialAccountStatus(accountId: string | number) {
-  const res = await platformClient.post<PlatformApiEnvelope<MarketingSocialAccount>>(
-    `/api/platform/marketing/social-accounts/${accountId}/refresh-status`,
-    {}
-  );
-  return assertPlatformSuccess(res);
+/** Re-list accounts for this gym (backend has no separate refresh-status route). */
+export async function refreshMarketingSocialAccountStatus(
+  gymId: string | number,
+  accountId: string | number
+) {
+  const data = await listMarketingSocialAccounts(gymId);
+  const updated = (data.accounts || []).find((a) => String(a.id) === String(accountId));
+  if (!updated) {
+    throw new PlatformApiError(404, 'NOT_FOUND', 'Social account not found');
+  }
+  return updated;
 }
 
 /* ─── Platform marketing settings (DB; no marketing env vars) ─── */
