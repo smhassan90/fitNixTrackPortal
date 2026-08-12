@@ -80,8 +80,12 @@ export default function MarketingSettingsPage() {
     apiKey: '',
   });
   const [oauth, setOauth] = useState<OAuthDraft[]>([]);
+  const [portalReturnBaseUrl, setPortalReturnBaseUrl] = useState('');
+  const [websiteBlogExportPath, setWebsiteBlogExportPath] = useState('');
 
   const applySettings = useCallback((data: MarketingPlatformSettings) => {
+    setPortalReturnBaseUrl(data.portalReturnBaseUrl || '');
+    setWebsiteBlogExportPath(data.websiteBlogExportPath || '');
     setAiSecret(data.ai?.apiKey || { configured: false });
     setAi({
       provider: data.ai?.provider || 'openai',
@@ -121,6 +125,8 @@ export default function MarketingSettingsPage() {
         if (!cancelled) {
           // Seed empty form so Super Admin can still fill once API exists
           applySettings({
+            portalReturnBaseUrl: '',
+            websiteBlogExportPath: '',
             ai: {
               provider: 'openai',
               textModel: '',
@@ -150,6 +156,8 @@ export default function MarketingSettingsPage() {
     setSaving(true);
     try {
       const body: MarketingPlatformSettingsUpdate = {
+        portalReturnBaseUrl: portalReturnBaseUrl.trim() || null,
+        websiteBlogExportPath: websiteBlogExportPath.trim() || null,
         ai: {
           provider: ai.provider.trim() || 'openai',
           textModel: ai.textModel.trim(),
@@ -216,6 +224,40 @@ export default function MarketingSettingsPage() {
       />
 
       <form onSubmit={handleSave} className="space-y-8">
+        <section className="rounded-xl border border-light-gray-dark bg-white p-6 shadow">
+          <h2 className="text-lg font-semibold text-dark-gray">Portal & website</h2>
+          <p className="mt-1 text-xs text-dark-gray-light">
+            Required for OAuth return redirects. Stored in the database (not env vars).
+          </p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="block text-sm md:col-span-2">
+              <span className="font-medium text-dark-gray">Portal return base URL</span>
+              <span className="mt-0.5 block text-xs text-dark-gray-light">
+                Example: https://portal.fitnixtrack.com (no trailing slash)
+              </span>
+              <input
+                className={`${inputClass} mt-1.5`}
+                value={portalReturnBaseUrl}
+                onChange={(e) => setPortalReturnBaseUrl(e.target.value)}
+                placeholder="https://portal.fitnixtrack.com"
+                required
+              />
+            </label>
+            <label className="block text-sm md:col-span-2">
+              <span className="font-medium text-dark-gray">Website blog export path (optional)</span>
+              <span className="mt-0.5 block text-xs text-dark-gray-light">
+                Path used when publishing blogs into the FitNixTrack website blog architecture.
+              </span>
+              <input
+                className={`${inputClass} mt-1.5`}
+                value={websiteBlogExportPath}
+                onChange={(e) => setWebsiteBlogExportPath(e.target.value)}
+                placeholder="e.g. absolute path or configured export target"
+              />
+            </label>
+          </div>
+        </section>
+
         <section className="rounded-xl border border-light-gray-dark bg-white p-6 shadow">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>

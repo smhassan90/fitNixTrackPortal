@@ -410,11 +410,17 @@ export interface MarketingOAuthAppSettings {
 export interface MarketingPlatformSettings {
   ai: MarketingAiSettings;
   oauthApps: MarketingOAuthAppSettings[];
+  /** Portal origin for OAuth return, e.g. https://portal.fitnixtrack.com */
+  portalReturnBaseUrl?: string | null;
+  /** Optional path/export target for website blog integration */
+  websiteBlogExportPath?: string | null;
   updatedAt?: string | null;
 }
 
 /** PUT body: omit secret fields or send empty string to leave unchanged; non-empty replaces. */
 export interface MarketingPlatformSettingsUpdate {
+  portalReturnBaseUrl?: string | null;
+  websiteBlogExportPath?: string | null;
   ai?: {
     provider?: string;
     textModel?: string;
