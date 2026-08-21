@@ -12,7 +12,6 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 import { computeSignupOneTimeFees } from '@/lib/signupFees';
-import { printOneTimePaymentReceipt } from '@/lib/signupReceipt';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
 import { DEFAULT_MAX_MEMBER_DISCOUNT, fetchGymSettings } from '@/lib/attendanceApi';
 import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
@@ -25,6 +24,10 @@ import {
 } from '@/lib/memberPhoto';
 import MemberPhotoEditor from '@/components/MemberPhotoEditor';
 import MemberAvatar from '@/components/MemberAvatar';
+import PaymentReceiptModal, {
+  type PaymentReceiptTarget,
+} from '@/components/PaymentReceiptModal';
+import { receiptPrintedByFromUser } from '@/lib/paymentReceiptUrl';
 
 interface Trainer {
   id: string;
@@ -184,6 +187,7 @@ export default function MembersPage() {
   const [statusDateMode, setStatusDateMode] = useState<DateMode>('today');
   const [statusCustomDate, setStatusCustomDate] = useState('');
   const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const [receiptTarget, setReceiptTarget] = useState<PaymentReceiptTarget | null>(null);
 
   useEffect(() => {
     if (!editingMember) return;
@@ -979,16 +983,15 @@ export default function MembersPage() {
               memberRecord?.discount ??
               memberData?.discount
           ) || undefined;
-        await printOneTimePaymentReceipt(
-          oneTimeFromApi.id,
-          {
-            name: user?.name || user?.email || 'Staff',
-            email: user?.email ?? null,
-            role: user?.role ?? null,
-          },
-          memberRecord?.id,
-          discountHint ? { memberDiscount: discountHint } : undefined
-        );
+        setReceiptTarget({
+          kind: 'one-time',
+          id: oneTimeFromApi.id,
+          memberId: memberRecord?.id,
+          fallbackPhone: memberRecord?.phone ?? memberData?.phone ?? null,
+          printedBy: receiptPrintedByFromUser(user),
+          hints: discountHint ? { memberDiscount: discountHint } : undefined,
+          autoPrint: true,
+        });
         return;
       }
     } catch (error) {
@@ -1013,6 +1016,11 @@ export default function MembersPage() {
         type={alert.type}
         title={alert.title}
         message={alert.message}
+      />
+      <PaymentReceiptModal
+        target={receiptTarget}
+        onClose={() => setReceiptTarget(null)}
+        onError={(message) => showAlert('warning', 'Receipt', message)}
       />
       <ConfirmationDialog
         isOpen={deleteDialog.isOpen}

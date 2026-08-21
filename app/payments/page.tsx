@@ -24,10 +24,11 @@ import {
   SIGNUP_PAY_BLOCK_MESSAGE,
 } from '@/lib/signupFees';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
-import { printOneTimePaymentReceipt } from '@/lib/signupReceipt';
+import PaymentReceiptModal, {
+  type PaymentReceiptTarget,
+} from '@/components/PaymentReceiptModal';
 import {
   receiptPrintedByFromUser,
-  tryPrintMonthlyReceiptAfterMarkPaid,
 } from '@/lib/paymentReceiptUrl';
 import { downloadExcelCsv, excelExportFilename } from '@/lib/exportExcel';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
@@ -190,6 +191,7 @@ function PaymentsPageContent() {
   const [markingPaid, setMarkingPaid] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [checkingOverdue, setCheckingOverdue] = useState(false);
+  const [receiptTarget, setReceiptTarget] = useState<PaymentReceiptTarget | null>(null);
   const photoMap = useMemberPhotoMap();
 
   const syncFromUrl = useCallback(() => {
@@ -418,20 +420,14 @@ function PaymentsPageContent() {
       setConfirmOneTimeRow(null);
       notifyDashboardStatsRefresh();
       await refreshList();
-      try {
-        await printOneTimePaymentReceipt(
-          oneTimeId,
-          receiptPrintedByFromUser(user),
-          row.member.id
-        );
-      } catch (printErr) {
-        console.warn('Signup receipt print failed:', printErr);
-        showAlert(
-          'warning',
-          'Receipt',
-          'Payment saved. Allow popups to print the receipt, or open it from the member payments page.'
-        );
-      }
+      setReceiptTarget({
+        kind: 'one-time',
+        id: oneTimeId,
+        memberId: row.member.id,
+        fallbackPhone: row.member.phone,
+        printedBy: receiptPrintedByFromUser(user),
+        autoPrint: true,
+      });
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {
@@ -480,20 +476,14 @@ function PaymentsPageContent() {
       setConfirmPayRow(null);
       notifyDashboardStatsRefresh();
       await refreshList();
-      try {
-        await tryPrintMonthlyReceiptAfterMarkPaid({
-          paymentId,
-          memberId: row.member.id,
-          printedBy: receiptPrintedByFromUser(user),
-        });
-      } catch (printErr) {
-        console.warn('Receipt print failed:', printErr);
-        showAlert(
-          'warning',
-          'Receipt',
-          'Payment saved. Allow popups to print the receipt, or open it from the member payments page.'
-        );
-      }
+      setReceiptTarget({
+        kind: 'monthly',
+        id: paymentId,
+        memberId: row.member.id,
+        fallbackPhone: row.member.phone,
+        printedBy: receiptPrintedByFromUser(user),
+        autoPrint: true,
+      });
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {
@@ -690,6 +680,11 @@ function PaymentsPageContent() {
   return (
     <Layout>
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
+      <PaymentReceiptModal
+        target={receiptTarget}
+        onClose={() => setReceiptTarget(null)}
+        onError={(message) => showAlert('warning', 'Receipt', message)}
+      />
       <ConfirmationDialog
         isOpen={!!confirmOneTimeRow}
         onClose={() => !markingPaid && setConfirmOneTimeRow(null)}

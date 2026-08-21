@@ -8,6 +8,9 @@ function asObj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
 }
 
+/** Recommended default when enabling absence → inactive (gym-configurable). */
+export const DEFAULT_ABSENCE_INACTIVE_DAYS = 15;
+
 export interface AttendancePolicy {
   autoCheckoutHours: number;
   absenceInactiveDays: number | null;

@@ -2,6 +2,7 @@ import api from '@/lib/api';
 import { formatDate } from '@/lib/dateUtils';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 import { resolveMediaUrl } from '@/lib/resolveMediaUrl';
+import { normalizeWhatsAppPhone } from '@/lib/whatsappOverdue';
 
 export interface PaymentReceiptPrintedBy {
   name: string;
@@ -990,4 +991,72 @@ export async function printOneTimePaymentReceipt(
   if (!win) {
     throw new Error('Allow popups to print receipts.');
   }
+}
+
+function formatWhatsAppMoney(amount: number | null | undefined): string {
+  const n = Number(amount);
+  if (Number.isNaN(n)) return 'Rs. 0';
+  const hasFraction = Math.abs(n % 1) > 1e-9;
+  return `Rs. ${n.toLocaleString('en-US', {
+    minimumFractionDigits: hasFraction ? 2 : 0,
+    maximumFractionDigits: hasFraction ? 2 : 0,
+  })}`;
+}
+
+/** Professional short WhatsApp text for a membership/signup payment receipt. */
+export function buildPaymentReceiptWhatsAppMessage(data: PaymentReceiptData): string {
+  const gym = (data.gym.name || '').trim() || 'your gym';
+  const member = (data.member.name || '').trim();
+  const greeting = member ? `Dear ${member},` : 'Dear Member,';
+  const amount = formatWhatsAppMoney(resolveReceiptPaymentAmount(data));
+  const paidOn = formatReceiptDate(data.payment.paidDate || data.generatedAt);
+
+  const lines = [
+    greeting,
+    '',
+    `Thank you for your payment to ${gym}.`,
+    '',
+    `Receipt: ${data.receiptNumber}`,
+    `Amount paid: ${amount}`,
+  ];
+
+  if (isSignupReceipt(data)) {
+    lines.push('Payment: Membership signup');
+  } else if (data.payment.month) {
+    lines.push(`Billing month: ${formatReceiptMonthFull(data.payment.month)}`);
+  }
+
+  if (data.package?.name) {
+    lines.push(`Package: ${data.package.name}`);
+  }
+
+  lines.push(`Paid on: ${paidOn}`, '', 'We look forward to seeing you at the gym.', `— ${gym}`);
+  return lines.join('\n');
+}
+
+/** Opens WhatsApp with receipt text. Uses phone when available; otherwise opens the chat picker. */
+export function openPaymentReceiptWhatsApp(
+  data: PaymentReceiptData,
+  phone?: string | null
+): boolean {
+  const message = buildPaymentReceiptWhatsAppMessage(data);
+  const normalized = normalizeWhatsAppPhone(phone ?? data.member.phone);
+  const url = normalized
+    ? `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`
+    : `https://wa.me/?text=${encodeURIComponent(message)}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+  return true;
+}
+
+export async function fetchPaymentReceiptForWhatsApp(
+  kind: 'monthly' | 'one-time',
+  id: string | number,
+  printedBy?: PaymentReceiptPrintedBy | null,
+  memberId?: string | number,
+  hints?: ReceiptEnrichmentHints | null
+): Promise<PaymentReceiptData> {
+  if (kind === 'one-time') {
+    return fetchOneTimePaymentReceiptData(id, printedBy, memberId, hints);
+  }
+  return fetchPaymentReceiptData(id, printedBy, memberId, hints);
 }

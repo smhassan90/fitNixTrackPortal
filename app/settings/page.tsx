@@ -12,6 +12,7 @@ import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 import {
   applyAttendancePolicies,
+  DEFAULT_ABSENCE_INACTIVE_DAYS,
   fetchGymSettings,
   saveAttendanceSettings,
   type GymSettings,
@@ -51,7 +52,9 @@ export default function SettingsPage() {
   const [maxMemberDiscountAmount, setMaxMemberDiscountAmount] = useState('');
   const [autoCheckoutHours, setAutoCheckoutHours] = useState('6');
   const [absenceEnabled, setAbsenceEnabled] = useState(false);
-  const [absenceInactiveDays, setAbsenceInactiveDays] = useState('14');
+  const [absenceInactiveDays, setAbsenceInactiveDays] = useState(
+    String(DEFAULT_ABSENCE_INACTIVE_DAYS)
+  );
 
   const [deviceSetup, setDeviceSetup] = useState<TabletSyncSetup | null>(null);
   const [devicesLoading, setDevicesLoading] = useState(false);
@@ -69,7 +72,9 @@ export default function SettingsPage() {
       setAutoCheckoutHours(String(data.autoCheckoutHours));
       setAbsenceEnabled(data.attendancePolicy.absenceInactiveEnabled);
       setAbsenceInactiveDays(
-        data.absenceInactiveDays != null ? String(data.absenceInactiveDays) : '14'
+        data.absenceInactiveDays != null
+          ? String(data.absenceInactiveDays)
+          : String(DEFAULT_ABSENCE_INACTIVE_DAYS)
       );
     } catch (error: unknown) {
       showAlert('error', 'Error', getErrorMessage(error));
@@ -188,6 +193,11 @@ export default function SettingsPage() {
       setSettings(data);
       setAutoCheckoutHours(String(data.autoCheckoutHours));
       setAbsenceEnabled(data.attendancePolicy.absenceInactiveEnabled);
+      setAbsenceInactiveDays(
+        data.absenceInactiveDays != null
+          ? String(data.absenceInactiveDays)
+          : String(DEFAULT_ABSENCE_INACTIVE_DAYS)
+      );
       showAlert('success', 'Policies Saved', 'Attendance automation settings updated.');
     } catch (error: unknown) {
       showAlert('error', 'Error', getErrorMessage(error));
@@ -494,7 +504,7 @@ export default function SettingsPage() {
               <ul className="space-y-2 text-sm opacity-90">
                 <li>• Admission fee applies to all new members unless waived</li>
                 <li>• Maximum member discount caps flat PKR discounts on the Add Member screen</li>
-                <li>• Attendance automation controls auto checkout and absence rules</li>
+                <li>• Attendance automation controls auto checkout and absence deactivation (configurable days)</li>
                 <li>• Tablet setup is one-time: API key and device registration for the attendance app</li>
                 <li>• Sync users and map device users from Attendance → Sync users</li>
               </ul>
@@ -534,19 +544,26 @@ export default function SettingsPage() {
               <div>
                 <h2 className="text-xl font-bold text-dark-gray">Absence policy</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Mark members inactive after prolonged absence
+                  Automatically deactivate members who have not checked in for a set number of days
+                  (recommended: {DEFAULT_ABSENCE_INACTIVE_DAYS}).
                 </p>
               </div>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={absenceEnabled}
-                  onChange={(e) => setAbsenceEnabled(e.target.checked)}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setAbsenceEnabled(on);
+                    if (on && !absenceInactiveDays.trim()) {
+                      setAbsenceInactiveDays(String(DEFAULT_ABSENCE_INACTIVE_DAYS));
+                    }
+                  }}
                   disabled={!canManageAttendancePolicy}
                   className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                 />
                 <span className="text-sm font-medium text-dark-gray">
-                  Automatically mark inactive after absence
+                  Automatically deactivate after absence
                 </span>
               </label>
               {absenceEnabled && (
@@ -563,10 +580,15 @@ export default function SettingsPage() {
                     disabled={!canManageAttendancePolicy}
                     className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary disabled:bg-gray-50"
                   />
+                  <p className="text-xs text-gray-500 mt-2">
+                    Active members whose last check-in is older than this many days are marked inactive.
+                    Members who have never checked in are left active.
+                  </p>
                 </div>
               )}
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                Unpaid installments from inactive date onward are removed (same as manual deactivate).
+                Unpaid installments from the inactive date onward are removed (same as manual deactivate).
+                Policy runs when you click <strong>Apply policies now</strong> or during attendance device sync.
               </div>
             </div>
 

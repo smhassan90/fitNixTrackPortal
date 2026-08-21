@@ -13,6 +13,10 @@ import { useAlert } from '@/hooks/useAlert';
 import api from '@/lib/api';
 import { getErrorMessage } from '@/lib/errorHandler';
 import { printPaymentReceipt } from '@/lib/paymentReceipt';
+import PaymentReceiptModal, {
+  type PaymentReceiptTarget,
+} from '@/components/PaymentReceiptModal';
+import PaymentReceiptWhatsAppButton from '@/components/PaymentReceiptWhatsAppButton';
 import { displayMemberId, normalizeMemberNumberFields } from '@/lib/displayMemberId';
 import { pickMemberPhotoUrl } from '@/lib/memberPhoto';
 import MemberAvatar from '@/components/MemberAvatar';
@@ -20,7 +24,6 @@ import {
   printReceiptForPaymentRecord,
   receiptPrintedByFromUser,
   resolvePaymentIdAfterMarkPaid,
-  tryPrintMonthlyReceiptAfterMarkPaid,
   type PrintablePaymentRecord,
 } from '@/lib/paymentReceiptUrl';
 import { notifyDashboardStatsRefresh } from '@/lib/dashboardEvents';
@@ -78,6 +81,7 @@ interface MemberStatusLite {
   memberNumber: string | null;
   legacyMemberId: string | null;
   name: string;
+  phone?: string | null;
   photoUrl?: string | null;
   isActive?: boolean;
   inactiveFrom?: string | null;
@@ -174,6 +178,7 @@ export default function MemberPaymentsDetailPage() {
   const [statusDateMode, setStatusDateMode] = useState<DateMode>('today');
   const [statusCustomDate, setStatusCustomDate] = useState('');
   const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const [receiptTarget, setReceiptTarget] = useState<PaymentReceiptTarget | null>(null);
 
   const fetchDetail = useCallback(async () => {
     if (!memberId) return;
@@ -213,6 +218,7 @@ export default function MemberPaymentsDetailPage() {
           id: String(m.id ?? memberId),
           ...normalizeMemberNumberFields(m),
           name: String(m.name ?? nameFromPayload ?? ''),
+          phone: m.phone != null ? String(m.phone) : null,
           photoUrl: resolvedPhoto,
           isActive: m.isActive !== false,
           inactiveFrom: m.inactiveFrom != null ? String(m.inactiveFrom) : null,
@@ -235,6 +241,7 @@ export default function MemberPaymentsDetailPage() {
               id: String(m.id ?? memberId),
               ...normalizeMemberNumberFields(m),
               name: String(m.name ?? prev?.name ?? nameFromPayload ?? ''),
+              phone: m.phone != null ? String(m.phone) : prev?.phone ?? null,
               photoUrl: photoUrl ?? prev?.photoUrl ?? null,
               isActive: m.isActive !== false,
               inactiveFrom: m.inactiveFrom != null ? String(m.inactiveFrom) : null,
@@ -445,20 +452,14 @@ export default function MemberPaymentsDetailPage() {
       setOneTimeConfirm(false);
       notifyDashboardStatsRefresh();
       await fetchDetail();
-      try {
-        await printReceiptForPaymentRecord(
-          { type: 'one-time', id: oneTimeId },
-          receiptPrintedByFromUser(user),
-          memberId
-        );
-      } catch (printErr) {
-        console.warn('Signup receipt print failed:', printErr);
-        showAlert(
-          'warning',
-          'Receipt',
-          'Payment saved. Allow popups to print the receipt.'
-        );
-      }
+      setReceiptTarget({
+        kind: 'one-time',
+        id: oneTimeId,
+        memberId,
+        fallbackPhone: memberStatus?.phone ?? null,
+        printedBy: receiptPrintedByFromUser(user),
+        autoPrint: true,
+      });
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
     } finally {
@@ -502,18 +503,21 @@ export default function MemberPaymentsDetailPage() {
           wasProjected,
         });
         if (paymentId != null) {
-          await tryPrintMonthlyReceiptAfterMarkPaid({
-            paymentId,
+          setReceiptTarget({
+            kind: 'monthly',
+            id: paymentId,
             memberId,
+            fallbackPhone: memberStatus?.phone ?? inst.member?.phone ?? null,
             printedBy: receiptPrintedByFromUser(user),
+            autoPrint: true,
           });
         }
-      } catch (printErr) {
-        console.warn('Receipt print failed:', printErr);
+      } catch (receiptErr) {
+        console.warn('Receipt prepare failed:', receiptErr);
         showAlert(
           'warning',
           'Receipt',
-          'Payment saved. Allow popups to print the receipt.'
+          'Payment saved. Open Receipt from the paid row if needed.'
         );
       }
     } catch (e: unknown) {
@@ -756,6 +760,16 @@ export default function MemberPaymentsDetailPage() {
                           >
                             Receipt
                           </button>
+                          {row.id != null && (
+                            <PaymentReceiptWhatsAppButton
+                              kind="monthly"
+                              id={row.id}
+                              memberId={memberId}
+                              fallbackPhone={memberStatus?.phone ?? row.member?.phone ?? null}
+                              printedBy={receiptPrintedByFromUser(user)}
+                              onError={(message) => showAlert('error', 'WhatsApp', message)}
+                            />
+                          )}
                           {undoPaidId === row.id && canUndoPayment && (
                             <button
                               type="button"
@@ -784,6 +798,11 @@ export default function MemberPaymentsDetailPage() {
   return (
     <Layout>
       <Alert isOpen={alert.isOpen} onClose={closeAlert} type={alert.type} title={alert.title} message={alert.message} />
+      <PaymentReceiptModal
+        target={receiptTarget}
+        onClose={() => setReceiptTarget(null)}
+        onError={(message) => showAlert('warning', 'Receipt', message)}
+      />
       <ConfirmationDialog
         isOpen={oneTimeConfirm}
         onClose={() => setOneTimeConfirm(false)}
@@ -1086,6 +1105,14 @@ export default function MemberPaymentsDetailPage() {
                 >
                   Print receipt
                 </button>
+                <PaymentReceiptWhatsAppButton
+                  kind="one-time"
+                  id={pendingOneTime.id}
+                  memberId={memberId}
+                  fallbackPhone={memberStatus?.phone ?? null}
+                  printedBy={receiptPrintedByFromUser(user)}
+                  onError={(message) => showAlert('error', 'WhatsApp', message)}
+                />
               </div>
             </div>
           </section>
@@ -1137,6 +1164,14 @@ export default function MemberPaymentsDetailPage() {
                           >
                             Receipt
                           </button>
+                          <PaymentReceiptWhatsAppButton
+                            kind="one-time"
+                            id={row.id}
+                            memberId={memberId}
+                            fallbackPhone={memberStatus?.phone ?? null}
+                            printedBy={receiptPrintedByFromUser(user)}
+                            onError={(message) => showAlert('error', 'WhatsApp', message)}
+                          />
                           {canUndoPayment && (
                             <button
                               type="button"
