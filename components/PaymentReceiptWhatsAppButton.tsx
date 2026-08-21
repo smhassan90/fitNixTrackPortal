@@ -50,7 +50,7 @@ export default function PaymentReceiptWhatsAppButton({
       const result = await sharePaymentReceiptOnWhatsApp(data, phone);
       if (result.downloadedFile) {
         onInfo?.(
-          'Complete receipt downloaded. Attach that file in WhatsApp if it did not open in the share sheet.'
+          'Print-format PDF downloaded. In WhatsApp tap the paperclip and attach that PDF.'
         );
       }
     } catch (err: unknown) {

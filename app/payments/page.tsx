@@ -412,11 +412,6 @@ function PaymentsPageContent() {
       if (!response.data?.success) {
         throw new Error(response.data?.error?.message || 'Mark paid failed');
       }
-      showAlert(
-        'success',
-        'Signup payment recorded',
-        `${row.member.name} — Rs. ${oneTime.totalAmount.toFixed(2)} signup payment marked as paid.`
-      );
       setConfirmOneTimeRow(null);
       notifyDashboardStatsRefresh();
       await refreshList();
@@ -426,7 +421,6 @@ function PaymentsPageContent() {
         memberId: row.member.id,
         fallbackPhone: row.member.phone,
         printedBy: receiptPrintedByFromUser(user),
-        autoPrint: true,
       });
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
@@ -468,11 +462,6 @@ function PaymentsPageContent() {
       if (!response.data?.success) {
         throw new Error(response.data?.error?.message || 'Mark paid failed');
       }
-      showAlert(
-        'success',
-        'Payment recorded',
-        `${row.member.name} — ${row.nextUnpaid?.month ?? 'installment'} marked as paid.`
-      );
       setConfirmPayRow(null);
       notifyDashboardStatsRefresh();
       await refreshList();
@@ -482,7 +471,6 @@ function PaymentsPageContent() {
         memberId: row.member.id,
         fallbackPhone: row.member.phone,
         printedBy: receiptPrintedByFromUser(user),
-        autoPrint: true,
       });
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));

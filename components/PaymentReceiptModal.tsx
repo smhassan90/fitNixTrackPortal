@@ -146,7 +146,7 @@ export default function PaymentReceiptModal({
       const result = await sharePaymentReceiptOnWhatsApp(data, phone);
       if (result.downloadedFile) {
         onError?.(
-          'Complete receipt downloaded. Attach that file in WhatsApp if it did not open in the share sheet.'
+          'Print-format PDF downloaded. In WhatsApp tap the paperclip and attach that PDF.'
         );
       }
     } catch (err: unknown) {
@@ -238,8 +238,8 @@ export default function PaymentReceiptModal({
                   className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
                 <p className="mt-1.5 text-[11px] text-gray-500">
-                  Leave blank to open WhatsApp and choose a contact. The complete printable receipt is shared or
-                  downloaded with the message.
+                  Leave blank to choose a contact. A PDF matching the printed receipt is prepared as the
+                  attachment.
                 </p>
               </div>
             )}
@@ -267,8 +267,7 @@ export default function PaymentReceiptModal({
               </button>
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
-              WhatsApp includes the short message plus the complete receipt file (share sheet on phone, or download
-              to attach on desktop).
+              WhatsApp sends the short message plus a PDF that matches the printed receipt layout.
             </p>
           </>
         )}

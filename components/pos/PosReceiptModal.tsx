@@ -83,7 +83,7 @@ export default function PosReceiptModal({
       const result = await sharePosReceiptOnWhatsApp({ sale, gymName }, phone);
       if (result.downloadedFile) {
         onPrintError?.(
-          'Complete receipt downloaded. Attach that file in WhatsApp if it did not open in the share sheet.'
+          'Print-format PDF downloaded. In WhatsApp tap the paperclip and attach that PDF.'
         );
       }
     } catch (err: unknown) {
@@ -212,7 +212,7 @@ export default function PosReceiptModal({
           </button>
         </div>
         <p className="text-center text-[11px] text-gray-500">
-          Shares the complete printable receipt file with the short WhatsApp message.
+          Shares a PDF that matches the printed receipt layout, with the short WhatsApp message.
         </p>
 
         <button

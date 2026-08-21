@@ -448,7 +448,6 @@ export default function MemberPaymentsDetailPage() {
       if (!response.data?.success) {
         throw new Error(response.data?.error?.message || 'Mark paid failed');
       }
-      showAlert('success', 'Signup payment recorded', 'Signup one-time payment marked as paid.');
       setOneTimeConfirm(false);
       notifyDashboardStatsRefresh();
       await fetchDetail();
@@ -458,7 +457,6 @@ export default function MemberPaymentsDetailPage() {
         memberId,
         fallbackPhone: memberStatus?.phone ?? null,
         printedBy: receiptPrintedByFromUser(user),
-        autoPrint: true,
       });
     } catch (e: unknown) {
       showAlert('error', 'Error', getErrorMessage(e));
@@ -491,7 +489,6 @@ export default function MemberPaymentsDetailPage() {
           throw new Error(response.data?.error?.message || 'Mark paid failed');
         }
       }
-      showAlert('success', 'Payment recorded', 'Installment marked as paid.');
       setSingleConfirm(null);
       notifyDashboardStatsRefresh();
       await fetchDetail();
@@ -509,7 +506,6 @@ export default function MemberPaymentsDetailPage() {
             memberId,
             fallbackPhone: memberStatus?.phone ?? inst.member?.phone ?? null,
             printedBy: receiptPrintedByFromUser(user),
-            autoPrint: true,
           });
         }
       } catch (receiptErr) {

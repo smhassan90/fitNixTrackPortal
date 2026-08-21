@@ -990,7 +990,6 @@ export default function MembersPage() {
           fallbackPhone: memberRecord?.phone ?? memberData?.phone ?? null,
           printedBy: receiptPrintedByFromUser(user),
           hints: discountHint ? { memberDiscount: discountHint } : undefined,
-          autoPrint: true,
         });
         return;
       }
