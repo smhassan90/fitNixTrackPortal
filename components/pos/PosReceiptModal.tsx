@@ -76,18 +76,13 @@ export default function PosReceiptModal({
     }
   };
 
-  const sendWhatsApp = async (phone?: string | null) => {
+  const sendWhatsApp = (phone?: string | null) => {
     if (whatsAppBusy) return;
     try {
       setWhatsAppBusy(true);
-      const result = await sharePosReceiptOnWhatsApp({ sale, gymName }, phone);
-      if (result.downloadedFile) {
-        onPrintError?.(
-          'Print-format PDF downloaded. In WhatsApp tap the paperclip and attach that PDF.'
-        );
-      }
+      sharePosReceiptOnWhatsApp({ sale, gymName }, phone);
     } catch (err: unknown) {
-      onPrintError?.(err instanceof Error ? err.message : 'Could not share receipt on WhatsApp.');
+      onPrintError?.(err instanceof Error ? err.message : 'Could not open WhatsApp.');
     } finally {
       setWhatsAppBusy(false);
     }
@@ -95,7 +90,7 @@ export default function PosReceiptModal({
 
   const handleWhatsApp = () => {
     if (hasKnownPhone) {
-      void sendWhatsApp(knownPhone);
+      sendWhatsApp(knownPhone);
       return;
     }
     if (!showWhatsAppPhone) {
@@ -107,7 +102,7 @@ export default function PosReceiptModal({
       onPrintError?.('Enter a valid phone number (e.g. 03xx or +92…).');
       return;
     }
-    void sendWhatsApp(typed || null);
+    sendWhatsApp(typed || null);
   };
 
   return (
@@ -204,15 +199,11 @@ export default function PosReceiptModal({
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#25D366] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1ebe57] disabled:opacity-50"
           >
             <WhatsAppIcon className="h-4 w-4" />
-            {whatsAppBusy
-              ? 'Preparing…'
-              : showWhatsAppPhone && !hasKnownPhone
-                ? 'Send on WhatsApp'
-                : 'WhatsApp'}
+            {showWhatsAppPhone && !hasKnownPhone ? 'Send on WhatsApp' : 'WhatsApp'}
           </button>
         </div>
         <p className="text-center text-[11px] text-gray-500">
-          Shares a PDF that matches the printed receipt layout, with the short WhatsApp message.
+          Opens WhatsApp with the sale receipt message.
         </p>
 
         <button

@@ -196,33 +196,6 @@ export function buildPosReceiptWhatsAppMessage({ sale, gymName }: PosReceiptPrin
   return lines.join('\n');
 }
 
-function posReceiptFileBaseName(sale: PosSale): string {
-  const raw = String(sale.receiptNo || sale.id || 'pos').replace(/[^\w.-]+/g, '_');
-  return `POS-Receipt-${raw}`;
-}
-
-export async function buildPosReceiptPdfFile(ctx: PosReceiptPrintContext): Promise<File> {
-  const { htmlReceiptToPdfFile } = await import('@/lib/receiptAttachment');
-  return htmlReceiptToPdfFile(buildPosReceiptHtml(ctx), `${posReceiptFileBaseName(ctx.sale)}.pdf`);
-}
-
-export function buildPosReceiptFile(ctx: PosReceiptPrintContext): File {
-  const html = buildPosReceiptHtml(ctx);
-  return new File([html], `${posReceiptFileBaseName(ctx.sale)}.html`, {
-    type: 'text/html',
-  });
-}
-
-export async function downloadPosReceiptPdf(ctx: PosReceiptPrintContext): Promise<void> {
-  const { downloadBlobFile } = await import('@/lib/receiptAttachment');
-  const file = await buildPosReceiptPdfFile(ctx);
-  downloadBlobFile(file);
-}
-
-export function downloadPosReceiptFile(ctx: PosReceiptPrintContext): void {
-  void downloadPosReceiptPdf(ctx);
-}
-
 function openPosWhatsAppChat(message: string, phone?: string | null): void {
   const normalized = normalizeWhatsAppPhone(phone);
   const url = normalized
@@ -231,25 +204,15 @@ function openPosWhatsAppChat(message: string, phone?: string | null): void {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-/**
- * Shares the print-format POS receipt as a PDF attachment plus short WhatsApp text.
- * On phones, uses the system Share sheet when possible so WhatsApp can receive the PDF.
- */
-export async function sharePosReceiptOnWhatsApp(
+/** Opens WhatsApp with the POS receipt message (text only). */
+export function sharePosReceiptOnWhatsApp(
   ctx: PosReceiptPrintContext,
   phone?: string | null
-): Promise<{ sharedWithFile: boolean; downloadedFile: boolean; openedChat: boolean }> {
-  const shortMessage = buildPosReceiptWhatsAppMessage(ctx);
+): { openedChat: boolean } {
+  const message = buildPosReceiptWhatsAppMessage(ctx);
   const resolvedPhone = phone ?? ctx.sale.memberPhone ?? null;
-  const { shareOrDownloadReceiptPdf } = await import('@/lib/receiptAttachment');
-  const file = await buildPosReceiptPdfFile(ctx);
-
-  return shareOrDownloadReceiptPdf({
-    file,
-    title: `Receipt ${ctx.sale.receiptNo}`,
-    text: shortMessage,
-    openChat: (message) => openPosWhatsAppChat(message, resolvedPhone),
-  });
+  openPosWhatsAppChat(message, resolvedPhone);
+  return { openedChat: true };
 }
 
 /** Opens WhatsApp with the receipt text. Uses phone when available; otherwise opens chat picker. */
@@ -257,6 +220,6 @@ export function openPosReceiptWhatsApp(
   ctx: PosReceiptPrintContext,
   phone?: string | null
 ): boolean {
-  void sharePosReceiptOnWhatsApp(ctx, phone);
+  sharePosReceiptOnWhatsApp(ctx, phone);
   return true;
 }

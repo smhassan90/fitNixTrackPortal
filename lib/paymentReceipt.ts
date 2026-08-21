@@ -1069,34 +1069,6 @@ export function buildPaymentReceiptWhatsAppFullText(data: PaymentReceiptData): s
   return lines.join('\n');
 }
 
-function receiptFileBaseName(data: PaymentReceiptData): string {
-  const raw = String(data.receiptNumber || 'receipt').replace(/[^\w.-]+/g, '_');
-  return `Receipt-${raw || 'payment'}`;
-}
-
-export async function buildPaymentReceiptPdfFile(data: PaymentReceiptData): Promise<File> {
-  const { htmlReceiptToPdfFile } = await import('@/lib/receiptAttachment');
-  return htmlReceiptToPdfFile(buildPaymentReceiptHtml(data), `${receiptFileBaseName(data)}.pdf`);
-}
-
-/** @deprecated Prefer buildPaymentReceiptPdfFile for WhatsApp attachments. */
-export function buildPaymentReceiptFile(data: PaymentReceiptData): File {
-  const html = buildPaymentReceiptHtml(data);
-  return new File([html], `${receiptFileBaseName(data)}.html`, {
-    type: 'text/html',
-  });
-}
-
-export async function downloadPaymentReceiptPdf(data: PaymentReceiptData): Promise<void> {
-  const { downloadBlobFile } = await import('@/lib/receiptAttachment');
-  const file = await buildPaymentReceiptPdfFile(data);
-  downloadBlobFile(file);
-}
-
-export function downloadPaymentReceiptFile(data: PaymentReceiptData): void {
-  void downloadPaymentReceiptPdf(data);
-}
-
 function openPaymentReceiptWhatsAppChat(message: string, phone?: string | null): void {
   const normalized = normalizeWhatsAppPhone(phone);
   const url = normalized
@@ -1106,34 +1078,19 @@ function openPaymentReceiptWhatsAppChat(message: string, phone?: string | null):
 }
 
 export type PaymentReceiptWhatsAppShareResult = {
-  /** Native share sheet sent the receipt PDF (often includes WhatsApp on phones). */
-  sharedWithFile: boolean;
-  /** Printable receipt PDF was downloaded for manual attach. */
-  downloadedFile: boolean;
-  /** WhatsApp chat was opened with the short message. */
+  /** WhatsApp chat was opened with the receipt message. */
   openedChat: boolean;
 };
 
-/**
- * Sends the short WhatsApp message and a PDF of the print-format receipt.
- * wa.me cannot attach files; on phones the Share sheet can send the PDF to WhatsApp.
- * On desktop the PDF downloads and WhatsApp opens so staff can attach it.
- */
-export async function sharePaymentReceiptOnWhatsApp(
+/** Opens WhatsApp with the payment receipt message (text only). */
+export function sharePaymentReceiptOnWhatsApp(
   data: PaymentReceiptData,
   phone?: string | null
-): Promise<PaymentReceiptWhatsAppShareResult> {
-  const shortMessage = buildPaymentReceiptWhatsAppMessage(data);
+): PaymentReceiptWhatsAppShareResult {
+  const message = buildPaymentReceiptWhatsAppMessage(data);
   const resolvedPhone = phone ?? data.member.phone ?? null;
-  const { shareOrDownloadReceiptPdf } = await import('@/lib/receiptAttachment');
-  const file = await buildPaymentReceiptPdfFile(data);
-
-  return shareOrDownloadReceiptPdf({
-    file,
-    title: `Receipt ${data.receiptNumber}`,
-    text: shortMessage,
-    openChat: (message) => openPaymentReceiptWhatsAppChat(message, resolvedPhone),
-  });
+  openPaymentReceiptWhatsAppChat(message, resolvedPhone);
+  return { openedChat: true };
 }
 
 /** Opens WhatsApp with receipt text. Uses phone when available; otherwise opens the chat picker. */
@@ -1141,7 +1098,7 @@ export function openPaymentReceiptWhatsApp(
   data: PaymentReceiptData,
   phone?: string | null
 ): boolean {
-  void sharePaymentReceiptOnWhatsApp(data, phone);
+  sharePaymentReceiptOnWhatsApp(data, phone);
   return true;
 }
 

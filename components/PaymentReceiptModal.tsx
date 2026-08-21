@@ -139,18 +139,13 @@ export default function PaymentReceiptModal({
     }
   };
 
-  const sendWhatsApp = async (phone?: string | null) => {
+  const sendWhatsApp = (phone?: string | null) => {
     if (!data || whatsAppBusy) return;
     try {
       setWhatsAppBusy(true);
-      const result = await sharePaymentReceiptOnWhatsApp(data, phone);
-      if (result.downloadedFile) {
-        onError?.(
-          'Print-format PDF downloaded. In WhatsApp tap the paperclip and attach that PDF.'
-        );
-      }
+      sharePaymentReceiptOnWhatsApp(data, phone);
     } catch (err: unknown) {
-      onError?.(err instanceof Error ? err.message : 'Could not share receipt on WhatsApp.');
+      onError?.(err instanceof Error ? err.message : 'Could not open WhatsApp.');
     } finally {
       setWhatsAppBusy(false);
     }
@@ -159,7 +154,7 @@ export default function PaymentReceiptModal({
   const handleWhatsApp = () => {
     if (!data) return;
     if (hasKnownPhone) {
-      void sendWhatsApp(knownPhone);
+      sendWhatsApp(knownPhone);
       return;
     }
     if (!showWhatsAppPhone) {
@@ -171,7 +166,7 @@ export default function PaymentReceiptModal({
       onError?.('Enter a valid phone number (e.g. 03xx or +92…).');
       return;
     }
-    void sendWhatsApp(typed || null);
+    sendWhatsApp(typed || null);
   };
 
   const amount = data ? resolveReceiptPaymentAmount(data) : 0;
@@ -238,8 +233,7 @@ export default function PaymentReceiptModal({
                   className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
                 <p className="mt-1.5 text-[11px] text-gray-500">
-                  Leave blank to choose a contact. A PDF matching the printed receipt is prepared as the
-                  attachment.
+                  Leave blank to open WhatsApp and choose a contact.
                 </p>
               </div>
             )}
@@ -259,15 +253,11 @@ export default function PaymentReceiptModal({
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
               >
                 <WhatsAppIcon className="h-4 w-4" />
-                {whatsAppBusy
-                  ? 'Preparing…'
-                  : showWhatsAppPhone && !hasKnownPhone
-                    ? 'Send on WhatsApp'
-                    : 'WhatsApp'}
+                {showWhatsAppPhone && !hasKnownPhone ? 'Send on WhatsApp' : 'WhatsApp'}
               </button>
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
-              WhatsApp sends the short message plus a PDF that matches the printed receipt layout.
+              Opens WhatsApp with the payment receipt message.
             </p>
           </>
         )}

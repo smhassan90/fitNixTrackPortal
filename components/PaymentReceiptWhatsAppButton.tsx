@@ -47,14 +47,9 @@ export default function PaymentReceiptWhatsAppButton({
       setBusy(true);
       const data = await fetchPaymentReceiptForWhatsApp(kind, id, printedBy, memberId, hints);
       const phone = data.member.phone || fallbackPhone || null;
-      const result = await sharePaymentReceiptOnWhatsApp(data, phone);
-      if (result.downloadedFile) {
-        onInfo?.(
-          'Print-format PDF downloaded. In WhatsApp tap the paperclip and attach that PDF.'
-        );
-      }
+      sharePaymentReceiptOnWhatsApp(data, phone);
     } catch (err: unknown) {
-      onError?.(err instanceof Error ? err.message : 'Could not prepare WhatsApp receipt.');
+      onError?.(err instanceof Error ? err.message : 'Could not open WhatsApp receipt.');
     } finally {
       setBusy(false);
     }
@@ -65,7 +60,7 @@ export default function PaymentReceiptWhatsAppButton({
       type="button"
       disabled={busy}
       onClick={() => void handleClick()}
-      title="Send short message + complete receipt on WhatsApp"
+      title="Send payment receipt message on WhatsApp"
       aria-label="Send receipt on WhatsApp"
       className={
         className ||
