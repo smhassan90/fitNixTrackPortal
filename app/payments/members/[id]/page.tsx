@@ -768,6 +768,7 @@ export default function MemberPaymentsDetailPage() {
                               fallbackPhone={memberStatus?.phone ?? row.member?.phone ?? null}
                               printedBy={receiptPrintedByFromUser(user)}
                               onError={(message) => showAlert('error', 'WhatsApp', message)}
+                              onInfo={(message) => showAlert('info', 'WhatsApp', message)}
                             />
                           )}
                           {undoPaidId === row.id && canUndoPayment && (
@@ -1112,6 +1113,7 @@ export default function MemberPaymentsDetailPage() {
                   fallbackPhone={memberStatus?.phone ?? null}
                   printedBy={receiptPrintedByFromUser(user)}
                   onError={(message) => showAlert('error', 'WhatsApp', message)}
+                  onInfo={(message) => showAlert('info', 'WhatsApp', message)}
                 />
               </div>
             </div>
@@ -1171,6 +1173,7 @@ export default function MemberPaymentsDetailPage() {
                             fallbackPhone={memberStatus?.phone ?? null}
                             printedBy={receiptPrintedByFromUser(user)}
                             onError={(message) => showAlert('error', 'WhatsApp', message)}
+                            onInfo={(message) => showAlert('info', 'WhatsApp', message)}
                           />
                           {canUndoPayment && (
                             <button

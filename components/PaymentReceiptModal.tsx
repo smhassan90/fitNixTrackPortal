@@ -7,8 +7,8 @@ import {
   fetchOneTimePaymentReceiptData,
   fetchPaymentReceiptData,
   openPaymentReceiptPrintWindow,
-  openPaymentReceiptWhatsApp,
   resolveReceiptPaymentAmount,
+  sharePaymentReceiptOnWhatsApp,
   type PaymentReceiptData,
   type PaymentReceiptPrintedBy,
   type ReceiptEnrichmentHints,
@@ -52,6 +52,7 @@ export default function PaymentReceiptModal({
   const [data, setData] = useState<PaymentReceiptData | null>(null);
   const [phoneDraft, setPhoneDraft] = useState('');
   const [showWhatsAppPhone, setShowWhatsAppPhone] = useState(false);
+  const [whatsAppBusy, setWhatsAppBusy] = useState(false);
 
   const knownPhone = data?.member.phone || target?.fallbackPhone || null;
   const hasKnownPhone = Boolean(normalizeWhatsAppPhone(knownPhone));
@@ -138,15 +139,27 @@ export default function PaymentReceiptModal({
     }
   };
 
-  const sendWhatsApp = (phone?: string | null) => {
-    if (!data) return;
-    openPaymentReceiptWhatsApp(data, phone);
+  const sendWhatsApp = async (phone?: string | null) => {
+    if (!data || whatsAppBusy) return;
+    try {
+      setWhatsAppBusy(true);
+      const result = await sharePaymentReceiptOnWhatsApp(data, phone);
+      if (result.downloadedFile) {
+        onError?.(
+          'Complete receipt downloaded. Attach that file in WhatsApp if it did not open in the share sheet.'
+        );
+      }
+    } catch (err: unknown) {
+      onError?.(err instanceof Error ? err.message : 'Could not share receipt on WhatsApp.');
+    } finally {
+      setWhatsAppBusy(false);
+    }
   };
 
   const handleWhatsApp = () => {
     if (!data) return;
     if (hasKnownPhone) {
-      sendWhatsApp(knownPhone);
+      void sendWhatsApp(knownPhone);
       return;
     }
     if (!showWhatsAppPhone) {
@@ -158,7 +171,7 @@ export default function PaymentReceiptModal({
       onError?.('Enter a valid phone number (e.g. 03xx or +92…).');
       return;
     }
-    sendWhatsApp(typed || null);
+    void sendWhatsApp(typed || null);
   };
 
   const amount = data ? resolveReceiptPaymentAmount(data) : 0;
@@ -225,7 +238,8 @@ export default function PaymentReceiptModal({
                   className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
                 <p className="mt-1.5 text-[11px] text-gray-500">
-                  Leave blank to open WhatsApp and choose a contact.
+                  Leave blank to open WhatsApp and choose a contact. The complete printable receipt is shared or
+                  downloaded with the message.
                 </p>
               </div>
             )}
@@ -240,13 +254,22 @@ export default function PaymentReceiptModal({
               </button>
               <button
                 type="button"
+                disabled={whatsAppBusy}
                 onClick={handleWhatsApp}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
               >
                 <WhatsAppIcon className="h-4 w-4" />
-                {showWhatsAppPhone && !hasKnownPhone ? 'Send on WhatsApp' : 'WhatsApp'}
+                {whatsAppBusy
+                  ? 'Preparing…'
+                  : showWhatsAppPhone && !hasKnownPhone
+                    ? 'Send on WhatsApp'
+                    : 'WhatsApp'}
               </button>
             </div>
+            <p className="mt-2 text-[11px] text-gray-500">
+              WhatsApp includes the short message plus the complete receipt file (share sheet on phone, or download
+              to attach on desktop).
+            </p>
           </>
         )}
       </div>

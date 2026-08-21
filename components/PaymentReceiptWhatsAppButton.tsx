@@ -3,11 +3,10 @@
 import { useState } from 'react';
 import {
   fetchPaymentReceiptForWhatsApp,
-  openPaymentReceiptWhatsApp,
+  sharePaymentReceiptOnWhatsApp,
   type PaymentReceiptPrintedBy,
   type ReceiptEnrichmentHints,
 } from '@/lib/paymentReceipt';
-import { normalizeWhatsAppPhone } from '@/lib/whatsappOverdue';
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -25,6 +24,7 @@ export default function PaymentReceiptWhatsAppButton({
   printedBy,
   hints,
   onError,
+  onInfo,
   className,
   label = 'WhatsApp',
 }: {
@@ -35,6 +35,7 @@ export default function PaymentReceiptWhatsAppButton({
   printedBy?: PaymentReceiptPrintedBy | null;
   hints?: ReceiptEnrichmentHints | null;
   onError?: (message: string) => void;
+  onInfo?: (message: string) => void;
   className?: string;
   label?: string;
 }) {
@@ -46,10 +47,12 @@ export default function PaymentReceiptWhatsAppButton({
       setBusy(true);
       const data = await fetchPaymentReceiptForWhatsApp(kind, id, printedBy, memberId, hints);
       const phone = data.member.phone || fallbackPhone || null;
-      if (phone && !normalizeWhatsAppPhone(phone) && fallbackPhone) {
-        // still open picker / typed number path via open helper
+      const result = await sharePaymentReceiptOnWhatsApp(data, phone);
+      if (result.downloadedFile) {
+        onInfo?.(
+          'Complete receipt downloaded. Attach that file in WhatsApp if it did not open in the share sheet.'
+        );
       }
-      openPaymentReceiptWhatsApp(data, phone);
     } catch (err: unknown) {
       onError?.(err instanceof Error ? err.message : 'Could not prepare WhatsApp receipt.');
     } finally {
@@ -62,7 +65,7 @@ export default function PaymentReceiptWhatsAppButton({
       type="button"
       disabled={busy}
       onClick={() => void handleClick()}
-      title="Send receipt on WhatsApp"
+      title="Send short message + complete receipt on WhatsApp"
       aria-label="Send receipt on WhatsApp"
       className={
         className ||

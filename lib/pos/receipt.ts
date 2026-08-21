@@ -196,16 +196,89 @@ export function buildPosReceiptWhatsAppMessage({ sale, gymName }: PosReceiptPrin
   return lines.join('\n');
 }
 
+function posReceiptFileBaseName(sale: PosSale): string {
+  const raw = String(sale.receiptNo || sale.id || 'pos').replace(/[^\w.-]+/g, '_');
+  return `POS-Receipt-${raw}`;
+}
+
+export function buildPosReceiptFile(ctx: PosReceiptPrintContext): File {
+  const html = buildPosReceiptHtml(ctx);
+  return new File([html], `${posReceiptFileBaseName(ctx.sale)}.html`, {
+    type: 'text/html',
+  });
+}
+
+export function downloadPosReceiptFile(ctx: PosReceiptPrintContext): void {
+  const file = buildPosReceiptFile(ctx);
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function openPosWhatsAppChat(message: string, phone?: string | null): void {
+  const normalized = normalizeWhatsAppPhone(phone);
+  const url = normalized
+    ? `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`
+    : `https://wa.me/?text=${encodeURIComponent(message)}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/**
+ * Shares the complete printable POS receipt (file) plus short WhatsApp text.
+ * On phones, uses the system Share sheet when possible so WhatsApp can receive the file.
+ */
+export async function sharePosReceiptOnWhatsApp(
+  ctx: PosReceiptPrintContext,
+  phone?: string | null
+): Promise<{ sharedWithFile: boolean; downloadedFile: boolean; openedChat: boolean }> {
+  const shortMessage = buildPosReceiptWhatsAppMessage(ctx);
+  const file = buildPosReceiptFile(ctx);
+  const resolvedPhone = phone ?? ctx.sale.memberPhone ?? null;
+
+  const nav = typeof navigator !== 'undefined' ? navigator : null;
+  const canShareFiles =
+    !!nav &&
+    typeof nav.share === 'function' &&
+    typeof nav.canShare === 'function' &&
+    nav.canShare({ files: [file] });
+
+  if (canShareFiles) {
+    try {
+      await nav!.share({
+        files: [file],
+        title: `Receipt ${ctx.sale.receiptNo}`,
+        text: shortMessage,
+      });
+      return { sharedWithFile: true, downloadedFile: false, openedChat: false };
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return { sharedWithFile: false, downloadedFile: false, openedChat: false };
+      }
+    }
+  }
+
+  downloadPosReceiptFile(ctx);
+  const message = [
+    shortMessage,
+    '',
+    '📎 Complete receipt file downloaded on this device.',
+    'Please attach that receipt file in this WhatsApp chat.',
+  ].join('\n');
+  openPosWhatsAppChat(message, resolvedPhone);
+  return { sharedWithFile: false, downloadedFile: true, openedChat: true };
+}
+
 /** Opens WhatsApp with the receipt text. Uses phone when available; otherwise opens chat picker. */
 export function openPosReceiptWhatsApp(
   ctx: PosReceiptPrintContext,
   phone?: string | null
 ): boolean {
-  const message = buildPosReceiptWhatsAppMessage(ctx);
-  const normalized = normalizeWhatsAppPhone(phone ?? ctx.sale.memberPhone);
-  const url = normalized
-    ? `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`
-    : `https://wa.me/?text=${encodeURIComponent(message)}`;
-  window.open(url, '_blank', 'noopener,noreferrer');
+  void sharePosReceiptOnWhatsApp(ctx, phone);
   return true;
 }

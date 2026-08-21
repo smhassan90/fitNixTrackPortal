@@ -1034,17 +1034,138 @@ export function buildPaymentReceiptWhatsAppMessage(data: PaymentReceiptData): st
   return lines.join('\n');
 }
 
+/** Full receipt details as plain text (appended when a file cannot be attached automatically). */
+export function buildPaymentReceiptWhatsAppFullText(data: PaymentReceiptData): string {
+  const amount = formatWhatsAppMoney(resolveReceiptPaymentAmount(data));
+  const paidOn = formatReceiptDate(data.payment.paidDate || data.generatedAt);
+  const lines = [
+    '—— Full receipt ——',
+    `Receipt #: ${data.receiptNumber}`,
+    `Gym: ${(data.gym.name || '').trim() || '—'}`,
+    `Member ID: ${displayMemberId(data.member)}`,
+    `Member: ${data.member.name || '—'}`,
+    `Phone: ${data.member.phone || '—'}`,
+  ];
+
+  if (data.package?.name) {
+    lines.push(`Package: ${data.package.name}`);
+    if (data.package.startDate) lines.push(`Start: ${formatReceiptDate(data.package.startDate)}`);
+    if (data.package.expiryDate) lines.push(`Expiry: ${formatReceiptDate(data.package.expiryDate)}`);
+  }
+
+  if (isSignupReceipt(data) && data.signupPayment) {
+    const signup = data.signupPayment;
+    lines.push('Type: Membership signup');
+    lines.push(`Admission: ${formatWhatsAppMoney(signup.admissionFee)}`);
+    lines.push(`Package fee: ${formatWhatsAppMoney(signup.packageFee)}`);
+    if (signup.trainerFee > 0) lines.push(`Trainer: ${formatWhatsAppMoney(signup.trainerFee)}`);
+    const discount = resolveReceiptMemberDiscountAmount(data);
+    if (discount > 0) lines.push(`Discount: -${formatWhatsAppMoney(discount)}`);
+  } else if (data.payment.month) {
+    lines.push(`Billing month: ${formatReceiptMonthFull(data.payment.month)}`);
+  }
+
+  lines.push(`Amount paid: ${amount}`, `Paid on: ${paidOn}`);
+  return lines.join('\n');
+}
+
+function receiptFileBaseName(data: PaymentReceiptData): string {
+  const raw = String(data.receiptNumber || 'receipt').replace(/[^\w.-]+/g, '_');
+  return `Receipt-${raw || 'payment'}`;
+}
+
+export function buildPaymentReceiptFile(data: PaymentReceiptData): File {
+  const html = buildPaymentReceiptHtml(data);
+  return new File([html], `${receiptFileBaseName(data)}.html`, {
+    type: 'text/html',
+  });
+}
+
+export function downloadPaymentReceiptFile(data: PaymentReceiptData): void {
+  const file = buildPaymentReceiptFile(data);
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function openPaymentReceiptWhatsAppChat(message: string, phone?: string | null): void {
+  const normalized = normalizeWhatsAppPhone(phone);
+  const url = normalized
+    ? `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`
+    : `https://wa.me/?text=${encodeURIComponent(message)}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+export type PaymentReceiptWhatsAppShareResult = {
+  /** Native share sheet sent the receipt file (often includes WhatsApp on phones). */
+  sharedWithFile: boolean;
+  /** Printable receipt file was downloaded for manual attach. */
+  downloadedFile: boolean;
+  /** WhatsApp chat was opened with the short message. */
+  openedChat: boolean;
+};
+
+/**
+ * Sends the short WhatsApp message and also shares/downloads the complete printable receipt.
+ * Note: wa.me cannot attach files; on supported phones the system Share sheet can send the file to WhatsApp.
+ */
+export async function sharePaymentReceiptOnWhatsApp(
+  data: PaymentReceiptData,
+  phone?: string | null
+): Promise<PaymentReceiptWhatsAppShareResult> {
+  const shortMessage = buildPaymentReceiptWhatsAppMessage(data);
+  const file = buildPaymentReceiptFile(data);
+  const resolvedPhone = phone ?? data.member.phone ?? null;
+
+  const nav = typeof navigator !== 'undefined' ? navigator : null;
+  const canShareFiles =
+    !!nav &&
+    typeof nav.share === 'function' &&
+    typeof nav.canShare === 'function' &&
+    nav.canShare({ files: [file] });
+
+  if (canShareFiles) {
+    try {
+      await nav!.share({
+        files: [file],
+        title: `Receipt ${data.receiptNumber}`,
+        text: shortMessage,
+      });
+      return { sharedWithFile: true, downloadedFile: false, openedChat: false };
+    } catch (err: unknown) {
+      // User cancelled share sheet — do not force-open WhatsApp.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return { sharedWithFile: false, downloadedFile: false, openedChat: false };
+      }
+      // Fall through to download + chat.
+    }
+  }
+
+  downloadPaymentReceiptFile(data);
+  const message = [
+    shortMessage,
+    '',
+    '📎 Complete receipt file downloaded on this device.',
+    'Please attach that receipt file in this WhatsApp chat.',
+    '',
+    buildPaymentReceiptWhatsAppFullText(data),
+  ].join('\n');
+  openPaymentReceiptWhatsAppChat(message, resolvedPhone);
+  return { sharedWithFile: false, downloadedFile: true, openedChat: true };
+}
+
 /** Opens WhatsApp with receipt text. Uses phone when available; otherwise opens the chat picker. */
 export function openPaymentReceiptWhatsApp(
   data: PaymentReceiptData,
   phone?: string | null
 ): boolean {
-  const message = buildPaymentReceiptWhatsAppMessage(data);
-  const normalized = normalizeWhatsAppPhone(phone ?? data.member.phone);
-  const url = normalized
-    ? `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`
-    : `https://wa.me/?text=${encodeURIComponent(message)}`;
-  window.open(url, '_blank', 'noopener,noreferrer');
+  void sharePaymentReceiptOnWhatsApp(data, phone);
   return true;
 }
 

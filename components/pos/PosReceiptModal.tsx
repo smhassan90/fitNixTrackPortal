@@ -6,7 +6,7 @@ import type { PosSale } from '@/lib/pos/types';
 import { formatMoney } from '@/lib/pos/utils';
 import { formatDate } from '@/lib/dateUtils';
 import { normalizeWhatsAppPhone } from '@/lib/whatsappOverdue';
-import { openPosReceiptWhatsApp, printPosReceipt } from '@/lib/pos/receipt';
+import { sharePosReceiptOnWhatsApp, printPosReceipt } from '@/lib/pos/receipt';
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -35,6 +35,7 @@ export default function PosReceiptModal({
   const printedForSale = useRef<number | null>(null);
   const [phoneDraft, setPhoneDraft] = useState('');
   const [showWhatsAppPhone, setShowWhatsAppPhone] = useState(false);
+  const [whatsAppBusy, setWhatsAppBusy] = useState(false);
 
   const gymName = user?.gymName ?? 'FitNix';
   const knownPhone = sale?.memberPhone || fallbackPhone || null;
@@ -75,13 +76,26 @@ export default function PosReceiptModal({
     }
   };
 
-  const sendWhatsApp = (phone?: string | null) => {
-    openPosReceiptWhatsApp({ sale, gymName }, phone);
+  const sendWhatsApp = async (phone?: string | null) => {
+    if (whatsAppBusy) return;
+    try {
+      setWhatsAppBusy(true);
+      const result = await sharePosReceiptOnWhatsApp({ sale, gymName }, phone);
+      if (result.downloadedFile) {
+        onPrintError?.(
+          'Complete receipt downloaded. Attach that file in WhatsApp if it did not open in the share sheet.'
+        );
+      }
+    } catch (err: unknown) {
+      onPrintError?.(err instanceof Error ? err.message : 'Could not share receipt on WhatsApp.');
+    } finally {
+      setWhatsAppBusy(false);
+    }
   };
 
   const handleWhatsApp = () => {
     if (hasKnownPhone) {
-      sendWhatsApp(knownPhone);
+      void sendWhatsApp(knownPhone);
       return;
     }
     if (!showWhatsAppPhone) {
@@ -93,7 +107,7 @@ export default function PosReceiptModal({
       onPrintError?.('Enter a valid phone number (e.g. 03xx or +92…).');
       return;
     }
-    sendWhatsApp(typed || null);
+    void sendWhatsApp(typed || null);
   };
 
   return (
@@ -185,13 +199,21 @@ export default function PosReceiptModal({
           </button>
           <button
             type="button"
+            disabled={whatsAppBusy}
             onClick={handleWhatsApp}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#25D366] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1ebe57]"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#25D366] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1ebe57] disabled:opacity-50"
           >
             <WhatsAppIcon className="h-4 w-4" />
-            {showWhatsAppPhone && !hasKnownPhone ? 'Send on WhatsApp' : 'WhatsApp'}
+            {whatsAppBusy
+              ? 'Preparing…'
+              : showWhatsAppPhone && !hasKnownPhone
+                ? 'Send on WhatsApp'
+                : 'WhatsApp'}
           </button>
         </div>
+        <p className="text-center text-[11px] text-gray-500">
+          Shares the complete printable receipt file with the short WhatsApp message.
+        </p>
 
         <button
           type="button"
