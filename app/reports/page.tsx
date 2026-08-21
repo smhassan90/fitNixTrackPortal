@@ -521,6 +521,12 @@ export default function ReportsPage() {
               month, set the range from <strong>{reportMonthDayRange.firstLabel}</strong> to{' '}
               <strong>{reportMonthDayRange.lastLabel}</strong>.
             </p>
+            <Link
+              href="/reports/pnl"
+              className="mt-2 inline-block text-sm font-medium text-primary hover:text-primary-dark"
+            >
+              Open monthly Profit &amp; Loss
+            </Link>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <input

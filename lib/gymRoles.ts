@@ -57,6 +57,8 @@ export function expandPermissionKeys(keys: Iterable<string>): Set<string> {
     imply('gym.packageFeatures.manage', 'gym.packages.read');
     imply('gym.payments.delete', 'gym.payments.manage', 'gym.payments.read');
     imply('gym.payments.manage', 'gym.payments.read');
+    imply('gym.expenses.delete', 'gym.expenses.manage', 'gym.expenses.read');
+    imply('gym.expenses.manage', 'gym.expenses.read');
     imply('gym.pos.products.manage', 'gym.pos.catalog.read');
     imply('gym.pos.inventory.manage', 'gym.pos.catalog.read');
     imply('gym.pos.sell', 'gym.pos.catalog.read');
@@ -87,6 +89,9 @@ const LEGACY_MANAGER_KEYS = [
   'gym.payments.read',
   'gym.payments.manage',
   'gym.payments.delete',
+  'gym.expenses.read',
+  'gym.expenses.manage',
+  'gym.expenses.delete',
   'gym.attendancePolicy.manage',
   'gym.devices.read',
   'gym.devices.manage',

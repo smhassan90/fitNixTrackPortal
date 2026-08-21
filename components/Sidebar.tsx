@@ -146,6 +146,26 @@ const navigation: NavItem[] = [
     )
   },
   {
+    name: 'Expenses',
+    href: '/expenses',
+    permission: 'gym.expenses.read',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+      </svg>
+    ),
+  },
+  {
+    name: 'Expense Heads',
+    href: '/expenses/heads',
+    permission: 'gym.expenses.read',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+      </svg>
+    ),
+  },
+  {
     name: 'Point of Sale',
     href: '/pos/checkout',
     posNav: true,
@@ -164,6 +184,17 @@ const navigation: NavItem[] = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
       </svg>
     )
+  },
+  {
+    name: 'Profit & Loss',
+    href: '/reports/pnl',
+    permission: 'gym.financialReports.read',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+      </svg>
+    ),
   },
   { 
     name: 'Settings', 
@@ -347,7 +378,16 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         >
           <ul className="space-y-1">
             {navItems.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
+              const isActive =
+                pathname === item.href ||
+                (item.href !== '/' &&
+                  pathname.startsWith(`${item.href}/`) &&
+                  !navItems.some(
+                    (other) =>
+                      other.href !== item.href &&
+                      other.href.startsWith(`${item.href}/`) &&
+                      (pathname === other.href || pathname.startsWith(`${other.href}/`))
+                  ));
               return (
                 <li key={item.name}>
                   <Link
