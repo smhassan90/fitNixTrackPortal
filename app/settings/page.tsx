@@ -581,13 +581,16 @@ export default function SettingsPage() {
                     className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary disabled:bg-gray-50"
                   />
                   <p className="text-xs text-gray-500 mt-2">
-                    Active members whose last check-in is older than this many days are marked inactive.
-                    Members who have never checked in are left active.
+                    Active members whose last check-in is older than this many days are marked inactive
+                    from their <strong>last appearance date</strong> (not today). Members who have never
+                    checked in are left active.
                   </p>
                 </div>
               )}
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                 Unpaid installments from the inactive date onward are removed (same as manual deactivate).
+                When the member returns (device punch or manual check-in), they are reactivated automatically
+                and billing resumes from the <strong>next calendar month</strong>.
                 Policy runs when you click <strong>Apply policies now</strong> or during attendance device sync.
               </div>
             </div>
