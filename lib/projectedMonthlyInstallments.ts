@@ -43,27 +43,30 @@ function calendarMonthIndex(y: number, m: number): number {
  */
 export function mergeWithProjectedAdvanceMonths(
   rows: MonthlyInstallmentForProjection[],
-  options?: { horizonMonthsFromToday?: number }
+  options?: { horizonMonthsFromToday?: number; billingResumeFrom?: string | null }
 ): MonthlyInstallmentForProjection[] {
   const horizonMonthsFromToday = options?.horizonMonthsFromToday ?? 12;
 
-  const paidWithYm = rows
-    .filter((r) => r.status === 'PAID')
+  const rowsWithYm = rows
     .map((r) => ({ r, ym: parseYm(r.month) }))
     .filter((x): x is { r: MonthlyInstallmentForProjection; ym: { y: number; m: number } } => x.ym !== null);
 
+  const paidWithYm = rowsWithYm.filter((x) => x.r.status === 'PAID');
   if (paidWithYm.length === 0) return rows;
 
-  let maxYm = paidWithYm[0].ym;
-  let amountTemplate = paidWithYm[0].r.amount;
-  for (const { r, ym } of paidWithYm) {
-    if (calendarMonthIndex(ym.y, ym.m) > calendarMonthIndex(maxYm.y, maxYm.m)) {
-      maxYm = ym;
-      amountTemplate = r.amount;
-    } else if (calendarMonthIndex(ym.y, ym.m) === calendarMonthIndex(maxYm.y, maxYm.m)) {
-      amountTemplate = r.amount;
+  let maxEntry = rowsWithYm[0];
+  for (const entry of rowsWithYm) {
+    if (calendarMonthIndex(entry.ym.y, entry.ym.m) >= calendarMonthIndex(maxEntry.ym.y, maxEntry.ym.m)) {
+      maxEntry = entry;
     }
   }
+  const maxYm = maxEntry.ym;
+  const amountTemplate =
+    paidWithYm[paidWithYm.length - 1]?.r.amount && paidWithYm[paidWithYm.length - 1].r.amount > 0
+      ? [...paidWithYm].sort(
+          (a, b) => calendarMonthIndex(b.ym.y, b.ym.m) - calendarMonthIndex(a.ym.y, a.ym.m)
+        )[0].r.amount
+      : maxEntry.r.amount;
 
   const existingMonths = new Set<string>();
   for (const r of rows) {
@@ -71,7 +74,20 @@ export function mergeWithProjectedAdvanceMonths(
     if (ym) existingMonths.add(ymKey(ym.y, ym.m));
   }
 
-  const next = addMonths(maxYm.y, maxYm.m, 1);
+  let next = addMonths(maxYm.y, maxYm.m, 1);
+  const resumeYm = options?.billingResumeFrom ? parseYm(options.billingResumeFrom.slice(0, 7)) : null;
+  let dueDate = firstOfMonthIso(next.y, next.m);
+  if (resumeYm && calendarMonthIndex(next.y, next.m) < calendarMonthIndex(resumeYm.y, resumeYm.m)) {
+    next = resumeYm;
+    dueDate = options!.billingResumeFrom!.slice(0, 10);
+  } else {
+    const anchorDay = maxEntry.r.dueDate.slice(8, 10);
+    if (/^\d{2}$/.test(anchorDay)) {
+      const lastDay = new Date(Date.UTC(next.y, next.m, 0)).getUTCDate();
+      const day = Math.min(Number(anchorDay), lastDay);
+      dueDate = `${ymKey(next.y, next.m)}-${String(day).padStart(2, '0')}`;
+    }
+  }
   const nextKey = ymKey(next.y, next.m);
   if (existingMonths.has(nextKey)) return rows;
 
@@ -85,7 +101,7 @@ export function mergeWithProjectedAdvanceMonths(
     month: nextKey,
     amount: amountTemplate > 0 ? amountTemplate : 0,
     status: 'PENDING',
-    dueDate: firstOfMonthIso(next.y, next.m),
+    dueDate,
     paidDate: null,
     displayBucket: 'advance',
     isProjected: true,

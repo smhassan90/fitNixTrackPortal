@@ -27,17 +27,33 @@ export function hasUnpaidOverdue(installments: PayableInstallment[]): boolean {
   return unpaidInstallments(installments).some((i) => uiBucketForInstallment(i) === 'overdue');
 }
 
+function dayKey(value: string): string {
+  return value.slice(0, 10);
+}
+
+/** Unpaid row dated before billing resumed — optional, does not block the new cycle. */
+export function isOptionalGapInstallment(
+  inst: PayableInstallment,
+  billingResumeFrom?: string | null
+): boolean {
+  if (!billingResumeFrom || inst.status === 'PAID') return false;
+  return dayKey(inst.dueDate) < dayKey(billingResumeFrom);
+}
+
 export function getPayBlockReason(
   inst: PayableInstallment,
   all: PayableInstallment[],
-  options?: { pendingSignupOneTime?: boolean }
+  options?: { pendingSignupOneTime?: boolean; billingResumeFrom?: string | null }
 ): string | null {
   if (options?.pendingSignupOneTime) {
     return SIGNUP_PAY_BLOCK_MESSAGE;
   }
   if (inst.status === 'PAID') return 'This installment is already paid.';
+  if (isOptionalGapInstallment(inst, options?.billingResumeFrom)) return null;
 
-  const unpaid = unpaidInstallments(all);
+  const unpaid = unpaidInstallments(all).filter(
+    (row) => !isOptionalGapInstallment(row, options?.billingResumeFrom)
+  );
   const earliest = unpaid[0];
   if (!earliest) return 'No unpaid installments.';
 
@@ -57,7 +73,7 @@ export function getPayBlockReason(
 export function canMarkInstallmentPaid(
   inst: PayableInstallment,
   all: PayableInstallment[],
-  options?: { pendingSignupOneTime?: boolean }
+  options?: { pendingSignupOneTime?: boolean; billingResumeFrom?: string | null }
 ): boolean {
   return getPayBlockReason(inst, all, options) === null;
 }
@@ -66,15 +82,22 @@ export function canMarkInstallmentPaid(
 export function getBulkPayBlockReason(
   selected: PayableInstallment[],
   all: PayableInstallment[],
-  options?: { pendingSignupOneTime?: boolean }
+  options?: { pendingSignupOneTime?: boolean; billingResumeFrom?: string | null }
 ): string | null {
   if (options?.pendingSignupOneTime) {
     return SIGNUP_PAY_BLOCK_MESSAGE;
   }
   if (selected.length === 0) return 'Select at least one unpaid installment.';
 
-  const unpaid = unpaidInstallments(all);
-  const sortedSelected = [...selected].sort(sortByDueDate);
+  const requiredSelected = selected.filter(
+    (row) => !isOptionalGapInstallment(row, options?.billingResumeFrom)
+  );
+  if (requiredSelected.length === 0) return null;
+
+  const unpaid = unpaidInstallments(all).filter(
+    (row) => !isOptionalGapInstallment(row, options?.billingResumeFrom)
+  );
+  const sortedSelected = [...requiredSelected].sort(sortByDueDate);
   const expected = unpaid.slice(0, sortedSelected.length);
 
   const matchesPrefix = expected.every((exp, idx) => {
@@ -100,10 +123,12 @@ export function getBulkPayBlockReason(
 /** Installments that may be bulk-selected together (contiguous prefix of unpaid rows). */
 export function bulkSelectableUnpaid(
   all: PayableInstallment[],
-  options?: { pendingSignupOneTime?: boolean }
+  options?: { pendingSignupOneTime?: boolean; billingResumeFrom?: string | null }
 ): PayableInstallment[] {
   if (options?.pendingSignupOneTime) return [];
-  const unpaid = unpaidInstallments(all);
+  const unpaid = unpaidInstallments(all).filter(
+    (row) => !isOptionalGapInstallment(row, options?.billingResumeFrom)
+  );
   if (unpaid.length === 0) return [];
 
   const hasOverdue = hasUnpaidOverdue(unpaid);
@@ -128,12 +153,15 @@ export function canSelectInstallmentForBulk(
   inst: PayableInstallment,
   all: PayableInstallment[],
   selectedIds: Set<string>,
-  options?: { pendingSignupOneTime?: boolean }
+  options?: { pendingSignupOneTime?: boolean; billingResumeFrom?: string | null }
 ): boolean {
   if (options?.pendingSignupOneTime) return false;
   if (inst.status === 'PAID') return false;
+  if (isOptionalGapInstallment(inst, options?.billingResumeFrom)) return false;
 
-  const unpaid = unpaidInstallments(all);
+  const unpaid = unpaidInstallments(all).filter(
+    (row) => !isOptionalGapInstallment(row, options?.billingResumeFrom)
+  );
   const selectable = bulkSelectableUnpaid(all);
   const selectableKeys = new Set(selectable.map(installmentKey));
   if (!selectableKeys.has(installmentKey(inst))) return false;

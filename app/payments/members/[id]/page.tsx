@@ -42,6 +42,7 @@ import {
   getBulkPayBlockReason,
   getPayBlockReason,
   hasUnpaidOverdue,
+  isOptionalGapInstallment,
   installmentKey,
 } from '@/lib/paymentPayOrder';
 import {
@@ -201,7 +202,14 @@ export default function MemberPaymentsDetailPage() {
       );
       const timeline = (data.monthlyInstallments || []) as Record<string, unknown>[];
       const normalized = timeline.map(normalizeInstallment).sort(sortByDueDate);
-      const withProjected = mergeWithProjectedAdvanceMonths(normalized, { horizonMonthsFromToday: 12 });
+      const resumeFromPayload =
+        data.member && (data.member as Record<string, unknown>).billingResumeFrom != null
+          ? String((data.member as Record<string, unknown>).billingResumeFrom)
+          : null;
+      const withProjected = mergeWithProjectedAdvanceMonths(normalized, {
+        horizonMonthsFromToday: 12,
+        billingResumeFrom: resumeFromPayload,
+      });
       setMonthlyInstallments(withProjected);
 
       const nameFromPayload =
@@ -315,8 +323,11 @@ export default function MemberPaymentsDetailPage() {
 
   const signupBlocksMonthly = hasPendingSignupOneTime(pendingOneTime);
   const payOrderOptions = useMemo(
-    () => ({ pendingSignupOneTime: signupBlocksMonthly }),
-    [signupBlocksMonthly]
+    () => ({
+      pendingSignupOneTime: signupBlocksMonthly,
+      billingResumeFrom: memberStatus?.billingResumeFrom ?? null,
+    }),
+    [signupBlocksMonthly, memberStatus?.billingResumeFrom]
   );
 
   const selectableUnpaid = useMemo(
@@ -523,6 +534,24 @@ export default function MemberPaymentsDetailPage() {
     }
   };
 
+  const handleWaiveGap = async (inst: MonthlyInstallment) => {
+    if (!inst.id) return;
+    try {
+      setBulkSubmitting(true);
+      const response = await api.patch(`/api/payments/${inst.id}/waive`);
+      if (!response.data?.success) {
+        throw new Error(response.data?.error?.message || 'Could not waive this charge');
+      }
+      showAlert('success', 'Charge waived', 'The short fee from before reactivation was removed.');
+      notifyDashboardStatsRefresh();
+      await fetchDetail();
+    } catch (e: unknown) {
+      showAlert('error', 'Error', getErrorMessage(e));
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
   const handleMarkUnpaid = async (inst: MonthlyInstallment) => {
     try {
       setBulkSubmitting(true);
@@ -691,6 +720,7 @@ export default function MemberPaymentsDetailPage() {
             {items.map((row) => {
               const bucket = uiBucketForInstallment(row);
               const rowKey = installmentKey(row);
+              const optionalGap = isOptionalGapInstallment(row, memberStatus?.billingResumeFrom);
               const payBlockReason = getPayBlockReason(row, monthlyInstallments, payOrderOptions);
               const canPayRow = row.status !== 'PAID' && payBlockReason === null;
               const canSelect =
@@ -715,6 +745,9 @@ export default function MemberPaymentsDetailPage() {
                   )}
                   <td className="px-4 py-3 text-sm text-gray-900">
                     {row.month}
+                    {optionalGap && (
+                      <span className="ml-2 text-xs font-normal text-gray-500">optional gap</span>
+                    )}
                     {row.isProjected && (
                       <span className="ml-2 text-xs font-normal text-gray-400">(projected)</span>
                     )}
@@ -732,13 +765,25 @@ export default function MemberPaymentsDetailPage() {
                     <td className="px-4 py-3 text-sm">
                       {row.status !== 'PAID' ? (
                         canPayRow ? (
-                          <button
-                            type="button"
-                            onClick={() => setSingleConfirm(row)}
-                            className="rounded-lg bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
-                          >
-                            Mark paid
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSingleConfirm(row)}
+                              className="rounded-lg bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
+                            >
+                              Mark paid
+                            </button>
+                            {optionalGap && row.id && (
+                              <button
+                                type="button"
+                                onClick={() => handleWaiveGap(row)}
+                                disabled={bulkSubmitting}
+                                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-800 hover:bg-gray-50"
+                              >
+                                Waive
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <span
                             className="text-xs text-gray-500"
