@@ -1811,7 +1811,11 @@ export default function MembersPage() {
                   }
                   
                   return (
-                    <tr key={member.id} className="hover:bg-gray-50">
+                    <tr
+                      key={member.id}
+                      className={`hover:bg-gray-50 ${canManage ? 'cursor-pointer' : ''}`}
+                      onClick={canManage ? () => handleEdit(member) : undefined}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div
                           className="text-sm font-medium text-dark-gray"
@@ -1886,17 +1890,12 @@ export default function MembersPage() {
                       </td>
                       {showActions && (
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          {canManage && (
-                            <button
-                              onClick={() => handleEdit(member)}
-                              className="text-blue hover:text-blue-900 mr-4"
-                            >
-                              Edit
-                            </button>
-                          )}
                           {canDelete && (
                             <button
-                              onClick={() => handleDeleteClick(member.id, member.name)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDeleteClick(member.id, member.name);
+                              }}
                               className="text-red-600 hover:text-red-900"
                             >
                               Delete
@@ -1904,7 +1903,10 @@ export default function MembersPage() {
                           )}
                           {canManage && (
                             <button
-                              onClick={() => openStatusDialog(member, member.isActive === false ? 'reactivate' : 'deactivate')}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openStatusDialog(member, member.isActive === false ? 'reactivate' : 'deactivate');
+                              }}
                               disabled={statusSubmitting}
                               className="ml-4 text-primary hover:text-primary-dark disabled:opacity-50"
                             >
