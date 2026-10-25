@@ -267,10 +267,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error: any) {
       console.error('❌ Login error caught:', error);
-      console.error('Error message:', error.message);
-      
-      // Fallback to local authentication with plain password
-      console.log('🔄 Falling back to local authentication with plain password...');
+      const apiMessage = error instanceof Error ? error.message : '';
+      if (
+        apiMessage &&
+        apiMessage !== 'Login failed' &&
+        !apiMessage.includes('Failed to connect')
+      ) {
+        throw error;
+      }
+
+      // Fallback only when the API is unreachable (dev/demo admin)
+      console.log('🔄 API unreachable — falling back to local demo authentication...');
       
       // Local user database with plain passwords
       const localUsers = [
